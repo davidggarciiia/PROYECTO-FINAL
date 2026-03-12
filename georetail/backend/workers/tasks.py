@@ -1,0 +1,99 @@
+"""
+workers/tasks.py — Tareas Celery asíncronas.
+
+calcular_scores_batch: scoring de múltiples zonas en background.
+generar_pdf_task: generación de PDF en background.
+"""
+from __future__ import annotations
+import asyncio, logging
+from workers.celery_app import celery_app
+
+logger = logging.getLogger(__name__)
+
+
+def _run(coro):
+    """Ejecutar coroutine en un nuevo event loop (Celery workers son síncronos)."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+@celery_app.task(bind=True, max_retries=2, default_retry_delay=30)
+def calcular_scores_batch(self, zona_ids: list[str], sector: str, session_id: str):
+    """
+    Calcula scores para una lista de zonas y los persiste en scores_zona.
+    Llamado desde /api/buscar cuando hay más de 5 zonas candidatas.
+    """
+    try:
+        return _run(_calcular_scores(zona_ids, sector, session_id))
+    except Exception as exc:
+        logger.error("calcular_scores_batch error: %s", exc)
+        raise self.retry(exc=exc)
+
+
+async def _calcular_scores(zona_ids, sector, session_id):
+    from db.conexion import init_db_pool
+    from db.redis_client import init_redis
+    from scoring.scorer import calcular_scores_batch, guardar_scores
+    from db.conexion import get_db
+
+    await init_db_pool()
+    await init_redis()
+
+    # Obtener sector_id
+    async with get_db() as conn:
+        sid = await conn.fetchval("SELECT id FROM sectores WHERE codigo=$1", sector)
+
+    resultados = await calcular_scores_batch(zona_ids, sector)
+
+    # Guardar en BD
+    for zona_id, scores in resultados.items():
+        await guardar_scores(zona_id, sid, scores)
+
+    # Actualizar zonas en sesión con scores calculados
+    from db.sesiones import get_sesion, actualizar_sesion
+    sesion = await get_sesion(session_id)
+    if sesion and sesion.get("zonas_actuales"):
+        for z in sesion["zonas_actuales"]:
+            if z["zona_id"] in resultados:
+                z["score_global"] = resultados[z["zona_id"]].get("score_global")
+        await actualizar_sesion(session_id, {"zonas_actuales": sesion["zonas_actuales"]})
+
+    return {"ok": len(resultados), "zona_ids": list(resultados.keys())}
+
+
+@celery_app.task(bind=True, max_retries=1)
+def generar_pdf_task(self, pdf_id: str, session_id: str, zona_ids: list[str],
+                     opciones: dict):
+    """Genera el PDF en background y actualiza el estado en BD."""
+    try:
+        return _run(_generar_pdf(pdf_id, session_id, zona_ids, opciones))
+    except Exception as exc:
+        logger.error("generar_pdf_task error pdf_id=%s: %s", pdf_id, exc)
+        _run(_marcar_error(pdf_id, str(exc)))
+        raise self.retry(exc=exc)
+
+
+async def _generar_pdf(pdf_id, session_id, zona_ids, opciones):
+    from db.conexion import init_db_pool
+    await init_db_pool()
+    from exportar.generador import generar
+    from db.exportaciones import marcar_exportacion_ok, marcar_exportacion_error
+    try:
+        await generar(pdf_id=pdf_id, session_id=session_id,
+                      zona_ids=zona_ids, opciones=opciones)
+        await marcar_exportacion_ok(pdf_id)
+    except Exception as e:
+        await marcar_exportacion_error(pdf_id, str(e))
+        raise
+    return {"pdf_id": pdf_id}
+
+
+async def _marcar_error(pdf_id, msg):
+    from db.conexion import init_db_pool
+    await init_db_pool()
+    from db.exportaciones import marcar_exportacion_error
+    await marcar_exportacion_error(pdf_id, msg)

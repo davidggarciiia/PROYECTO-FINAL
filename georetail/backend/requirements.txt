@@ -1,0 +1,59 @@
+# ─── Web framework ────────────────────────────────────────────────────────────
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9       # necesario para subida de archivos
+
+# ─── Base de datos ─────────────────────────────────────────────────────────────
+asyncpg==0.29.0               # driver (conector) PostgreSQL asíncrono
+redis[asyncio]==5.0.8         # cliente Redis asíncrono
+
+# ─── Cola de tareas (procesamiento en segundo plano) ──────────────────────────
+celery==5.4.0
+kombu==5.3.4                  # capa de mensajería para Celery
+
+# ─── Scheduler (tareas programadas) ───────────────────────────────────────────
+apscheduler==3.10.4
+
+# ─── LLMs (modelos de lenguaje) ───────────────────────────────────────────────
+anthropic==0.34.0             # Claude (Anthropic)
+openai==1.45.0                # GPT-4o (OpenAI)
+groq==0.11.0                  # Groq (Llama 3.3)
+google-generativeai==0.8.0    # Gemini Flash (Google)
+langchain==0.3.1
+langchain-anthropic==0.2.1
+
+# ─── Machine Learning ─────────────────────────────────────────────────────────
+xgboost==2.1.1
+scikit-learn==1.5.2
+shap==0.46.0                  # explica qué variables influyen en el score
+optuna==3.6.1                 # búsqueda de hiperparámetros (configuración óptima del modelo)
+numpy==1.26.4
+pandas==2.2.3
+joblib==1.4.2                 # guardar/cargar modelos en disco
+
+# ─── NLP (procesamiento de lenguaje natural) ──────────────────────────────────
+sentence-transformers==3.1.1  # convierte textos en vectores numéricos
+torch==2.4.1                  # PyTorch (base de sentence-transformers)
+transformers==4.44.2
+
+# ─── Geoespacial (mapas y coordenadas) ────────────────────────────────────────
+shapely==2.0.6                # manipulación de polígonos en Python
+pyproj==3.6.1                 # conversión entre sistemas de coordenadas
+
+# ─── HTTP (llamadas a APIs externas) ──────────────────────────────────────────
+httpx==0.27.2                 # cliente HTTP asíncrono
+aiohttp==3.10.5
+
+# ─── Generación de PDFs ───────────────────────────────────────────────────────
+weasyprint==62.3              # genera PDFs desde HTML/CSS
+jinja2==3.1.4                 # plantillas HTML para los PDFs
+
+# ─── Validación y configuración ───────────────────────────────────────────────
+pydantic==2.9.2
+pydantic-settings==2.5.2      # leer variables de entorno (.env)
+python-dotenv==1.0.1
+
+# ─── Utilidades ───────────────────────────────────────────────────────────────
+tenacity==9.0.0               # reintentos automáticos en llamadas a APIs
+python-dateutil==2.9.0
+pytz==2024.2
