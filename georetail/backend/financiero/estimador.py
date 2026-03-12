@@ -282,3 +282,7 @@ async def _get_dias_apertura(zona_id, sector):
     if r and (r["n"] or 0) >= 3:
         return r["dias_mes"]
     return None
+
+
+# Alias para importación desde api/financiero.py
+ParametroEstimado = PE

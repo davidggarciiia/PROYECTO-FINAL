@@ -13,8 +13,6 @@ Flujo interno:
        c. Falta info               → estado "cuestionario" (inicia cuestionario)
        d. Info suficiente          → filtrar zonas + scoring → estado "ok"
   4. Guardar búsqueda en `busquedas` para analytics
-
-Módulo de David — agente IA.
 """
 
 from __future__ import annotations
@@ -27,7 +25,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from schemas.models import ZonaResumen, ColorZona, EstadoBusqueda
-from agente.validacion import validar_negocio
+from agente.validador import validar_negocio
 from agente.cuestionario import iniciar_cuestionario
 from scoring.motor import calcular_scores_batch
 from db.sesiones import crear_sesion, get_sesion, guardar_busqueda
@@ -51,11 +49,7 @@ class BuscarRequest(BaseModel):
         default="Barcelona",
         description="Ciudad donde buscar. Por ahora solo Barcelona.",
     )
-    presupuesto_max: Optional[float] = Field(
-        None,
-        gt=0,
-        description="Alquiler mensual máximo en €",
-    )
+    presupuesto_max: Optional[float] = Field(None, gt=0, description="Alquiler mensual máximo en €")
     m2_min: Optional[float] = Field(None, gt=0)
     m2_max: Optional[float] = Field(None, gt=0)
     distritos: Optional[list[str]] = Field(
@@ -76,31 +70,19 @@ class BuscarResponse(BaseModel):
     zonas: Optional[list[ZonaResumen]] = None
     total_zonas_analizadas: Optional[int] = Field(
         None,
-        description="Total de zonas evaluadas antes de filtrar (para mostrar en UI).",
+        description="Total de zonas evaluadas antes de filtrar.",
     )
-    pregunta: Optional[str] = Field(
-        None,
-        description="Pregunta del cuestionario si estado='cuestionario'.",
-    )
-    progreso_cuestionario: Optional[int] = Field(
-        None,
-        ge=0,
-        le=100,
-        description="% de avance del cuestionario (0-100).",
-    )
+    pregunta: Optional[str] = Field(None, description="Pregunta del cuestionario si estado='cuestionario'.")
+    progreso_cuestionario: Optional[int] = Field(None, ge=0, le=100)
     motivo: Optional[str] = Field(
         None,
-        description=(
-            "Mensaje explicativo para estados 'error_tipo_negocio' e 'inviable_legal'. "
-            "El frontend debe mostrarlo tal cual, sin modificarlo."
-        ),
+        description="Mensaje para estados 'error_tipo_negocio' e 'inviable_legal'.",
     )
 
 
 # ─── Helper ───────────────────────────────────────────────────────────────────
 
 def _score_to_color(score: float) -> ColorZona:
-    """Convierte un score numérico al color del marcador del mapa."""
     if score > 75:
         return ColorZona.VERDE
     if score >= 50:
@@ -110,27 +92,24 @@ def _score_to_color(score: float) -> ColorZona:
 
 def _build_zona_resumen(z: dict) -> ZonaResumen:
     """
-    Convierte un dict de zona (resultado de scoring) a ZonaResumen.
-
-    El dict z viene de `scoring.motor.calcular_scores_batch()` que combina:
-      - Datos de `zonas` + `barrios` + `distritos` (PostgreSQL/PostGIS)
-      - Scores calculados por XGBoost (`scores_zona`)
-      - Precio estimado de `precios_alquiler_zona`
-      - Resumen generado por Claude Sonnet (llm_router)
+    Convierte un dict fusionado (candidata + score) a ZonaResumen.
+    Admite ambas variantes de nombre de campo para compatibilidad.
     """
+    score = z.get("score_global", 50.0) or 50.0
+    prob  = z.get("probabilidad_supervivencia_3a") or z.get("probabilidad_supervivencia")
     return ZonaResumen(
         zona_id=z["zona_id"],
         nombre=z["nombre"],
         barrio=z["barrio"],
         distrito=z["distrito"],
-        score_global=round(z["score_global"], 1),
-        probabilidad_supervivencia_3a=round(z["probabilidad_supervivencia_3a"], 2),
-        alquiler_estimado=z["alquiler_estimado"],
-        m2_disponibles=z.get("m2_disponibles"),
-        color=_score_to_color(z["score_global"]),
+        score_global=round(score, 1),
+        probabilidad_supervivencia_3a=round(prob, 2) if prob is not None else None,
+        alquiler_estimado=z.get("alquiler_estimado") or z.get("alquiler_mensual"),
+        m2_disponibles=z.get("m2_disponibles") or z.get("m2"),
+        color=_score_to_color(score),
         lat=z["lat"],
         lng=z["lng"],
-        resumen_ia=z["resumen_ia"],
+        resumen_ia=z.get("resumen_ia"),
     )
 
 
@@ -143,11 +122,6 @@ def _build_zona_resumen(z: dict) -> ZonaResumen:
 )
 async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
     """
-    Endpoint principal. El frontend lo llama en dos momentos:
-      1. Cuando el usuario envía la primera descripción.
-      2. Cuando el cuestionario termina (trigger_busqueda=True en /api/cuestionario),
-         pasando el mismo session_id y la descripción original.
-
     El estado de la respuesta determina qué hace el frontend:
       - "ok"                → renderizar mapa con zonas
       - "cuestionario"      → mostrar la pregunta al usuario
@@ -155,8 +129,6 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
       - "inviable_legal"    → mostrar advertencia legal + botón "Saber más"
     """
     # ── 1. Sesión ─────────────────────────────────────────────────────────────
-    # Las sesiones se almacenan en Redis (TTL 4h) y se persisten en PostgreSQL
-    # tabla `sesiones`. La IP se guarda hasheada para analytics anónimos.
     session_id = body.session_id or str(uuid4())
     sesion = await get_sesion(session_id)
 
@@ -169,47 +141,32 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
                 "ciudad": body.ciudad,
                 "filtros": {
                     "presupuesto_max": body.presupuesto_max,
-                    "m2_min": body.m2_min,
-                    "m2_max": body.m2_max,
-                    "distritos": body.distritos,
+                    "m2_min":         body.m2_min,
+                    "m2_max":         body.m2_max,
+                    "distritos":      body.distritos,
                 },
-                "perfil": {},  # Se rellenará en el cuestionario
+                "perfil": {},
             },
             ip_hash=ip_hash,
         )
 
     # ── 2. Validación LLM ─────────────────────────────────────────────────────
-    # `validar_negocio` usa Claude Sonnet (con fallback via llm_router) para:
-    #   - Nivel 1: ¿Es un negocio retail que necesita local físico?
-    #   - Nivel 2: ¿Hay información suficiente para buscar zonas?
-    #   - Extra:   ¿Hay algún bloqueo legal conocido? (ej: cachimbería)
-    #
-    # Devuelve un dict con:
-    #   {
-    #     "es_retail": bool,
-    #     "inviable_legal": bool,
-    #     "motivo_legal": str | None,
-    #     "informacion_suficiente": bool,
-    #     "sector_detectado": str,  # "restauracion", "tatuajes", etc.
-    #     "variables_conocidas": dict,
-    #     "preguntas_necesarias": list[str],
-    #   }
     try:
-        validacion = await validar_negocio(body.descripcion, sesion)
+        validacion = await validar_negocio(body.descripcion, session_id)
     except Exception as exc:
-        # Si el LLM falla completamente, no bloqueamos al usuario —
-        # asumimos que el negocio es válido y pedimos info via cuestionario.
         logger.error("Error en validacion LLM: %s", exc, exc_info=True)
         validacion = {
-            "es_retail": True,
-            "inviable_legal": False,
+            "es_retail":             True,
+            "inviable_legal":        False,
+            "motivo_legal":          None,
+            "motivo":                None,
             "informacion_suficiente": False,
-            "sector_detectado": "desconocido",
-            "variables_conocidas": {},
-            "preguntas_necesarias": ["sector", "m2", "presupuesto", "cliente"],
+            "sector_detectado":      "desconocido",
+            "variables_conocidas":   {},
+            "preguntas_necesarias":  ["sector", "m2", "presupuesto", "cliente"],
         }
 
-    # ── 3a. Negocio no apto para GeoRetail ───────────────────────────────────
+    # ── 3a. Negocio no apto ───────────────────────────────────────────────────
     if not validacion["es_retail"]:
         return BuscarResponse(
             session_id=session_id,
@@ -221,19 +178,15 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
             ),
         )
 
-    # ── 3b. Negocio retail pero con bloqueo legal ─────────────────────────────
-    # Ejemplo: cachimbería → illegal en interiores, hay que ir por modelo de
-    # club privado de fumadores. El LLM detecta esto en el prompt de validacion.txt.
+    # ── 3b. Bloqueado legalmente ──────────────────────────────────────────────
     if validacion.get("inviable_legal"):
         return BuscarResponse(
             session_id=session_id,
             estado=EstadoBusqueda.INVIABLE_LEGAL,
-            motivo=validacion["motivo_legal"],
+            motivo=validacion.get("motivo_legal"),
         )
 
     # ── 3c. Falta información → cuestionario ─────────────────────────────────
-    # `iniciar_cuestionario` crea la primera pregunta basándose en qué variables
-    # faltan. Guarda el estado en Redis + tabla `mensajes_cuestionario`.
     if not validacion["informacion_suficiente"]:
         primera_pregunta = await iniciar_cuestionario(session_id, validacion)
         return BuscarResponse(
@@ -244,52 +197,41 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
         )
 
     # ── 3d. Información suficiente → buscar y rankear zonas ──────────────────
-    # Construimos el perfil del negocio combinando lo del cuestionario (sesion["perfil"])
-    # con lo que el LLM ha extraído de la descripción inicial.
     perfil = {
         **sesion.get("perfil", {}),
-        "sector": validacion["sector_detectado"],
+        "sector":    validacion["sector_detectado"],
         "variables": validacion["variables_conocidas"],
     }
 
-    # `filtrar_zonas_candidatas` hace una query PostGIS:
-    #   SELECT z.* FROM zonas z
-    #   JOIN barrios b ON z.barrio_id = b.id
-    #   JOIN distritos d ON b.distrito_id = d.id
-    #   WHERE (d.nombre = ANY($distritos) OR $distritos IS NULL)
-    #     AND z.id IN (SELECT zona_id FROM locales WHERE alquiler_mensual <= $presupuesto_max)
-    #   ORDER BY z.id
-    #
-    # Devuelve dicts con datos básicos de la zona (sin score todavía).
     filtros = sesion["filtros"]
     zonas_candidatas = await filtrar_zonas_candidatas(filtros)
 
     if not zonas_candidatas:
-        # No hay zonas que cumplan los filtros del usuario — ampliar búsqueda
-        logger.warning(
-            "Sin zonas candidatas para session_id=%s con filtros=%s",
-            session_id, filtros,
-        )
-        # Intentar sin filtro de distritos
+        logger.warning("Sin zonas candidatas para session_id=%s con filtros=%s", session_id, filtros)
         filtros_amplios = {**filtros, "distritos": None}
         zonas_candidatas = await filtrar_zonas_candidatas(filtros_amplios)
 
     total_candidatas = len(zonas_candidatas)
 
-    # `calcular_scores_batch` corre inferencia XGBoost para cada zona:
-    #   - Carga features de `variables_zona` (datos más recientes por zona)
-    #   - Infiere con el modelo `scoring/modelos/xgboost_v1.pkl` (cargado en startup)
-    #   - Genera resumen IA con Claude para las top 10 zonas (las demás: resumen genérico)
-    #   - Guarda / actualiza `scores_zona` con los nuevos valores
-    #
-    # Devuelve una lista de dicts ordenada por score_global desc.
-    zonas_scored = await calcular_scores_batch(zonas_candidatas, perfil)
+    # calcular_scores_batch espera lista de IDs y el código de sector
+    zona_ids      = [z["zona_id"] for z in zonas_candidatas]
+    sector_codigo = perfil.get("sector", "desconocido")
+    scores_list   = await calcular_scores_batch(zona_ids, sector_codigo)
 
-    zonas_response = [_build_zona_resumen(z) for z in zonas_scored]
+    # Construir lookup de scores por zona_id
+    scores_by_id = {s["zona_id"]: s for s in scores_list}
+
+    # Fusionar datos de la candidata con el score calculado
+    zonas_merged = []
+    for c in zonas_candidatas:
+        score_data = scores_by_id.get(c["zona_id"], {"score_global": 50.0})
+        zonas_merged.append({**c, **score_data})
+
+    # Ordenar por score descendente y construir respuesta
+    zonas_merged.sort(key=lambda z: z.get("score_global", 0), reverse=True)
+    zonas_response = [_build_zona_resumen(z) for z in zonas_merged]
 
     # ── 4. Guardar búsqueda para analytics ───────────────────────────────────
-    # Tabla `busquedas` (PostgreSQL) — útil para entender qué buscan los usuarios
-    # y para futuro fine-tuning del modelo.
     try:
         await guardar_busqueda(
             session_id=session_id,
@@ -299,7 +241,6 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
             num_resultados=len(zonas_response),
         )
     except Exception as exc:
-        # No bloqueamos la respuesta si falla el guardado de analytics
         logger.warning("No se pudo guardar busqueda en analytics: %s", exc)
 
     return BuscarResponse(
@@ -313,6 +254,6 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
 # ─── Utilidades ───────────────────────────────────────────────────────────────
 
 def _hash_ip(ip: str) -> str:
-    """Hash SHA-256 de la IP para analytics anónimos. No almacenamos IPs en claro."""
+    """Hash SHA-256 de la IP para analytics anónimos."""
     import hashlib
     return hashlib.sha256(ip.encode()).hexdigest()[:16]
