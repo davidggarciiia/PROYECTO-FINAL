@@ -1,87 +1,44 @@
 """
-scoring/legal.py — Información legal relevante para una zona concreta.
+scoring/legal.py — Consulta de requisitos legales aplicables a una zona+sector.
 
-Complementa api/legal.py (que devuelve requisitos generales del sector)
-con datos específicos de la zona: restricciones geográficas, zonas de
-protección acústica, límites de densidad de locales, etc.
-
-Usado por: POST /api/local (panel de detalle de zona)
+Por ahora devuelve los datos del dict estático de api/legal.py.
+En el futuro verificará restricciones de densidad vía PostGIS
+(tablas `requisitos_legales_sector` y `restricciones_geograficas_sector`).
 """
 from __future__ import annotations
-
 import logging
-
-from db.conexion import get_db
 
 logger = logging.getLogger(__name__)
 
-# Restricciones fijas por sector que no dependen de la zona
-_ALERTAS_SECTOR = {
-    "restauracion": [
-        "Requiere informe urbanístico previo (IVU) antes de firmar el contrato",
-        "Límites de aforo según metros cuadrados — verificar en el PEUAT",
-    ],
-    "tatuajes": [
-        "Registro obligatorio en ASPCAT antes de abrir",
-        "El local debe cumplir normativa sanitaria de establecimientos de tatuaje",
-    ],
-    "shisha_lounge": [
-        "Solo viable como club privado de fumadores (Ley 28/2005)",
-        "Requiere estatutos de asociación + cuotas de socio",
-        "Prohibida la venta directa de tabaco o shisha al público",
-    ],
-    "moda": [],
-    "estetica": [
-        "Si se usa aparatología médica → requiere autorización sanitaria específica",
-    ],
-}
 
-
-async def get_info_legal_zona(zona_id: str, sector_codigo: str) -> dict:
+async def get_info_legal_zona(zona_id: str, sector: str) -> dict:
     """
-    Devuelve restricciones legales específicas para una zona y sector.
-
-    Combina:
-      1. Alertas fijas del sector (hardcoded arriba)
-      2. Restricciones geográficas de la BD (si existen para esta zona)
-      3. Si la zona está en área de protección acústica (PGOU BCN)
-
-    Formato de respuesta:
+    Devuelve los requisitos legales relevantes para zona + sector en el formato
+    que espera api/local.py:
       {
-        "alertas":            ["texto alerta 1", ...],
-        "restricciones_geo":  ["texto restricción 1", ...],
-        "verificar":          True/False  (si hay algo urgente a verificar)
+        "viabilidad":           str,
+        "alerta":               str | None,
+        "licencias_necesarias": list[dict],
+        "restriccion_zona":     None,          # TODO: verificar PostGIS
+        "requisitos_local":     list[str],
       }
+
+    Args:
+        zona_id: ID de la zona (reservado para futuras consultas PostGIS)
+        sector:  código de sector ('restauracion', 'moda', etc.)
     """
-    alertas_sector = _ALERTAS_SECTOR.get(sector_codigo, [])
-
-    restricciones_geo = []
     try:
-        async with get_db() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT descripcion
-                FROM restricciones_geograficas_sector
-                WHERE sector_codigo = $1
-                  AND obligatorio_verificar = TRUE
-                  AND (
-                      geometria_restriccion IS NULL
-                      OR ST_Within(
-                          (SELECT geometria FROM zonas WHERE id = $2),
-                          geometria_restriccion
-                      )
-                  )
-                """,
-                sector_codigo, zona_id,
-            )
-            restricciones_geo = [r["descripcion"] for r in rows]
+        # Importación diferida para evitar imports circulares durante el startup
+        from api.legal import _SECTORES
+        sector_data = _SECTORES.get(sector, {})
     except Exception as exc:
-        logger.warning("Error leyendo restricciones_geo para zona %s: %s", zona_id, exc)
-
-    verificar = bool(alertas_sector or restricciones_geo)
+        logger.warning("No se pudo cargar datos legales para sector=%s: %s", sector, exc)
+        sector_data = {}
 
     return {
-        "alertas":           alertas_sector,
-        "restricciones_geo": restricciones_geo,
-        "verificar":         verificar,
+        "viabilidad":           sector_data.get("viabilidad", "viable"),
+        "alerta":               sector_data.get("alerta"),
+        "licencias_necesarias": sector_data.get("licencias_necesarias", []),
+        "restriccion_zona":     None,   # TODO: verificar densidad PostGIS
+        "requisitos_local":     sector_data.get("requisitos_local", []),
     }

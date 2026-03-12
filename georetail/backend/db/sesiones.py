@@ -98,3 +98,7 @@ async def guardar_mensaje(session_id: str, rol: str, texto: str, orden: int) -> 
                 session_id, rol, texto, orden)
     except Exception as e:
         logger.warning("guardar_mensaje fail: %s", e)
+
+
+# Alias para compatibilidad con api/cuestionario.py
+guardar_mensaje_cuestionario = guardar_mensaje
