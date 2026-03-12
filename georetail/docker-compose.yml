@@ -1,0 +1,114 @@
+version: "3.9"
+
+# GeoRetail — todos los servicios en un solo comando: docker-compose up
+#
+# Servicios:
+#   postgres  → base de datos principal (PostgreSQL + PostGIS + pgvector)
+#   redis     → caché y cola de tareas (mensajes entre backend y worker)
+#   backend   → API FastAPI
+#   worker    → Celery (procesa PDFs y scores en segundo plano)
+#   frontend  → Next.js
+
+services:
+
+  # ─── Base de datos ─────────────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg15          # PostgreSQL 15 + pgvector ya incluidos
+    container_name: georetail_postgres
+    environment:
+      POSTGRES_DB:       georetail
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Ejecuta el schema SQL automáticamente la primera vez que arranca
+      - ./backend/db/migraciones:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d georetail"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Cache y cola de mensajes ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: georetail_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ─── Backend FastAPI ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: georetail_backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/georetail
+      REDIS_URL:    redis://redis:6379
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app                     # hot reload (recarga automática) en desarrollo
+      - models_data:/data/models           # modelos XGBoost entrenados
+      - exports_data:/data/exports         # PDFs generados
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ─── Worker Celery (tareas en segundo plano) ────────────────────────────────
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: georetail_worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/georetail
+      REDIS_URL:    redis://redis:6379
+    volumes:
+      - ./backend:/app
+      - models_data:/data/models
+      - exports_data:/data/exports
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A workers.celery_app worker --loglevel=info --concurrency=2
+
+  # ─── Frontend Next.js ───────────────────────────────────────────────────────
+  frontend:
+    image: node:20-alpine
+    container_name: georetail_frontend
+    working_dir: /app
+    env_file: .env
+    environment:
+      NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
+      NEXT_PUBLIC_API_URL:      http://localhost:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules                  # evita sobreescribir node_modules del host
+    depends_on:
+      - backend
+    command: sh -c "npm install && npm run dev"
+
+volumes:
+  postgres_data:
+  redis_data:
+  models_data:
+  exports_data:

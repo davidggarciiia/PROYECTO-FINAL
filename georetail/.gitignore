@@ -1,0 +1,16 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+node_modules/
+.next/
+data/models/
+data/exports/
+data/optuna/
+data/shapefiles/
+*.pkl
+*.json.gz
