@@ -111,8 +111,8 @@ async def local_preview(body: PreviewRequest) -> PreviewResponse:
         zona_id=zona["zona_id"],
         nombre=zona["nombre"],
         direccion=zona.get("direccion"),
-        score_global=round(zona["score_global"], 1),
-        color=_score_to_color(zona["score_global"]),
+        score_global=round(zona.get("score_global") or 50.0, 1),
+        color=_score_to_color(zona.get("score_global") or 50.0),
         alquiler_mensual=zona.get("alquiler_mensual"),
         m2=zona.get("m2"),
     )

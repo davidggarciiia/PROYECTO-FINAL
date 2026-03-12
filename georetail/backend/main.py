@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
-from db.conexion import init_pool, close_pool
+from db.conexion import init_db_pool, close_db_pool
 from db.redis_client import init_redis, close_redis
 from nlp.embeddings import init_modelo_embeddings
 from pipelines.scheduler import iniciar_scheduler, detener_scheduler
@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     logger.info("Arrancando GeoRetail backend...")
 
     # Inicializar pool de conexiones (grupo de conexiones a la BD)
-    await init_pool()
+    await init_db_pool()
     logger.info("Pool de PostgreSQL inicializado")
 
     # Inicializar Redis (base de datos en memoria para caché y sesiones)
@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI):
     # Apagado limpio
     logger.info("Apagando GeoRetail...")
     detener_scheduler()
-    await close_pool()
+    await close_db_pool()
     await close_redis()
     logger.info("GeoRetail apagado correctamente")
 

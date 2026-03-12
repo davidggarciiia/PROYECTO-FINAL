@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     SENTRY_DSN: str = ""
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
     EXPORTS_DIR: str = "/data/exports"
+    OPTUNA_DIR: str = "/data/optuna"
+    PORT: int = 8000
     STREETVIEW_DIR: str = "/data/streetview"
     MODELS_DIR: str = "/data/models"
 

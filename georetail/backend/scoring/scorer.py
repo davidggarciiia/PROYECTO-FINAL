@@ -248,7 +248,7 @@ async def _get_datos_zona_completos(zona_id: str, sector: str) -> dict:
                 vz.incidencias_por_1000hab,
                 cp.score_saturacion,
                 paz.precio_m2,
-                COUNT(DISTINCT pl.linea_id)::int AS num_lineas_transporte
+                trans.cnt AS num_lineas_transporte
             FROM variables_zona vz
             LEFT JOIN competencia_por_local cp ON cp.zona_id=vz.zona_id
                 AND cp.sector_codigo=$2 AND cp.radio_m=300
@@ -263,7 +263,6 @@ async def _get_datos_zona_completos(zona_id: str, sector: str) -> dict:
                 JOIN zonas z ON z.id=vz.zona_id
                 WHERE ST_DWithin(pt.geometria::geography, z.geometria::geography,500)
             ) trans ON TRUE
-            LEFT JOIN paradas_lineas pl ON FALSE  -- dummy para el alias
             WHERE vz.zona_id=$1
             ORDER BY vz.fecha DESC LIMIT 1
         """, zona_id, sector)
