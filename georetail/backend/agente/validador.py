@@ -9,16 +9,18 @@ logger = logging.getLogger(__name__)
 
 async def validar_negocio(descripcion: str, session_id: str) -> dict:
     """
-    Analiza la descripción del negocio y devuelve:
-    - es_retail: si necesita local físico
-    - sector: código de sector detectado
-    - info_suficiente: si hay suficiente info para buscar
-    - preguntas_pendientes: qué falta saber
-    - variables_extraidas: datos ya extraídos de la descripción
-    - estado: 'ok' | 'cuestionario' | 'error_tipo_negocio' | 'inviable_legal'
+    Analiza la descripción del negocio y devuelve un dict normalizado con:
+      - es_retail:              bool — necesita local físico
+      - inviable_legal:         bool — bloqueado por legislación
+      - motivo_legal:           str | None — explicación si inviable_legal
+      - motivo:                 str | None — explicación si no es retail
+      - informacion_suficiente: bool — hay suficiente info para buscar
+      - sector_detectado:       str — código de sector ('restauracion', etc.)
+      - variables_conocidas:    dict — datos ya extraídos de la descripción
+      - preguntas_necesarias:   list[str] — variables que aún faltan
     """
     respuesta = await completar(
-        mensajes=[{"role":"user","content":f"Descripción del negocio: {descripcion}"}],
+        mensajes=[{"role": "user", "content": f"Descripción del negocio: {descripcion}"}],
         sistema=VALIDACION_SISTEMA,
         endpoint="validacion",
         session_id=session_id,
@@ -29,16 +31,32 @@ async def validar_negocio(descripcion: str, session_id: str) -> dict:
 
     try:
         limpio = respuesta.strip()
-        if limpio.startswith("```"): limpio = "\n".join(limpio.split("\n")[1:-1])
-        return json.loads(limpio)
+        if limpio.startswith("```"):
+            limpio = "\n".join(limpio.split("\n")[1:-1])
+        parsed = json.loads(limpio)
     except json.JSONDecodeError as e:
         logger.error("JSON inválido en validar_negocio: %s | respuesta: %s", e, respuesta[:200])
         # Fallback conservador: lanzar cuestionario
         return {
-            "es_retail": True,
-            "sector": None,
-            "info_suficiente": False,
-            "preguntas_pendientes": ["¿Cuánto puedes pagar de alquiler al mes?"],
-            "variables_extraidas": {},
-            "estado": "cuestionario",
+            "es_retail":             True,
+            "inviable_legal":        False,
+            "motivo_legal":          None,
+            "motivo":                None,
+            "informacion_suficiente": False,
+            "sector_detectado":      "desconocido",
+            "variables_conocidas":   {},
+            "preguntas_necesarias":  ["¿Cuánto puedes pagar de alquiler al mes?"],
         }
+
+    # El prompt devuelve claves cortas. Las normalizamos al contrato interno.
+    estado = parsed.get("estado", "cuestionario")
+    return {
+        "es_retail":             parsed.get("es_retail", True) and estado != "error_tipo_negocio",
+        "inviable_legal":        estado == "inviable_legal",
+        "motivo_legal":          parsed.get("motivo_rechazo"),
+        "motivo":                parsed.get("motivo_rechazo"),
+        "informacion_suficiente": parsed.get("info_suficiente", False),
+        "sector_detectado":      parsed.get("sector") or "desconocido",
+        "variables_conocidas":   parsed.get("variables_extraidas") or {},
+        "preguntas_necesarias":  parsed.get("preguntas_pendientes") or [],
+    }
