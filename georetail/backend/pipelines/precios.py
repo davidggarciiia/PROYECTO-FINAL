@@ -2,8 +2,8 @@
 pipelines/precios.py — Pipeline semanal de precios de alquiler comercial.
 
 Fuentes (en orden de prioridad):
-  1. Idealista API  (oficial)   — locales en alquiler por zona
-  2. Open Data BCN  (oficial)   — precio/m² mensual por barrio
+  1. Open Data BCN  (oficial)   — precio/m² mensual por barrio (sin API key)
+  2. Idealista      (scraping)  — reemplaza la API oficial (curl_cffi anti-bot)
   3. Fotocasa       (scraping)  — locales en alquiler Barcelona/Madrid/Valencia
   4. Habitaclia     (scraping)  — locales en alquiler Barcelona/Madrid/Valencia
   5. Milanuncios    (scraping)  — anuncios particulares
@@ -38,10 +38,7 @@ async def ejecutar() -> dict:
         # 1. Open Data BCN (siempre disponible, sin API key)
         ok += await _precios_open_data()
 
-        # 2. Idealista API (si hay credenciales)
-        ok += await _locales_idealista()
-
-        # 3. Scrapers de portales (ejecutar en paralelo por portal)
+        # 2. Scrapers de todos los portales (Idealista + Fotocasa + Habitaclia + ...)
         ok += await _locales_scrapers()
 
         await _fin(eid, ok, "ok")
@@ -104,79 +101,16 @@ async def _precios_open_data() -> int:
     return ok
 
 
-# ── 2. Idealista API ───────────────────────────────────────────────────────────
-
-async def _locales_idealista() -> int:
-    """
-    Actualiza locales disponibles en alquiler desde Idealista API (oficial).
-    Requiere IDEALISTA_API_KEY y IDEALISTA_SECRET en .env.
-    Documentación: https://developers.idealista.com/access-request
-    """
-    import base64
-
-    key = os.environ.get("IDEALISTA_API_KEY", "")
-    secret = os.environ.get("IDEALISTA_SECRET", "")
-    if not key or not secret:
-        logger.info("Sin credenciales Idealista — skipping")
-        return 0
-
-    ok = 0
-    try:
-        creds = base64.b64encode(f"{key}:{secret}".encode()).decode()
-        async with httpx.AsyncClient(timeout=15.0) as c:
-            # OAuth2 client_credentials
-            tok_r = await c.post(
-                "https://api.idealista.com/oauth/accesstoken",
-                headers={
-                    "Authorization": f"Basic {creds}",
-                    "Content-Type": "application/x-www-form-urlencoded",
-                },
-                data={"grant_type": "client_credentials", "scope": "read"},
-            )
-            tok_r.raise_for_status()
-            token = tok_r.json()["access_token"]
-
-            # Paginación: Idealista devuelve max 50 por petición
-            for page in range(1, 6):  # máx 250 locales por ejecución
-                search_r = await c.post(
-                    "https://api.idealista.com/3.5/es/search",
-                    headers={"Authorization": f"Bearer {token}"},
-                    data={
-                        "country": "es",
-                        "operation": "rent",
-                        "propertyType": "premises",
-                        "center": "41.3851,2.1734",
-                        "distance": 5000,
-                        "maxItems": 50,
-                        "numPage": page,
-                    },
-                )
-                search_r.raise_for_status()
-                data = search_r.json()
-                elements = data.get("elementList", [])
-                if not elements:
-                    break
-
-                ok += await _upsert_locales(elements, "idealista")
-
-                # Respetar rate limit de Idealista (max 1 req/s en plan básico)
-                import asyncio
-                await asyncio.sleep(1.1)
-
-    except Exception as e:
-        logger.warning("_locales_idealista error: %s", e)
-
-    return ok
-
-
-# ── 3. Scrapers ────────────────────────────────────────────────────────────────
+# ── 2. Scrapers (Idealista + todos los portales) ───────────────────────────────
 
 async def _locales_scrapers() -> int:
     """
-    Ejecuta los scrapers de Fotocasa, Habitaclia, Milanuncios y Pisos.com.
-    Cada scraper se ejecuta secuencialmente para no sobrecargar los portales.
+    Ejecuta los scrapers de Idealista, Fotocasa, Habitaclia, Milanuncios y Pisos.com.
+    Idealista usa scraping en lugar de la API oficial (requería aprobación + pago).
+    Los scrapers se ejecutan secuencialmente para no sobrecargar los portales.
     """
     from pipelines.scraping import (
+        IdealistaScraper,
         FotocasaScraper,
         HabitacliaScraper,
         MilanunciosScraper,
@@ -188,6 +122,7 @@ async def _locales_scrapers() -> int:
     ok = 0
 
     scrapers = [
+        ("idealista",   IdealistaScraper(cfg)),
         ("fotocasa",    FotocasaScraper(cfg)),
         ("habitaclia",  HabitacliaScraper(cfg)),
         ("milanuncios", MilanunciosScraper(cfg)),
