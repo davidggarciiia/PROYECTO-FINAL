@@ -27,6 +27,7 @@ ZONAS COMERCIALES:
 from __future__ import annotations
 
 import logging
+import os
 from datetime import date, timedelta
 from typing import Optional
 
@@ -36,7 +37,16 @@ from db.conexion import get_db
 
 logger = logging.getLogger(__name__)
 
-_CKAN_BASE = "https://opendata-ajuntament.barcelona.cat/data/api/action"
+# ── Open Data Barcelona ───────────────────────────────────────────────────────
+# API key opcional — sin key funciona con límite ~1000 req/día por IP.
+# Configurar OPEN_DATA_BCN_API_KEY en el .env para límite ~10.000 req/día.
+# Registro gratuito: https://opendata-ajuntament.barcelona.cat → Mi cuenta → API Key
+_CKAN_BASE  = "https://opendata-ajuntament.barcelona.cat/data/api/action"
+_CKAN_HEADERS: dict = (
+    {"Authorization": os.environ.get("OPEN_DATA_BCN_API_KEY", "")}
+    if os.environ.get("OPEN_DATA_BCN_API_KEY")
+    else {}
+)
 _RADIO_M   = 200   # Radio de influencia de cada sensor en metros
 _MAX_ZONAS = 8     # Máximo de zonas que puede influir un sensor
 
@@ -51,7 +61,7 @@ async def ejecutar() -> dict:
         offset = 0
         limit  = 500
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, headers=_CKAN_HEADERS) as client:
             while True:
                 sql = (
                     f'SELECT * FROM "aforaments-detall" '

@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     KIMI_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
 
+    # ── Open Data Barcelona ───────────────────────────────────────────────────
+    # API gratuita del Ajuntament de Barcelona (datos abiertos).
+    # Sin key funciona pero con límite de ~1000 req/día por IP.
+    # Con key (registro gratuito) sube a ~10.000 req/día.
+    # Registro: https://opendata-ajuntament.barcelona.cat → Mi cuenta → API Key
+    # La key se pasa como header: Authorization: <key>
+    # Usada en: pipelines/aforaments.py, pipelines/demografia.py, pipelines/precios.py
+    OPEN_DATA_BCN_API_KEY: str = ""
+
     # ── Mapas / Places ────────────────────────────────────────────────────────
     # GOOGLE_MAPS_API_KEY cubre las 3 APIs: Places, Geocoding y Static Maps
     # Activar en: https://console.cloud.google.com → APIs & Services → Credenciales
