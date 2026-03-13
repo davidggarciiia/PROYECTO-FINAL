@@ -1,8 +1,9 @@
 """
 workers/tasks.py — Tareas Celery asíncronas.
 
-calcular_scores_batch: scoring de múltiples zonas en background.
-generar_pdf_task: generación de PDF en background.
+calcular_scores_batch:  scoring de múltiples zonas en background.
+generar_pdf_task:       generación de PDF en background.
+scrape_mercado_task:    scraping bajo demanda de portales inmobiliarios.
 """
 from __future__ import annotations
 import asyncio, logging
@@ -97,3 +98,44 @@ async def _marcar_error(pdf_id, msg):
     await init_db_pool()
     from db.exportaciones import marcar_exportacion_error
     await marcar_exportacion_error(pdf_id, msg)
+
+
+# ── Mercado inmobiliario ──────────────────────────────────────────────────────
+
+@celery_app.task(bind=True, max_retries=2, default_retry_delay=60)
+def scrape_mercado_task(
+    self,
+    modo: str = "locales_alquiler",
+    zonas: list[str] | None = None,
+    max_paginas: int | None = None,
+    portales: list[str] | None = None,
+):
+    """
+    Scraping bajo demanda de portales inmobiliarios.
+
+    Args:
+        modo:       "locales_alquiler" | "locales_venta" | "viviendas"
+        zonas:      zonas de BCN para Idealista. None = todos los distritos.
+        max_paginas: límite de páginas por portal/zona. None = sin límite.
+        portales:   portales a usar. None = todos.
+                    Valores: "idealista", "fotocasa", "habitaclia", "milanuncios", "pisos"
+
+    Ejemplos:
+        scrape_mercado_task.delay(modo="locales_alquiler")
+        scrape_mercado_task.delay(modo="locales_alquiler", zonas=["Gràcia"], max_paginas=3)
+        scrape_mercado_task.delay(modo="locales_alquiler", portales=["fotocasa", "habitaclia"])
+    """
+    try:
+        return _run(_scrape_mercado(modo, zonas, max_paginas, portales))
+    except Exception as exc:
+        logger.error("scrape_mercado_task error modo=%s: %s", modo, exc)
+        raise self.retry(exc=exc)
+
+
+async def _scrape_mercado(modo, zonas, max_paginas, portales):
+    from db.conexion import init_db_pool
+    await init_db_pool()
+    from pipelines.mercado_inmobiliario import ejecutar
+    stats = await ejecutar(modo=modo, zonas=zonas, max_paginas=max_paginas, portales=portales)
+    logger.info("scrape_mercado_task completado: %s", stats)
+    return stats

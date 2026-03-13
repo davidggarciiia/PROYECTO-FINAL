@@ -33,6 +33,20 @@ class Settings(BaseSettings):
     IDEALISTA_API_KEY: str = ""
     IDEALISTA_SECRET: str = ""
 
+    # ── Scraping de portales inmobiliarios ────────────────────────────────────
+    # Motor: "none" (curl_cffi+httpx directo) | "scrapingbee" | "zenrows"
+    SCRAPING_SERVICE: str = "none"
+    SCRAPINGBEE_API_KEY: str = ""
+    ZENROWS_API_KEY: str = ""
+    # Proxies residenciales ES separados por coma: http://user:pass@host:port,...
+    SCRAPING_PROXIES: str = ""
+    SCRAPING_DELAY_MIN: float = 1.5
+    SCRAPING_DELAY_MAX: float = 4.5
+    SCRAPING_TIMEOUT: int = 20
+    SCRAPING_MAX_RETRIES: int = 3
+    # Páginas por portal/zona (0 = sin límite)
+    SCRAPING_MAX_PAGINAS: int = 0
+
     # ── Transporte ────────────────────────────────────────────────────────────
     TMB_APP_ID: str = ""
     TMB_APP_KEY: str = ""
@@ -55,3 +69,5 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     return Settings()
+
+settings = get_settings()
