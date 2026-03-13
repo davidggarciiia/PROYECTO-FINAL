@@ -425,25 +425,42 @@ CREATE TABLE IF NOT EXISTS mensajes_cuestionario (
 -- Datos de referencia por sector para la calculadora financiera
 -- Fuente: INE (Instituto Nacional de Estadística) por código CNAE
 CREATE TABLE IF NOT EXISTS benchmarks_sector (
-    id                        SERIAL PRIMARY KEY,
-    sector_codigo             VARCHAR(30) UNIQUE NOT NULL,
-    ticket_medio_min          FLOAT,   -- precio mínimo típico por cliente (€)
-    ticket_medio_max          FLOAT,   -- precio máximo típico por cliente (€)
-    margen_bruto_tipico       FLOAT,   -- porcentaje de beneficio bruto sobre ventas (0-1)
-    coste_personal_pct        FLOAT,   -- porcentaje del coste de personal sobre ventas
-    coste_suministros_pct     FLOAT,
-    alquiler_sobre_ventas_max FLOAT DEFAULT 0.15,  -- regla del 15%: el alquiler no debería superar el 15% de las ventas
-    reforma_m2_min            FLOAT,   -- coste mínimo de reforma por m²
-    reforma_m2_max            FLOAT,
-    fuente                    VARCHAR(50),
-    updated_at                TIMESTAMPTZ DEFAULT NOW()
+    id                             SERIAL PRIMARY KEY,
+    sector_codigo                  VARCHAR(30) UNIQUE NOT NULL,
+    ticket_medio_min               FLOAT,   -- precio mínimo típico por cliente (€)
+    ticket_medio_max               FLOAT,   -- precio máximo típico por cliente (€)
+    margen_bruto_tipico            FLOAT,   -- porcentaje de beneficio bruto sobre ventas (0-1)
+    coste_personal_pct             FLOAT,   -- porcentaje del coste de personal sobre ventas
+    coste_suministros_pct          FLOAT,
+    alquiler_sobre_ventas_max      FLOAT DEFAULT 0.15,  -- regla del 15%: el alquiler no debería superar el 15% de las ventas
+    reforma_m2_min                 FLOAT,   -- coste mínimo de reforma por m²
+    reforma_m2_max                 FLOAT,
+    -- Parámetros operativos (usados en financiero/estimador.py)
+    conversion_rate_min            FLOAT DEFAULT 0.005,  -- tasa mínima de conversión peatón→cliente
+    conversion_rate_max            FLOAT DEFAULT 0.020,  -- tasa máxima de conversión peatón→cliente
+    horas_apertura_dia             FLOAT DEFAULT 9.0,
+    dias_apertura_mes_tipico       INT   DEFAULT 26,
+    empleados_por_m2               FLOAT DEFAULT 25.0,   -- m² por empleado
+    salario_base_mensual_convenio  FLOAT DEFAULT 1620.0, -- € bruto/mes según convenio catalán 2024
+    coste_suministros_por_m2       FLOAT DEFAULT 5.0,    -- €/m²/mes (luz, agua, gas)
+    coste_gestoria_mensual         FLOAT DEFAULT 185.0,
+    seguro_rc_mensual              FLOAT DEFAULT 100.0,
+    equipamiento_base_min          FLOAT DEFAULT 5000.0,
+    equipamiento_base_max          FLOAT DEFAULT 20000.0,
+    coste_licencias_apertura       FLOAT DEFAULT 1500.0,
+    otros_iniciales_fijos          FLOAT DEFAULT 2000.0,
+    is_appointment_based           BOOLEAN DEFAULT FALSE, -- TRUE para estética/tatuajes (modelo cita previa)
+    clientes_dia_por_puesto_min    FLOAT DEFAULT 2.0,    -- solo si is_appointment_based=TRUE
+    clientes_dia_por_puesto_max    FLOAT DEFAULT 5.0,
+    fuente                         VARCHAR(50),
+    updated_at                     TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Parámetros financieros pre-calculados por zona (caché semanal)
 CREATE TABLE IF NOT EXISTS parametros_financieros_zona (
     id                        SERIAL PRIMARY KEY,
     zona_id                   VARCHAR(20) REFERENCES zonas(id),
-    sector_codigo             VARCHAR(30),
+    sector_id                 INT REFERENCES sectores(id),  -- FK a sectores (no sector_codigo)
     fecha_calculo             DATE NOT NULL,
 
     -- Ingresos estimados
@@ -479,14 +496,15 @@ CREATE TABLE IF NOT EXISTS parametros_financieros_zona (
     deposito_fianza           FLOAT,
     otros_iniciales           FLOAT,
 
-    UNIQUE (zona_id, sector_codigo, fecha_calculo)
+    UNIQUE (zona_id, sector_id, fecha_calculo)
 );
 
 -- Vista (consulta guardada) que devuelve siempre los parámetros más recientes
+-- db/financiero.py la usa con: JOIN sectores s ON s.id=pfz.sector_id
 CREATE OR REPLACE VIEW v_parametros_financieros_actuales AS
-SELECT DISTINCT ON (zona_id, sector_codigo) *
+SELECT DISTINCT ON (zona_id, sector_id) *
 FROM parametros_financieros_zona
-ORDER BY zona_id, sector_codigo, fecha_calculo DESC;
+ORDER BY zona_id, sector_id, fecha_calculo DESC;
 
 -- Análisis financieros guardados (para incluirlos en el PDF)
 CREATE TABLE IF NOT EXISTS analisis_financieros (
@@ -504,7 +522,9 @@ CREATE TABLE IF NOT EXISTS analisis_financieros (
     payback_meses_conservador     INT,    -- meses hasta recuperar la inversión
     payback_meses_optimista       INT,
     proyeccion_json               JSONB,  -- array de 36 meses con datos mes a mes
-    created_at                    TIMESTAMPTZ DEFAULT NOW()
+    created_at                    TIMESTAMPTZ DEFAULT NOW(),
+    -- ON CONFLICT (session_id, zona_id) en db/financiero.py::guardar_analisis_financiero
+    UNIQUE (session_id, zona_id)
 );
 
 
@@ -615,11 +635,27 @@ VALUES
 ON CONFLICT (codigo) DO NOTHING;
 
 -- Benchmarks financieros por sector (basados en datos del INE por código CNAE)
-INSERT INTO benchmarks_sector (sector_codigo, ticket_medio_min, ticket_medio_max, margen_bruto_tipico, coste_personal_pct, coste_suministros_pct, reforma_m2_min, reforma_m2_max, fuente)
+-- Columnas: sector_codigo, ticket_medio_min, ticket_medio_max, margen_bruto_tipico,
+--   coste_personal_pct, coste_suministros_pct, reforma_m2_min, reforma_m2_max,
+--   conversion_rate_min, conversion_rate_max, horas_apertura_dia, dias_apertura_mes_tipico,
+--   empleados_por_m2, salario_base_mensual_convenio, coste_suministros_por_m2,
+--   coste_gestoria_mensual, seguro_rc_mensual, equipamiento_base_min, equipamiento_base_max,
+--   coste_licencias_apertura, otros_iniciales_fijos, is_appointment_based,
+--   clientes_dia_por_puesto_min, clientes_dia_por_puesto_max, fuente
+INSERT INTO benchmarks_sector (
+    sector_codigo, ticket_medio_min, ticket_medio_max, margen_bruto_tipico,
+    coste_personal_pct, coste_suministros_pct, reforma_m2_min, reforma_m2_max,
+    conversion_rate_min, conversion_rate_max, horas_apertura_dia, dias_apertura_mes_tipico,
+    empleados_por_m2, salario_base_mensual_convenio, coste_suministros_por_m2,
+    coste_gestoria_mensual, seguro_rc_mensual, equipamiento_base_min, equipamiento_base_max,
+    coste_licencias_apertura, otros_iniciales_fijos, is_appointment_based,
+    clientes_dia_por_puesto_min, clientes_dia_por_puesto_max, fuente
+)
 VALUES
-    ('restauracion',  11,   65,  0.68, 0.32, 0.06, 650, 1400, 'INE CNAE 56'),
-    ('tatuajes',      80,  450,  0.82, 0.28, 0.03, 400,  900, 'INE CNAE 9602'),
-    ('moda',          28,  420,  0.55, 0.22, 0.04, 350,  800, 'INE CNAE 4771'),
-    ('estetica',      30,  160,  0.72, 0.35, 0.05, 400,  900, 'INE CNAE 9602'),
-    ('shisha_lounge', 25,   90,  0.75, 0.25, 0.08, 500, 1200, 'estimacion_mercado')
+--                                                                    conv_min conv_max  h_dia dias_mes  emp_m2  salario  sumi_m2  gest   seg_rc  equip_min equip_max  lic     ini     cita?    cli_min cli_max
+    ('restauracion',  11,  65, 0.68, 0.32, 0.06,  650, 1400,  0.008,  0.025,   10,     26,     20.0,  1620.0,  7.0,   185.0, 110.0,  8000.0, 25000.0, 2000.0, 2500.0, FALSE,  2.0,  5.0, 'INE CNAE 56'),
+    ('tatuajes',      80, 450, 0.82, 0.28, 0.03,  400,  900,  0.000,  0.000,    9,     26,     12.0,  1620.0,  4.0,   185.0,  90.0,  5000.0, 15000.0, 1800.0, 2000.0, TRUE,   4.0,  7.0, 'INE CNAE 9602'),
+    ('moda',          28, 420, 0.55, 0.22, 0.04,  350,  800,  0.010,  0.030,   10,     26,     30.0,  1620.0,  5.0,   185.0,  90.0,  6000.0, 18000.0, 1500.0, 2000.0, FALSE,  2.0,  5.0, 'INE CNAE 4771'),
+    ('estetica',      30, 160, 0.72, 0.35, 0.05,  400,  900,  0.000,  0.000,    9,     26,     10.0,  1620.0,  5.0,   185.0, 100.0,  5000.0, 15000.0, 1800.0, 2000.0, TRUE,   3.0,  6.0, 'INE CNAE 9602'),
+    ('shisha_lounge', 25,  90, 0.75, 0.25, 0.08,  500, 1200,  0.005,  0.015,    8,     26,     25.0,  1620.0,  8.0,   200.0, 120.0, 10000.0, 30000.0, 3500.0, 3000.0, FALSE,  2.0,  5.0, 'estimacion_mercado')
 ON CONFLICT (sector_codigo) DO NOTHING;
