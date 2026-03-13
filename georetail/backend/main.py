@@ -21,8 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from db.conexion import init_db_pool, close_db_pool
 from db.redis_client import init_redis, close_redis
-from nlp.embeddings import init_modelo_embeddings
-from pipelines.scheduler import iniciar_scheduler, detener_scheduler
+from nlp.embeddings import cargar_modelo
+from pipelines.scheduler import init_scheduler, stop_scheduler
 
 # Endpoints
 from api.buscar      import router as router_buscar
@@ -59,13 +59,13 @@ async def lifespan(app: FastAPI):
     # Cargar modelo de embeddings (IA para procesar textos) en memoria
     # Se hace aquí para no pagar el coste de carga en cada request
     try:
-        await init_modelo_embeddings()
+        await cargar_modelo()
         logger.info("Modelo de embeddings cargado")
     except Exception as exc:
         logger.warning("No se pudo cargar el modelo de embeddings: %s", exc)
 
     # Iniciar scheduler (planificador de tareas automáticas)
-    iniciar_scheduler()
+    init_scheduler()
     logger.info("Scheduler iniciado")
 
     logger.info("GeoRetail listo en http://localhost:%d", settings.PORT)
@@ -74,7 +74,7 @@ async def lifespan(app: FastAPI):
 
     # Apagado limpio
     logger.info("Apagando GeoRetail...")
-    detener_scheduler()
+    stop_scheduler()
     await close_db_pool()
     await close_redis()
     logger.info("GeoRetail apagado correctamente")
