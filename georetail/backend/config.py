@@ -1,6 +1,21 @@
 """
 config.py — Configuración centralizada con pydantic-settings.
 Todas las variables de entorno se leen desde aquí. Nunca os.environ directamente.
+
+════════════════════════════════════════════════════════════════════════════════
+ CÓMO CONFIGURAR LAS API KEYS
+════════════════════════════════════════════════════════════════════════════════
+ 1. Copia el archivo .env.example a .env  (está en la raíz de georetail/)
+ 2. Abre el .env y rellena los valores que necesites
+ 3. Nunca subas el .env a Git (ya está en .gitignore)
+
+ Mínimo para que la app arranque con LLM:
+   → Pon al menos ANTHROPIC_API_KEY o cualquier otra key de LLM.
+     El router hace fallback automático, con una sola basta.
+
+ Mínimo para mapas:
+   → GOOGLE_MAPS_API_KEY  (cubre Places + Geocoding + Static Maps)
+════════════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 from functools import lru_cache
@@ -14,7 +29,16 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://georetail:georetail@localhost:5432/georetail"
     REDIS_URL: str = "redis://localhost:6379"
 
-    # ── LLMs ─────────────────────────────────────────────────────────────────
+    # ── LLMs (modelos de lenguaje) ────────────────────────────────────────────
+    # Con tener UNA sola key ya funciona — el router salta automáticamente
+    # al siguiente proveedor si el actual no tiene key o devuelve error.
+    #
+    # Dónde conseguir cada key:
+    #   ANTHROPIC_API_KEY → https://console.anthropic.com              (sk-ant-...)
+    #   OPENAI_API_KEY    → https://platform.openai.com/api-keys       (sk-...)
+    #   DEEPSEEK_API_KEY  → https://platform.deepseek.com              (sk-...)
+    #   KIMI_API_KEY      → https://platform.moonshot.ai               (sk-...)
+    #   GEMINI_API_KEY    → https://aistudio.google.com/apikey         (sin prefijo fijo)
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     DEEPSEEK_API_KEY: str = ""
@@ -22,13 +46,16 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
 
     # ── Mapas / Places ────────────────────────────────────────────────────────
+    # GOOGLE_MAPS_API_KEY cubre las 3 APIs: Places, Geocoding y Static Maps
+    # Activar en: https://console.cloud.google.com → APIs & Services → Credenciales
     GOOGLE_MAPS_API_KEY: str = ""
-    FOURSQUARE_API_KEY: str = ""
-    YELP_API_KEY: str = ""
-    OPENCAGE_API_KEY: str = ""
-    MAPBOX_PUBLIC_TOKEN: str = ""
+    FOURSQUARE_API_KEY: str = ""    # https://developer.foursquare.com
+    YELP_API_KEY: str = ""          # https://www.yelp.com/developers
+    OPENCAGE_API_KEY: str = ""      # https://opencagedata.com (geocodificación alternativa)
+    MAPBOX_PUBLIC_TOKEN: str = ""   # https://account.mapbox.com → Tokens
 
     # ── Inmobiliario ──────────────────────────────────────────────────────────
+    # Requiere solicitud manual de acceso a Idealista
     IDEALISTA_API_KEY: str = ""
     IDEALISTA_SECRET: str = ""
 
