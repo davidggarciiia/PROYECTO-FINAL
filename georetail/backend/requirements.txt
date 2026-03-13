@@ -57,3 +57,10 @@ python-dotenv==1.0.1
 tenacity==9.0.0               # reintentos automáticos en llamadas a APIs
 python-dateutil==2.9.0
 pytz==2024.2
+
+# ─── Scraping de portales inmobiliarios ───────────────────────────────────────
+playwright==1.47.0            # automatización de navegador (Chromium headless)
+playwright-stealth==1.0.6     # parcha señales de bot en Playwright
+beautifulsoup4==4.12.3        # parsing HTML (portales sin JS pesado)
+lxml==5.3.0                   # parser HTML rápido para BeautifulSoup
+fake-useragent==1.5.1         # pool de User-Agents reales rotativos
