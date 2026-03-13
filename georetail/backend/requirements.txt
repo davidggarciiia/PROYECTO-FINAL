@@ -41,8 +41,13 @@ shapely==2.0.6                # manipulación de polígonos en Python
 pyproj==3.6.1                 # conversión entre sistemas de coordenadas
 
 # ─── HTTP (llamadas a APIs externas) ──────────────────────────────────────────
-httpx==0.27.2                 # cliente HTTP asíncrono
+httpx[http2]==0.27.2          # cliente HTTP asíncrono (http2 para scrapers)
 aiohttp==3.10.5
+
+# ─── Scraping anti-bot ────────────────────────────────────────────────────────
+curl-cffi==0.7.4              # impersona TLS fingerprint de Chrome/Firefox (derrota la mayoría de anti-bots)
+playwright==1.49.0            # browser automation para páginas JS-heavy (instalar: playwright install chromium)
+lxml==5.3.0                   # parser HTML rápido para extracción de datos
 
 # ─── Generación de PDFs ───────────────────────────────────────────────────────
 weasyprint==62.3              # genera PDFs desde HTML/CSS

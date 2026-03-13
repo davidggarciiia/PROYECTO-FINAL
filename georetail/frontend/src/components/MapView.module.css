@@ -1,0 +1,37 @@
+.wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 120px;
+  font-size: 13px;
+}
+.tooltipScore {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 500;
+}
+.overlayText {
+  background: rgba(26,29,39,0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 24px;
+  color: var(--text-muted);
+  font-size: 14px;
+  text-align: center;
+  max-width: 260px;
+}
