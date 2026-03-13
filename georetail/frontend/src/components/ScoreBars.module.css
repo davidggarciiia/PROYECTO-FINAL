@@ -1,0 +1,6 @@
+.bars { display: flex; flex-direction: column; gap: 8px; }
+.bar {}
+.barHeader { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; color: var(--text-muted); }
+.barVal { font-weight: 700; font-size: 13px; }
+.barTrack { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+.barFill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
