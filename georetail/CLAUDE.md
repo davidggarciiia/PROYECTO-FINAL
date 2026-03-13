@@ -30,7 +30,7 @@ rankeadas por score de viabilidad + análisis financiero automático.
 | Contenedores | Docker + Docker Compose |
 | Servidor | Hetzner VPS + Nginx |
 
-**LLM Router con fallback:** Claude Sonnet → GPT-4o → Groq Llama 3.3 → Gemini Flash → Ollama
+**LLM Router con fallback:** Claude Sonnet 4.6 → GPT-4o → DeepSeek V3 → Kimi K2.5 → Gemini 2.0 Flash
 
 ---
 
@@ -62,7 +62,7 @@ backend/
 │   ├── financiero.py                  ← get_benchmarks_sector, guardar_analisis_financiero
 │   └── exportaciones.py               ← CRUD exportaciones PDF
 ├── routers/
-│   ├── llm_router.py                  ← fallback chain Anthropic→OpenAI→Groq→Gemini→Ollama
+│   ├── llm_router.py                  ← fallback chain Anthropic→OpenAI→DeepSeek→Kimi→Gemini
 │   ├── places_router.py               ← Google Places→Foursquare→Yelp→OSM
 │   └── geocoding_router.py            ← Google→Nominatim→OpenCage + caché PG
 ├── scoring/
@@ -237,7 +237,8 @@ REDIS_URL=redis://localhost:6379
 # LLMs
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
-GROQ_API_KEY=...
+DEEPSEEK_API_KEY=...
+KIMI_API_KEY=...
 GEMINI_API_KEY=...
 
 # Google
