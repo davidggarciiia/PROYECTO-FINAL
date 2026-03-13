@@ -27,6 +27,16 @@ from db.conexion import get_db
 
 logger = logging.getLogger(__name__)
 
+# ── Open Data Barcelona ───────────────────────────────────────────────────────
+# API key opcional — sin key funciona con límite ~1000 req/día por IP.
+# Configurar OPEN_DATA_BCN_API_KEY en el .env para límite ~10.000 req/día.
+# Registro gratuito: https://opendata-ajuntament.barcelona.cat → Mi cuenta → API Key
+_CKAN_HEADERS: dict = (
+    {"Authorization": os.environ.get("OPEN_DATA_BCN_API_KEY", "")}
+    if os.environ.get("OPEN_DATA_BCN_API_KEY")
+    else {}
+)
+
 # Ciudades a escanear con los scrapers
 _CIUDADES_SCRAPING = ["barcelona"]  # Ampliar cuando haya datos de más ciudades en BD
 
@@ -59,7 +69,7 @@ async def _precios_open_data() -> int:
     _CKAN_BASE = "https://opendata-ajuntament.barcelona.cat/data/api/action"
     ok = 0
     try:
-        async with httpx.AsyncClient(timeout=30.0) as c:
+        async with httpx.AsyncClient(timeout=30.0, headers=_CKAN_HEADERS) as c:
             sql = "SELECT * FROM \"locllo-evolucio\" ORDER BY \"Any\" DESC, \"Trimestre\" DESC LIMIT 1000"
             r = await c.get(f"{_CKAN_BASE}/datastore_search_sql", params={"sql": sql})
             r.raise_for_status()

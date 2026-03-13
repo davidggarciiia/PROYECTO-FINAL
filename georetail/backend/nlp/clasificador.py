@@ -17,10 +17,10 @@ logger = logging.getLogger(__name__)
 
 _BATCH = 20  # reseñas por llamada LLM
 
-_SISTEMA = """Eres un clasificador de reseñas de negocios. 
-Para cada reseña devuelve EXACTAMENTE este JSON array, una entrada por reseña:
+_SISTEMA = """You are a business review classifier.
+For each review return EXACTLY this JSON array, one entry per review:
 [{"id":"...", "categoria":"servicio|producto|precio|ubicacion|ambiente", "sentimiento":"positivo|negativo|neutro"}]
-Nada más. Sin texto adicional."""
+Nothing else. No additional text."""
 
 
 async def clasificar_batch(resenas: list[dict]) -> list[dict]:
@@ -48,7 +48,7 @@ async def clasificar_batch(resenas: list[dict]) -> list[dict]:
 
 
 async def _clasificar_lote(lote: list[dict]) -> list[dict]:
-    prompt = "Clasifica estas reseñas:\n"
+    prompt = "Classify these reviews:\n"
     for r in lote:
         texto_corto = r["texto"][:300]  # truncar para ahorrar tokens
         prompt += f'\n[{{"id":"{r["id"]}","texto":"{texto_corto}"}}]'

@@ -8,11 +8,22 @@ Fuentes:
 """
 from __future__ import annotations
 import logging
+import os
 import httpx
 from db.conexion import get_db
 
 logger = logging.getLogger(__name__)
+
+# ── Open Data Barcelona ───────────────────────────────────────────────────────
+# API key opcional — sin key funciona con límite ~1000 req/día por IP.
+# Configurar OPEN_DATA_BCN_API_KEY en el .env para límite ~10.000 req/día.
+# Registro gratuito: https://opendata-ajuntament.barcelona.cat → Mi cuenta → API Key
 _CKAN = "https://opendata-ajuntament.barcelona.cat/data/api/action"
+_CKAN_HEADERS: dict = (
+    {"Authorization": os.environ.get("OPEN_DATA_BCN_API_KEY", "")}
+    if os.environ.get("OPEN_DATA_BCN_API_KEY")
+    else {}
+)
 
 
 async def ejecutar() -> dict:
@@ -33,7 +44,7 @@ async def _poblar_renta() -> int:
     """Carga renta media por hogar por barrio → variables_zona.renta_media_hogar"""
     ok = 0
     try:
-        async with httpx.AsyncClient(timeout=30.0) as c:
+        async with httpx.AsyncClient(timeout=30.0, headers=_CKAN_HEADERS) as c:
             sql = """SELECT * FROM "renda-disponible-llars-bcn"
                      WHERE "Codi_Barri" IS NOT NULL ORDER BY "Any" DESC LIMIT 2000"""
             r = await c.get(f"{_CKAN}/datastore_search_sql", params={"sql": sql})
@@ -74,7 +85,7 @@ async def _poblar_padro() -> int:
     """Carga datos del padrón: edad media, % extranjeros, densidad."""
     ok = 0
     try:
-        async with httpx.AsyncClient(timeout=30.0) as c:
+        async with httpx.AsyncClient(timeout=30.0, headers=_CKAN_HEADERS) as c:
             sql = """SELECT * FROM "pad_mdbas" LIMIT 2000"""
             r = await c.get(f"{_CKAN}/datastore_search_sql", params={"sql": sql})
             r.raise_for_status()
