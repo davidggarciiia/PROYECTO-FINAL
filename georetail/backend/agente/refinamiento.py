@@ -16,31 +16,32 @@ import logging
 from typing import Optional
 
 from routers.llm_router import llamar_llm
+from agente.traductor import traducir
 
 logger = logging.getLogger(__name__)
 
-_PROMPT_REFINAMIENTO = """Eres el motor de filtros de una app de recomendación de locales comerciales.
+_PROMPT_REFINAMIENTO = """You are the filter engine of a commercial premises recommendation app.
 
-El usuario tiene una lista de zonas y quiere filtrarla con esta frase:
+The user has a list of zones and wants to filter it with this instruction:
 "{instruccion}"
 
-Zonas actuales (ids disponibles): {zona_ids}
+Current zones (available ids): {zona_ids}
 
-Devuelve SOLO un JSON con esta estructura, sin texto adicional:
+Return ONLY a JSON with this structure, no additional text:
 {{
-  "accion":        "filtrar" | "ordenar" | "destacar" | "sin_cambio",
-  "zona_ids":      ["id1", "id2"],   // zonas que quedan tras el filtro (todas si sin_cambio)
-  "criterio":      "descripción corta del criterio aplicado",
-  "mensaje":       "frase corta para mostrar al usuario explicando qué se hizo"
+  "accion":    "filtrar" | "ordenar" | "destacar" | "sin_cambio",
+  "zona_ids":  ["id1", "id2"],   // zones remaining after the filter (all if sin_cambio)
+  "criterio":  "short description of the applied criterion",
+  "mensaje":   "short phrase explaining what was done (in English)"
 }}
 
-Criterios de filtrado reconocibles:
-- Barrio o zona geográfica: filtra por nombre
-- Score mínimo: filtra por score_global
-- Competencia baja/alta: filtra por score_competencia
-- Precio: filtra por score_precio_alquiler
-- Transporte: filtra por score_transporte
-- Si no entiendes la instrucción → accion="sin_cambio", devuelve todas las zona_ids"""
+Recognisable filtering criteria:
+- Neighbourhood or geographic area: filter by name
+- Minimum score: filter by score_global
+- Low/high competition: filter by score_competencia
+- Price: filter by score_precio_alquiler
+- Transport: filter by score_transporte
+- If you cannot understand the instruction → accion="sin_cambio", return all zona_ids"""
 
 
 async def procesar_refinamiento(
@@ -61,10 +62,9 @@ async def procesar_refinamiento(
         "accion":   "filtrar",
         "zona_ids": ["bcn_eixample_01", ...],
         "criterio": "barrio Eixample",
-        "mensaje":  "Mostrando zonas del Eixample"
+        "mensaje":  "Mostrando zonas del Eixample"   ← ya en español
       }
     """
-    # Construir contexto con nombre de barrio y score para que el LLM pueda filtrar
     contexto = {
         zid: {
             "barrio":       scores.get(zid, {}).get("barrio", ""),
@@ -84,9 +84,15 @@ async def procesar_refinamiento(
             endpoint   = "refinamiento",
             max_tokens = 300,
         )
-        # Limpiar posibles backticks (```json ... ```) que añaden algunos modelos
         texto = respuesta.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        return json.loads(texto)
+        resultado = json.loads(texto)
+
+        # Traducir "mensaje" al español antes de devolver al frontend
+        mensaje_en = resultado.get("mensaje", "")
+        if mensaje_en:
+            resultado["mensaje"] = await traducir(mensaje_en)
+
+        return resultado
 
     except Exception as exc:
         logger.warning("Error procesando refinamiento '%s': %s", instruccion, exc)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json, logging
 from routers.llm_router import completar
 from agente.prompts import CUESTIONARIO_SISTEMA
+from agente.traductor import traducir
 
 logger = logging.getLogger(__name__)
 
@@ -17,19 +18,19 @@ async def iniciar_cuestionario(session_id: str, validacion: dict) -> dict:
     Returns:
         dict con 'pregunta' (str) y 'progreso' (int 0-100)
     """
-    sector           = validacion.get("sector_detectado", "desconocido")
+    sector           = validacion.get("sector_detectado", "unknown")
     variables        = validacion.get("variables_conocidas", {})
     preguntas_faltan = validacion.get("preguntas_necesarias", [])
 
-    contexto = f"Sector detectado: {sector}"
+    contexto = f"Detected sector: {sector}"
     if variables:
         campos = {k: v for k, v in variables.items() if v is not None}
         if campos:
-            contexto += f"\nVariables ya conocidas: {json.dumps(campos, ensure_ascii=False)}"
+            contexto += f"\nAlready known variables: {json.dumps(campos, ensure_ascii=False)}"
     if preguntas_faltan:
-        contexto += f"\nVariables que faltan por obtener: {', '.join(preguntas_faltan[:4])}"
+        contexto += f"\nMissing variables still needed: {', '.join(preguntas_faltan[:4])}"
 
-    mensajes = [{"role": "user", "content": f"Inicia el cuestionario para ayudarme a encontrar el local ideal.\n{contexto}"}]
+    mensajes = [{"role": "user", "content": f"Start the questionnaire to help find the ideal premises.\n{contexto}"}]
 
     respuesta = await completar(
         mensajes=mensajes,
@@ -46,8 +47,9 @@ async def iniciar_cuestionario(session_id: str, validacion: dict) -> dict:
         if limpio.startswith("```"):
             limpio = "\n".join(limpio.split("\n")[1:-1])
         resultado = json.loads(limpio)
+        mensaje_en = resultado.get("mensaje", "How much can you pay in rent per month?")
         return {
-            "pregunta": resultado.get("mensaje", "¿Cuánto puedes pagar de alquiler al mes?"),
+            "pregunta": await traducir(mensaje_en, session_id),
             "progreso": resultado.get("progreso_pct", 10),
         }
     except Exception as e:
@@ -73,12 +75,11 @@ async def procesar_respuesta(
       - estado:              'continua' | 'completo'
       - progreso_pct:        0-100
     """
-    # Construir contexto de variables ya conocidas para el LLM
     contexto_perfil = ""
     if perfil_actual:
         campos = {k: v for k, v in perfil_actual.items() if v is not None}
         if campos:
-            contexto_perfil = f"\n\nVariables ya conocidas: {json.dumps(campos, ensure_ascii=False)}"
+            contexto_perfil = f"\n\nAlready known variables: {json.dumps(campos, ensure_ascii=False)}"
 
     mensajes = historial + [{"role": "user", "content": respuesta_usuario}]
     sistema  = CUESTIONARIO_SISTEMA + contexto_perfil
@@ -98,8 +99,9 @@ async def procesar_respuesta(
         if limpio.startswith("```"):
             limpio = "\n".join(limpio.split("\n")[1:-1])
         resultado = json.loads(limpio)
+        mensaje_en = resultado.get("mensaje", "Can you give me more details?")
         return {
-            "mensaje":            resultado.get("mensaje", "¿Puedes darme más detalles?"),
+            "mensaje":            await traducir(mensaje_en, session_id),
             "variables_extraidas": resultado.get("variables_extraidas", {}),
             "estado":             resultado.get("estado", "continua"),
             "progreso_pct":       resultado.get("progreso_pct", 30),
