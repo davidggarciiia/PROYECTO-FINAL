@@ -2,9 +2,16 @@
 from __future__ import annotations
 import json, logging
 from agente.prompts import ANALISIS_ZONA_SISTEMA
+from agente.traductor import traducir_dict
 from routers.llm_router import completar
 
 logger = logging.getLogger(__name__)
+
+# Campos de texto libre que el LLM genera en inglés y hay que traducir al español
+_CAMPOS_TEXTO = [
+    "resumen", "puntos_fuertes", "puntos_debiles",
+    "oportunidad", "riesgos", "razon_recomendacion",
+]
 
 
 async def analizar_zona(zona_data: dict, perfil_negocio: dict,
@@ -19,12 +26,12 @@ async def analizar_zona(zona_data: dict, perfil_negocio: dict,
 
     Returns:
         dict con resumen, puntos_fuertes, puntos_debiles, oportunidad, riesgos,
-        recomendacion_final, razon_recomendacion
+        recomendacion_final, razon_recomendacion — todo en español
     """
     prompt = _construir_prompt(zona_data, perfil_negocio)
 
     respuesta = await completar(
-        mensajes=[{"role":"user","content":prompt}],
+        mensajes=[{"role": "user", "content": prompt}],
         sistema=ANALISIS_ZONA_SISTEMA,
         endpoint="analisis_zona",
         session_id=session_id,
@@ -36,7 +43,9 @@ async def analizar_zona(zona_data: dict, perfil_negocio: dict,
     try:
         limpio = respuesta.strip()
         if limpio.startswith("```"): limpio = "\n".join(limpio.split("\n")[1:-1])
-        return json.loads(limpio)
+        resultado = json.loads(limpio)
+        # Traducir todos los campos de texto en una sola llamada LLM
+        return await traducir_dict(resultado, _CAMPOS_TEXTO, session_id)
     except Exception as e:
         logger.error("Error JSON análisis zona=%s: %s", zona_data.get("zona_id"), e)
         return {
@@ -57,7 +66,6 @@ def _construir_prompt(z: dict, p: dict) -> str:
     alertas = z.get("alertas", [])
     shap = z.get("shap_values") or {}
 
-    # Top 3 factores SHAP positivos y negativos
     shap_sorted = sorted(shap.items(), key=lambda x: x[1], reverse=True) if shap else []
     top_pos = [f"{k}: +{v:.1f}" for k,v in shap_sorted[:3] if v > 0]
     top_neg = [f"{k}: {v:.1f}" for k,v in reversed(shap_sorted) if v < 0][:3]
@@ -66,33 +74,33 @@ def _construir_prompt(z: dict, p: dict) -> str:
     alerta_textos = [a["texto"] for a in alertas]
 
     prompt = f"""
-NEGOCIO: {p.get("sector","desconocido")} — {p.get("descripcion","")}
-Perfil cliente: {p.get("perfil_cliente","no especificado")}
-Precio objetivo: {p.get("precio_objetivo","medio")}
+BUSINESS: {p.get("sector","unknown")} — {p.get("descripcion","")}
+Target customer: {p.get("perfil_cliente","not specified")}
+Price tier: {p.get("precio_objetivo","medio")}
 
-ZONA: {z.get("nombre","")} — {z.get("barrio","")} ({z.get("distrito","")})
-Score global: {z.get("score_global","N/D")}/100
-Probabilidad supervivencia 3 años: {z.get("probabilidad_supervivencia","N/D")}
+ZONE: {z.get("nombre","")} — {z.get("barrio","")} ({z.get("distrito","")})
+Global score: {z.get("score_global","N/A")}/100
+3-year survival probability: {z.get("probabilidad_supervivencia","N/A")}
 
-DATOS CLAVE:
-- Flujo peatonal: mañana {flujo.get("manana",0)} · tarde {flujo.get("tarde",0)} · noche {flujo.get("noche",0)} personas/hora
-- Renta media hogar: {z.get("renta_media_hogar","N/D")} €/año
-- % extranjeros: {z.get("pct_extranjeros","N/D")}
-- Score turismo: {z.get("score_turismo","N/D")}/100
-- Locales vacíos: {z.get("pct_locales_vacios","N/D") and f"{z.get('pct_locales_vacios',0)*100:.0f}%"}
-- Tasa rotación negocios: {z.get("tasa_rotacion_anual","N/D")}
-- Líneas transporte a 500m: {z.get("num_lineas_transporte","N/D")}
-- Alquiler local disponible: {z.get("alquiler_mensual","N/D")} €/mes · {z.get("m2","N/D")} m²
+KEY DATA:
+- Pedestrian flow: morning {flujo.get("manana",0)} · afternoon {flujo.get("tarde",0)} · evening {flujo.get("noche",0)} people/hour
+- Average household income: {z.get("renta_media_hogar","N/A")} €/year
+- % foreigners: {z.get("pct_extranjeros","N/A")}
+- Tourism score: {z.get("score_turismo","N/A")}/100
+- Vacant premises: {z.get("pct_locales_vacios","N/A") and f"{z.get('pct_locales_vacios',0)*100:.0f}%"}
+- Business turnover rate: {z.get("tasa_rotacion_anual","N/A")}
+- Transport lines within 500m: {z.get("num_lineas_transporte","N/A")}
+- Available premises: {z.get("alquiler_mensual","N/A")} €/month · {z.get("m2","N/A")} m²
 
-COMPETENCIA DIRECTA ({len(comp_directo)} competidores):
-{", ".join(comp_directo[:5]) if comp_directo else "Sin competencia directa detectada"}
+DIRECT COMPETITION ({len(comp_directo)} competitors):
+{", ".join(comp_directo[:5]) if comp_directo else "No direct competition detected"}
 
-FACTORES POSITIVOS (SHAP): {", ".join(top_pos) if top_pos else "No disponible"}
-FACTORES NEGATIVOS (SHAP): {", ".join(top_neg) if top_neg else "No disponible"}
+POSITIVE SHAP FACTORS: {", ".join(top_pos) if top_pos else "Not available"}
+NEGATIVE SHAP FACTORS: {", ".join(top_neg) if top_neg else "Not available"}
 
-ALERTAS ACTIVAS: {"; ".join(alerta_textos) if alerta_textos else "Sin alertas"}
+ACTIVE ALERTS: {"; ".join(alerta_textos) if alerta_textos else "No alerts"}
 
-Genera el análisis.
+Generate the analysis.
 """.strip()
 
     return prompt
