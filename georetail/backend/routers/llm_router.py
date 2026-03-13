@@ -1,7 +1,7 @@
 """
 routers/llm_router.py — Router LLM con cadena de fallback automática.
 
-Orden: Claude Sonnet → GPT-4o → Groq Llama 3.3 → Gemini Flash → Ollama local
+Orden: Claude Sonnet → GPT-4o → DeepSeek → Kimi → Gemini Flash
 Lógica: si 429 → exhausted 1h, si 5xx → exhausted 15min, si todos caídos → RuntimeError
 """
 from __future__ import annotations
@@ -10,32 +10,33 @@ from typing import Optional
 
 import anthropic
 from openai import AsyncOpenAI, RateLimitError as ORateLimit
-import google.generativeai as genai
-import httpx
+from google import genai as google_genai
+from google.genai import types as genai_types
 
 from db.redis_client import get_redis
 from db.conexion import get_db
 
 logger = logging.getLogger(__name__)
 
-_ANT: Optional[anthropic.AsyncAnthropic] = None
-_OAI: Optional[AsyncOpenAI] = None
-_GROQ: Optional[AsyncOpenAI] = None
+_ANT:     Optional[anthropic.AsyncAnthropic] = None
+_OAI:     Optional[AsyncOpenAI]              = None
+_DEEP:    Optional[AsyncOpenAI]              = None
+_KIMI:    Optional[AsyncOpenAI]              = None
 
 _MODELS = {
-    "anthropic": "claude-sonnet-4-20250514",
+    "anthropic": "claude-sonnet-4-6",
     "openai":    "gpt-4o",
-    "groq":      "llama-3.3-70b-versatile",
-    "gemini":    "gemini-1.5-flash",
-    "ollama":    "llama3.3:8b",
+    "deepseek":  "deepseek-chat",
+    "kimi":      "kimi-k2.5",
+    "gemini":    "gemini-2.0-flash",
 }
 
 _COSTES = {
     "anthropic": (3.0,   15.0),
     "openai":    (2.5,   10.0),
-    "groq":      (0.59,  0.79),
+    "deepseek":  (0.27,  1.10),
+    "kimi":      (0.15,  0.60),
     "gemini":    (0.075, 0.30),
-    "ollama":    (0.0,   0.0),
 }
 
 class _RL(Exception): pass
@@ -52,11 +53,17 @@ def _oai():
     if not _OAI: _OAI = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY",""))
     return _OAI
 
-def _groq():
-    global _GROQ
-    if not _GROQ: _GROQ = AsyncOpenAI(api_key=os.environ.get("GROQ_API_KEY",""),
-                                       base_url="https://api.groq.com/openai/v1")
-    return _GROQ
+def _deep():
+    global _DEEP
+    if not _DEEP: _DEEP = AsyncOpenAI(api_key=os.environ.get("DEEPSEEK_API_KEY",""),
+                                       base_url="https://api.deepseek.com")
+    return _DEEP
+
+def _kimi():
+    global _KIMI
+    if not _KIMI: _KIMI = AsyncOpenAI(api_key=os.environ.get("KIMI_API_KEY",""),
+                                       base_url="https://api.moonshot.ai/v1")
+    return _KIMI
 
 
 async def completar(mensajes: list[dict], sistema: str, endpoint: str,
@@ -66,7 +73,7 @@ async def completar(mensajes: list[dict], sistema: str, endpoint: str,
         sistema += "\n\nResponde ÚNICAMENTE con JSON válido, sin texto adicional ni markdown."
 
     r = get_redis()
-    for proveedor in ["anthropic","openai","groq","gemini","ollama"]:
+    for proveedor in ["anthropic", "openai", "deepseek", "kimi", "gemini"]:
         if await r.get(f"llm:exhausted:{proveedor}"):
             continue
         t0 = time.perf_counter()
@@ -102,63 +109,62 @@ async def _llamar(proveedor, mensajes, sistema, max_tokens, temperature):
             if e.status_code >= 500: raise _SE()
             raise
 
-    if proveedor in ("openai","groq"):
+    if proveedor in ("openai", "deepseek", "kimi"):
         try:
-            c = _oai() if proveedor == "openai" else _groq()
+            if proveedor == "openai":   c = _oai()
+            elif proveedor == "deepseek": c = _deep()
+            else:                        c = _kimi()
             r = await c.chat.completions.create(
                 model=_MODELS[proveedor],
-                messages=[{"role":"system","content":sistema}]+mensajes,
+                messages=[{"role": "system", "content": sistema}] + mensajes,
                 max_tokens=max_tokens, temperature=temperature)
             return r.choices[0].message.content, r.usage.prompt_tokens, r.usage.completion_tokens
         except ORateLimit: raise _RL()
         except Exception as e:
-            if getattr(e,"status_code",0)>=500: raise _SE()
+            if getattr(e, "status_code", 0) >= 500: raise _SE()
             raise
 
     if proveedor == "gemini":
-        key = os.environ.get("GEMINI_API_KEY","")
+        key = os.environ.get("GEMINI_API_KEY", "")
         if not key: raise _SE()
         try:
-            genai.configure(api_key=key)
-            model = genai.GenerativeModel(_MODELS["gemini"], system_instruction=sistema)
-            hist = [{"role":"user" if m["role"]=="user" else "model","parts":[m["content"]]}
-                    for m in mensajes[:-1]]
-            chat = model.start_chat(history=hist)
-            res = await chat.send_message_async(
-                mensajes[-1]["content"] if mensajes else "",
-                generation_config=genai.GenerationConfig(max_output_tokens=max_tokens,
-                                                          temperature=temperature))
+            client = google_genai.Client(api_key=key)
+            contents = [
+                {"role": "user" if m["role"] == "user" else "model",
+                 "parts": [{"text": m["content"]}]}
+                for m in mensajes
+            ]
+            res = await client.aio.models.generate_content(
+                model=_MODELS["gemini"],
+                contents=contents,
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=sistema,
+                    max_output_tokens=max_tokens,
+                    temperature=temperature,
+                ),
+            )
             t = res.text
-            return t, len(sistema.split()), len(t.split())
+            meta = res.usage_metadata
+            ti = meta.prompt_token_count if meta else len(sistema.split())
+            to = meta.candidates_token_count if meta else len(t.split())
+            return t, ti, to
         except Exception as e:
             msg = str(e).lower()
-            if "429" in msg or "quota" in msg: raise _RL()
+            if "429" in msg or "quota" in msg or "rate" in msg: raise _RL()
             if "500" in msg or "503" in msg: raise _SE()
             raise
-
-    if proveedor == "ollama":
-        url = os.environ.get("OLLAMA_URL","http://localhost:11434")
-        async with httpx.AsyncClient(timeout=30.0) as c:
-            r = await c.post(f"{url}/api/chat", json={
-                "model": _MODELS["ollama"],
-                "messages": [{"role":"system","content":sistema}]+mensajes,
-                "stream": False,
-                "options": {"temperature": temperature, "num_predict": max_tokens}})
-            r.raise_for_status()
-            d = r.json()
-            return d["message"]["content"], d.get("prompt_eval_count",0), d.get("eval_count",0)
 
     raise ValueError(f"Proveedor desconocido: {proveedor}")
 
 
 async def _log(session_id, proveedor, ti, to, lat, endpoint):
     try:
-        cin, cout = _COSTES.get(proveedor,(0,0))
+        cin, cout = _COSTES.get(proveedor, (0, 0))
         coste = ti/1e6*cin + to/1e6*cout
         async with get_db() as conn:
             await conn.execute(
                 "INSERT INTO llm_logs(session_id,proveedor,modelo,tokens_input,tokens_output,"
                 "coste_usd,latencia_ms,endpoint) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
-                session_id, proveedor, _MODELS.get(proveedor,"?"), ti, to,
-                round(coste,6), lat, endpoint)
+                session_id, proveedor, _MODELS.get(proveedor, "?"), ti, to,
+                round(coste, 6), lat, endpoint)
     except Exception: pass

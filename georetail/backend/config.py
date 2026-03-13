@@ -17,10 +17,9 @@ class Settings(BaseSettings):
     # ── LLMs ─────────────────────────────────────────────────────────────────
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
-    GROQ_API_KEY: str = ""
-    GEMINI_API_KEY: str = ""
     DEEPSEEK_API_KEY: str = ""
-    OLLAMA_URL: str = "http://localhost:11434"
+    KIMI_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
 
     # ── Mapas / Places ────────────────────────────────────────────────────────
     GOOGLE_MAPS_API_KEY: str = ""
