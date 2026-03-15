@@ -25,6 +25,7 @@ import json
 import logging
 
 from routers.llm_router import completar
+from agente import extraer_json
 
 logger = logging.getLogger(__name__)
 
@@ -93,10 +94,7 @@ async def traducir_dict(
             temperature=0.1,
             requiere_json=True,
         )
-        limpio = respuesta.strip()
-        if limpio.startswith("```"):
-            limpio = "\n".join(limpio.split("\n")[1:-1])
-        traducidos = json.loads(limpio)
+        traducidos = json.loads(extraer_json(respuesta))
         return {**data, **traducidos}
     except Exception as e:
         logger.warning("Dict translation failed, returning original: %s", e)
