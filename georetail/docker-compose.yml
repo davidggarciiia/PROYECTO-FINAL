@@ -13,7 +13,9 @@ services:
 
   # ─── Base de datos ─────────────────────────────────────────────────────────
   postgres:
-    image: pgvector/pgvector:pg15          # PostgreSQL 15 + pgvector ya incluidos
+    build:
+      context: ./docker/postgres           # PostgreSQL 15 + PostGIS 3.4 + pgvector
+      dockerfile: Dockerfile
     container_name: georetail_postgres
     environment:
       POSTGRES_DB:       georetail
