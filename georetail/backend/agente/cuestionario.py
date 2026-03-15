@@ -4,6 +4,7 @@ import json, logging
 from routers.llm_router import completar
 from agente.prompts import CUESTIONARIO_SISTEMA
 from agente.traductor import traducir
+from agente import extraer_json
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +44,7 @@ async def iniciar_cuestionario(session_id: str, validacion: dict) -> dict:
     )
 
     try:
-        limpio = respuesta.strip()
-        if limpio.startswith("```"):
-            limpio = "\n".join(limpio.split("\n")[1:-1])
-        resultado = json.loads(limpio)
+        resultado = json.loads(extraer_json(respuesta))
         mensaje_en = resultado.get("mensaje", "How much can you pay in rent per month?")
         return {
             "pregunta": await traducir(mensaje_en, session_id),
@@ -95,22 +93,19 @@ async def procesar_respuesta(
     )
 
     try:
-        limpio = respuesta.strip()
-        if limpio.startswith("```"):
-            limpio = "\n".join(limpio.split("\n")[1:-1])
-        resultado = json.loads(limpio)
+        resultado = json.loads(extraer_json(respuesta))
         mensaje_en = resultado.get("mensaje", "Can you give me more details?")
         return {
-            "mensaje":            await traducir(mensaje_en, session_id),
+            "mensaje":             await traducir(mensaje_en, session_id),
             "variables_extraidas": resultado.get("variables_extraidas", {}),
-            "estado":             resultado.get("estado", "continua"),
-            "progreso_pct":       resultado.get("progreso_pct", 30),
+            "estado":              resultado.get("estado", "continua"),
+            "progreso_pct":        resultado.get("progreso_pct", 30),
         }
     except Exception as e:
         logger.error("Error JSON cuestionario: %s", e)
         return {
-            "mensaje":            "¿Cuántos metros cuadrados necesitas aproximadamente?",
+            "mensaje":             "¿Cuántos metros cuadrados necesitas aproximadamente?",
             "variables_extraidas": {},
-            "estado":             "continua",
-            "progreso_pct":       30,
+            "estado":              "continua",
+            "progreso_pct":        30,
         }
