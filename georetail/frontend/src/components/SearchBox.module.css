@@ -4,36 +4,39 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex-shrink: 0;
 }
 
+/* ── Progress ── */
 .progressBar {
-  height: 3px;
-  background: var(--surface2);
+  height: 2px;
+  background: var(--surface3);
   border-radius: 2px;
   overflow: hidden;
 }
 .progressFill {
   height: 100%;
-  background: var(--accent);
+  background: linear-gradient(90deg, var(--blue) 0%, var(--teal) 100%);
   border-radius: 2px;
-  transition: width 0.4s ease;
+  transition: width 0.5s ease;
 }
 
+/* ── Cuestionario ── */
 .pregunta {
   background: var(--surface2);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
+  border-left: 3px solid var(--blue);
+  border-radius: var(--r);
+  padding: 10px 13px;
 }
 .preguntaLabel {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--blue-light);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
 }
 .pregunta p {
   color: var(--text);
@@ -41,30 +44,52 @@
   line-height: 1.5;
 }
 
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+/* ── Input wrapper ── */
+.form { display: flex; flex-direction: column; gap: 0; }
+
+.inputWrap {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  transition: border-color var(--t), box-shadow var(--t);
 }
-.textarea {
-  resize: none;
-  line-height: 1.5;
+.inputWrap:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(79,150,247,0.08);
 }
-.sendBtn {
-  align-self: flex-end;
-  min-width: 100px;
-  justify-content: center;
-}
-.sendBtn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.inputWrap.busy {
+  opacity: 0.7;
 }
 
+.textarea {
+  width: 100%;
+  padding: 12px 14px 8px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+}
+.textarea::placeholder { color: var(--text-faint); }
+.textarea:disabled { cursor: not-allowed; }
+
+.sendBtn {
+  width: 100%;
+  border-radius: 0 0 calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px);
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ── Error ── */
 .error {
   font-size: 13px;
   color: var(--red);
-  background: rgba(239,68,68,0.08);
-  border: 1px solid rgba(239,68,68,0.2);
-  border-radius: var(--radius-sm);
+  background: var(--red-dim);
+  border: 1px solid rgba(255,91,103,0.25);
+  border-radius: var(--r);
   padding: 8px 12px;
 }

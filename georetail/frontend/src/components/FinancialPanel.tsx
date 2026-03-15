@@ -17,7 +17,6 @@ interface Props {
   onUpdate: (data: FinancieroResponse) => void;
 }
 
-// Debounce helper
 function useDebounce(fn: (...args: unknown[]) => void, delay: number) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   return useCallback((...args: unknown[]) => {
@@ -56,13 +55,11 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
   }
 
   if (!financiero) {
-    return <div className={styles.empty}>Cargando datos financieros...</div>;
+    return <div className={styles.empty}>Cargando análisis financiero...</div>;
   }
 
   const f = financiero;
-  const alertaAlquiler = f.alerta_alquiler;
 
-  // Preparar datos para gráfico (meses 1-36, cada 3)
   const chartData = f.proyeccion
     .filter((_, i) => i % 3 === 2 || i === 0)
     .map(m => ({
@@ -83,7 +80,7 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
         </div>
         <div className={styles.kpi}>
           <span className={styles.kpiVal}>{Math.round(f.ingresos_anuales_conservador).toLocaleString("es-ES")} €</span>
-          <span className={styles.kpiLabel}>Ingresos/año (cons.)</span>
+          <span className={styles.kpiLabel}>Ingresos/año</span>
         </div>
         <div className={styles.kpi}>
           <span className={styles.kpiVal}>{f.payback_meses_conservador}m</span>
@@ -95,46 +92,46 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
         </div>
       </div>
 
-      {/* Alerta alquiler */}
-      {alertaAlquiler && (
+      {/* Alert */}
+      {f.alerta_alquiler && (
         <div className={styles.alertaAlquiler}>
           ⚠ El alquiler supera el {Math.round(f.alquiler_sobre_ventas_pct * 100)}% de las ventas — riesgo alto
         </div>
       )}
 
-      {/* Gráfico proyección acumulada */}
+      {/* Chart */}
       <section>
         <div className={styles.sectionTitle}>Resultado acumulado 36 meses</div>
         <div className={styles.chart}>
           <ResponsiveContainer width="100%" height={180}>
             <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
               <defs>
-                <linearGradient id="colorCons" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#6c63ff" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#6c63ff" stopOpacity={0} />
+                <linearGradient id="kpColorCons" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#4F96F7" stopOpacity={0.35} />
+                  <stop offset="95%" stopColor="#4F96F7" stopOpacity={0} />
                 </linearGradient>
-                <linearGradient id="colorOpt" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                <linearGradient id="kpColorOpt" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10D48E" stopOpacity={0.35} />
+                  <stop offset="95%" stopColor="#10D48E" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="mes" tick={{ fill: "#8b90a8", fontSize: 11 }} />
-              <YAxis tick={{ fill: "#8b90a8", fontSize: 11 }} tickFormatter={v => `${Math.round(v / 1000)}k`} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+              <XAxis dataKey="mes" tick={{ fill: "#7A90B8", fontSize: 11 }} />
+              <YAxis tick={{ fill: "#7A90B8", fontSize: 11 }} tickFormatter={v => `${Math.round(v / 1000)}k`} />
               <ReTooltip
-                contentStyle={{ background: "#1a1d27", border: "1px solid #2e3348", borderRadius: "8px" }}
-                labelStyle={{ color: "#e8eaf0" }}
+                contentStyle={{ background: "#0C1328", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px" }}
+                labelStyle={{ color: "#EEF2FF" }}
                 formatter={(v: number) => [`${v.toLocaleString("es-ES")} €`]}
               />
-              <Legend wrapperStyle={{ fontSize: 12, color: "#8b90a8" }} />
-              <Area type="monotone" dataKey="optimista" name="Optimista" stroke="#22c55e" fill="url(#colorOpt)" strokeWidth={2} />
-              <Area type="monotone" dataKey="conservador" name="Conservador" stroke="#6c63ff" fill="url(#colorCons)" strokeWidth={2} />
+              <Legend wrapperStyle={{ fontSize: 12, color: "#7A90B8" }} />
+              <Area type="monotone" dataKey="optimista" name="Optimista" stroke="#10D48E" fill="url(#kpColorOpt)" strokeWidth={2} />
+              <Area type="monotone" dataKey="conservador" name="Conservador" stroke="#4F96F7" fill="url(#kpColorCons)" strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
       </section>
 
-      {/* Parámetros ajustables */}
+      {/* Sliders */}
       <section>
         <div className={styles.sectionTitle}>Ajustar parámetros</div>
         <div className={styles.sliders}>
@@ -175,7 +172,7 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
       <section>
         <div className={styles.sectionTitle}>Punto de equilibrio</div>
         <div className={styles.breakeven}>
-          <span>Necesitas <strong>{f.breakeven_clientes_dia} clientes/día</strong> para cubrir costes</span>
+          Necesitas <strong>{f.breakeven_clientes_dia} clientes/día</strong> para cubrir costes fijos
         </div>
       </section>
     </div>

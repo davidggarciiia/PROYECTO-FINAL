@@ -1,59 +1,233 @@
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
+/* ─── Knowpoint Design System ─────────────────────────────────────────── */
 :root {
-  --bg: #0f1117;
-  --surface: #1a1d27;
-  --surface2: #222535;
-  --border: #2e3348;
-  --text: #e8eaf0;
-  --text-muted: #8b90a8;
-  --accent: #6c63ff;
-  --accent-hover: #7c74ff;
-  --green: #22c55e;
-  --yellow: #eab308;
-  --red: #ef4444;
-  --radius: 10px;
-  --radius-sm: 6px;
-  --shadow: 0 4px 24px rgba(0,0,0,0.4);
-  --panel-w: 420px;
+  --bg:        #07091A;
+  --surface:   #0C1328;
+  --surface2:  #111B35;
+  --surface3:  #172040;
+  --surface4:  #1D2850;
+
+  --border:        rgba(255,255,255,0.06);
+  --border-subtle: rgba(255,255,255,0.03);
+  --border-focus:  rgba(79,150,247,0.5);
+  --border-strong: rgba(255,255,255,0.11);
+
+  --text:        #EEF2FF;
+  --text-muted:  #7A90B8;
+  --text-faint:  #3E5070;
+
+  --blue:       #4F96F7;
+  --blue-light: #7BBFFF;
+  --blue-dark:  #2B6ED4;
+  --blue-glow:  rgba(79,150,247,0.18);
+  --blue-glow2: rgba(79,150,247,0.08);
+
+  --teal:      #00D2C8;
+  --teal-glow: rgba(0,210,200,0.14);
+
+  --green:       #10D48E;
+  --green-glow:  rgba(16,212,142,0.16);
+  --green-dim:   rgba(16,212,142,0.08);
+  --yellow:      #FFB020;
+  --yellow-glow: rgba(255,176,32,0.16);
+  --yellow-dim:  rgba(255,176,32,0.08);
+  --red:         #FF5B67;
+  --red-glow:    rgba(255,91,103,0.16);
+  --red-dim:     rgba(255,91,103,0.08);
+
+  --r-sm: 6px;
+  --r:    10px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+
+  --shadow:    0 4px 24px rgba(0,0,0,0.5);
+  --shadow-lg: 0 8px 48px rgba(0,0,0,0.65);
+  --shadow-blue: 0 0 28px rgba(79,150,247,0.2);
+
+  --t:      200ms ease;
+  --t-slow: 350ms ease;
+  --t-spring: 350ms cubic-bezier(0.34,1.56,0.64,1);
 }
 
-html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.5; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  height: 100vh;
+}
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+input, textarea { font-family: inherit; }
+ul, ol { list-style: none; }
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--surface); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface4); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
 
-/* ── Leaflet override (dark theme) ── */
-.leaflet-container { background: #1a1d27 !important; }
-.leaflet-tile-pane { filter: brightness(0.85) saturate(0.8) hue-rotate(180deg) invert(1); }
-.leaflet-popup-content-wrapper { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
-.leaflet-popup-tip { background: var(--surface); }
-.leaflet-popup-close-button { color: var(--text-muted) !important; }
+/* ─── Buttons ────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px; padding: 9px 18px;
+  border-radius: var(--r); font-size: 13px; font-weight: 500;
+  transition: all var(--t); white-space: nowrap; line-height: 1;
+}
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary {
+  background: linear-gradient(135deg, var(--blue) 0%, var(--blue-dark) 100%);
+  color: #fff;
+  box-shadow: 0 2px 14px var(--blue-glow), inset 0 1px 0 rgba(255,255,255,0.14);
+}
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--blue-light) 0%, var(--blue) 100%);
+  box-shadow: 0 4px 22px var(--blue-glow), inset 0 1px 0 rgba(255,255,255,0.2);
+  transform: translateY(-1px);
+}
+.btn-primary:active:not(:disabled) { transform: none; }
+.btn-ghost {
+  background: transparent; color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--surface2); color: var(--text);
+  border-color: var(--border-strong);
+}
+.btn-icon {
+  padding: 8px; border-radius: var(--r);
+  background: var(--surface2); color: var(--text-muted);
+  border: 1px solid var(--border); transition: all var(--t);
+}
+.btn-icon:hover { background: var(--surface3); color: var(--text); border-color: var(--border-strong); }
 
-/* ── Botones ── */
-button { cursor: pointer; border: none; background: none; font-family: inherit; font-size: inherit; color: inherit; }
-.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius-sm); font-weight: 500; transition: all 0.15s; }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent-hover); }
-.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
-.btn-ghost:hover { border-color: var(--accent); color: var(--text); }
+/* ─── Badges ─────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 3px 9px; border-radius: var(--r-sm);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.3px;
+}
+.badge-verde    { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(16,212,142,0.28); }
+.badge-amarillo { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(255,176,32,0.28); }
+.badge-rojo     { background: var(--red-dim);    color: var(--red);    border: 1px solid rgba(255,91,103,0.28); }
 
-/* ── Inputs ── */
-input, textarea { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 14px; font-family: inherit; width: 100%; outline: none; transition: border-color 0.15s; }
-input:focus, textarea:focus { border-color: var(--accent); }
-input::placeholder, textarea::placeholder { color: var(--text-muted); }
+/* Score ring */
+.score-ring {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 52px; height: 52px; border-radius: 50%;
+  font-size: 17px; font-weight: 800; line-height: 1;
+  border: 2px solid; flex-shrink: 0;
+}
+.score-ring-verde    { color: var(--green);  border-color: var(--green);  background: var(--green-dim);  box-shadow: 0 0 18px var(--green-glow); }
+.score-ring-amarillo { color: var(--yellow); border-color: var(--yellow); background: var(--yellow-dim); box-shadow: 0 0 18px var(--yellow-glow); }
+.score-ring-rojo     { color: var(--red);    border-color: var(--red);    background: var(--red-dim);    box-shadow: 0 0 18px var(--red-glow); }
 
-/* ── Score badges ── */
-.badge-verde   { background: rgba(34,197,94,0.15);  color: var(--green);  border: 1px solid rgba(34,197,94,0.3); }
-.badge-amarillo { background: rgba(234,179,8,0.15);  color: var(--yellow); border: 1px solid rgba(234,179,8,0.3); }
-.badge-rojo    { background: rgba(239,68,68,0.15);  color: var(--red);    border: 1px solid rgba(239,68,68,0.3); }
-.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-
-/* ── Divider ── */
-.divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
-
-/* ── Spinner ── */
+/* ─── Spinner ────────────────────────────────────────────────────── */
 @keyframes spin { to { transform: rotate(360deg); } }
-.spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+.spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border-strong); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.65s linear infinite; flex-shrink: 0; }
+.spinner-lg { width: 32px; height: 32px; border-width: 3px; }
+
+/* ─── Animations ─────────────────────────────────────────────────── */
+@keyframes fadeIn    { from { opacity: 0; transform: translateY(8px);  } to { opacity: 1; transform: none; } }
+@keyframes slideInR  { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: none; } }
+@keyframes slideInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+@keyframes pulse     { 0%,100% { opacity:1; } 50% { opacity: 0.4; } }
+@keyframes shimmer   { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes glow-pulse {
+  0%,100% { box-shadow: 0 0 8px var(--blue-glow); }
+  50%      { box-shadow: 0 0 22px var(--blue-glow); }
+}
+
+.animate-in  { animation: fadeIn  250ms ease both; }
+.animate-inR { animation: slideInR 300ms ease both; }
+
+/* Shimmer */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface2) 25%, var(--surface3) 50%, var(--surface2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--r);
+}
+
+/* ─── Leaflet ────────────────────────────────────────────────────── */
+.leaflet-container {
+  background: #07091A !important;
+  font-family: 'Inter', sans-serif;
+}
+.leaflet-control-attribution {
+  background: rgba(7,9,26,0.75) !important;
+  color: var(--text-faint) !important;
+  font-size: 10px !important;
+  backdrop-filter: blur(8px);
+}
+.leaflet-control-attribution a { color: var(--text-faint) !important; }
+.leaflet-control-zoom {
+  border: 1px solid var(--border-strong) !important;
+  border-radius: var(--r) !important;
+  box-shadow: var(--shadow) !important;
+  overflow: hidden;
+}
+.leaflet-control-zoom a {
+  background: var(--surface) !important;
+  color: var(--text-muted) !important;
+  border-color: var(--border) !important;
+  width: 32px !important; height: 32px !important;
+  line-height: 32px !important;
+  font-size: 16px !important;
+  transition: all var(--t);
+}
+.leaflet-control-zoom a:hover { background: var(--surface3) !important; color: var(--text) !important; }
+.leaflet-popup-content-wrapper {
+  background: var(--surface) !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: var(--r-lg) !important;
+  box-shadow: var(--shadow-lg) !important;
+  color: var(--text) !important;
+  padding: 0 !important;
+}
+.leaflet-popup-content { margin: 0 !important; }
+.leaflet-popup-tip { background: var(--surface) !important; }
+.leaflet-popup-close-button { color: var(--text-muted) !important; top: 10px !important; right: 10px !important; }
+
+/* ─── Custom Map Markers ─────────────────────────────────────────── */
+.kp-marker {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; font-family: 'Inter', sans-serif;
+  font-weight: 800; cursor: pointer;
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+.kp-marker:hover    { transform: scale(1.12); }
+.kp-marker--selected { transform: scale(1.2) !important; z-index: 1000 !important; }
+
+.kp-marker--verde {
+  color: var(--green);
+  border: 2px solid var(--green);
+  background: rgba(16,212,142,0.15);
+  box-shadow: 0 0 16px rgba(16,212,142,0.4), 0 2px 8px rgba(0,0,0,0.5);
+}
+.kp-marker--amarillo {
+  color: var(--yellow);
+  border: 2px solid var(--yellow);
+  background: rgba(255,176,32,0.15);
+  box-shadow: 0 0 16px rgba(255,176,32,0.4), 0 2px 8px rgba(0,0,0,0.5);
+}
+.kp-marker--rojo {
+  color: var(--red);
+  border: 2px solid var(--red);
+  background: rgba(255,91,103,0.15);
+  box-shadow: 0 0 16px rgba(255,91,103,0.4), 0 2px 8px rgba(0,0,0,0.5);
+}
+.kp-marker--verde.kp-marker--selected {
+  box-shadow: 0 0 28px rgba(16,212,142,0.7), 0 4px 16px rgba(0,0,0,0.6);
+  background: rgba(16,212,142,0.25);
+}
+.kp-marker--amarillo.kp-marker--selected {
+  box-shadow: 0 0 28px rgba(255,176,32,0.7), 0 4px 16px rgba(0,0,0,0.6);
+  background: rgba(255,176,32,0.25);
+}
+.kp-marker--rojo.kp-marker--selected {
+  box-shadow: 0 0 28px rgba(255,91,103,0.7), 0 4px 16px rgba(0,0,0,0.6);
+  background: rgba(255,91,103,0.25);
+}

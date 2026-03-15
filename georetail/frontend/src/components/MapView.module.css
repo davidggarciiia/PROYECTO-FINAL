@@ -4,18 +4,28 @@
   position: relative;
 }
 
+/* ── Tooltip ── */
 .tooltip {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 120px;
-  font-size: 13px;
+  gap: 3px;
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+  min-width: 110px;
 }
-.tooltipScore {
+.tooltip strong {
+  font-size: 13px;
   font-weight: 700;
-  font-size: 14px;
+  color: #EEF2FF;
+}
+.tooltip span {
+  color: #7A90B8;
 }
 
+/* ── Map markers (defined in globals, referenced here for JS className) ── */
+/* .kp-marker classes are in globals.css */
+
+/* ── Overlay (no results state) ── */
 .overlay {
   position: absolute;
   top: 50%;
@@ -24,14 +34,30 @@
   pointer-events: none;
   z-index: 500;
 }
-.overlayText {
-  background: rgba(26,29,39,0.85);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px 24px;
-  color: var(--text-muted);
-  font-size: 14px;
+
+.overlayCard {
+  background: rgba(12, 19, 40, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(79,150,247,0.2);
+  border-radius: var(--r-lg);
+  padding: 20px 28px;
   text-align: center;
-  max-width: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 240px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(79,150,247,0.1);
+}
+
+.overlayIcon {
+  opacity: 0.8;
+  animation: glow-pulse 3s ease infinite;
+}
+
+.overlayCard p {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
 }

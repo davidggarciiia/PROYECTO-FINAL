@@ -1,11 +1,11 @@
 {
-  "name": "georetail-frontend",
-  "version": "0.1.0",
+  "name": "knowpoint",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev --port 3000",
     "build": "next build",
-    "start": "next start"
+    "start": "next start --port 3000"
   },
   "dependencies": {
     "next": "14.2.5",
@@ -13,7 +13,8 @@
     "react-dom": "^18",
     "leaflet": "^1.9.4",
     "react-leaflet": "^4.2.1",
-    "recharts": "^2.12.7"
+    "recharts": "^2.12.7",
+    "lucide-react": "^0.436.0"
   },
   "devDependencies": {
     "@types/node": "^20",

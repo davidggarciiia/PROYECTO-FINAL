@@ -1,6 +1,27 @@
-.bars { display: flex; flex-direction: column; gap: 8px; }
+.bars { display: flex; flex-direction: column; gap: 10px; }
+
 .bar {}
-.barHeader { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; color: var(--text-muted); }
+
+.barHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.barLabel { color: var(--text-muted); }
 .barVal { font-weight: 700; font-size: 13px; }
-.barTrack { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
-.barFill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+
+.barTrack {
+  height: 5px;
+  background: var(--surface3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+}

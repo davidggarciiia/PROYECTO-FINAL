@@ -26,15 +26,23 @@ export default function ScoreBars({ scores }: Props) {
         const val = scores[key];
         if (val === undefined || val === null) return null;
         const pct = Math.min(100, Math.max(0, val));
-        const color = pct >= 75 ? "var(--green)" : pct >= 50 ? "var(--yellow)" : "var(--red)";
+        const colorVar = pct >= 75 ? "var(--green)" : pct >= 50 ? "var(--yellow)" : "var(--red)";
+        const glowVar = pct >= 75 ? "var(--green-glow)" : pct >= 50 ? "var(--yellow-glow)" : "var(--red-glow)";
         return (
           <div key={key} className={styles.bar}>
             <div className={styles.barHeader}>
-              <span>{label}</span>
-              <span className={styles.barVal} style={{ color }}>{Math.round(pct)}</span>
+              <span className={styles.barLabel}>{label}</span>
+              <span className={styles.barVal} style={{ color: colorVar }}>{Math.round(pct)}</span>
             </div>
             <div className={styles.barTrack}>
-              <div className={styles.barFill} style={{ width: `${pct}%`, background: color }} />
+              <div
+                className={styles.barFill}
+                style={{
+                  width: `${pct}%`,
+                  background: colorVar,
+                  boxShadow: `0 0 8px ${glowVar}`,
+                }}
+              />
             </div>
           </div>
         );
