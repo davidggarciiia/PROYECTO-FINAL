@@ -4,6 +4,7 @@ import json, logging
 from routers.llm_router import completar
 from agente.prompts import VALIDACION_SISTEMA
 from agente.traductor import traducir
+from agente import extraer_json
 
 logger = logging.getLogger(__name__)
 
@@ -31,21 +32,18 @@ async def validar_negocio(descripcion: str, session_id: str) -> dict:
     )
 
     try:
-        limpio = respuesta.strip()
-        if limpio.startswith("```"):
-            limpio = "\n".join(limpio.split("\n")[1:-1])
-        parsed = json.loads(limpio)
+        parsed = json.loads(extraer_json(respuesta))
     except json.JSONDecodeError as e:
         logger.error("JSON inválido en validar_negocio: %s | respuesta: %s", e, respuesta[:200])
         return {
-            "es_retail":             True,
-            "inviable_legal":        False,
-            "motivo_legal":          None,
-            "motivo":                None,
+            "es_retail":              True,
+            "inviable_legal":         False,
+            "motivo_legal":           None,
+            "motivo":                 None,
             "informacion_suficiente": False,
-            "sector_detectado":      "desconocido",
-            "variables_conocidas":   {},
-            "preguntas_necesarias":  ["¿Cuánto puedes pagar de alquiler al mes?"],
+            "sector_detectado":       "desconocido",
+            "variables_conocidas":    {},
+            "preguntas_necesarias":   ["¿Cuánto puedes pagar de alquiler al mes?"],
         }
 
     estado = parsed.get("estado", "cuestionario")
@@ -55,12 +53,14 @@ async def validar_negocio(descripcion: str, session_id: str) -> dict:
     motivo_es = await traducir(motivo_en, session_id) if motivo_en else None
 
     return {
-        "es_retail":             parsed.get("es_retail", True) and estado != "error_tipo_negocio",
-        "inviable_legal":        estado == "inviable_legal",
-        "motivo_legal":          motivo_es,
-        "motivo":                motivo_es,
+        "es_retail":              parsed.get("es_retail", True) and estado != "error_tipo_negocio",
+        "inviable_legal":         estado == "inviable_legal",
+        # motivo_legal: solo se rellena cuando el rechazo es legal
+        "motivo_legal":           motivo_es if estado == "inviable_legal" else None,
+        # motivo: solo se rellena cuando el negocio no es retail
+        "motivo":                 motivo_es if estado == "error_tipo_negocio" else None,
         "informacion_suficiente": parsed.get("info_suficiente", False),
-        "sector_detectado":      parsed.get("sector") or "desconocido",
-        "variables_conocidas":   parsed.get("variables_extraidas") or {},
-        "preguntas_necesarias":  parsed.get("preguntas_pendientes") or [],
+        "sector_detectado":       parsed.get("sector") or "desconocido",
+        "variables_conocidas":    parsed.get("variables_extraidas") or {},
+        "preguntas_necesarias":   parsed.get("preguntas_pendientes") or [],
     }

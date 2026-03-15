@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
     logger.info("Redis inicializado")
 
     try:
-        await init_modelo_embeddings()
+        cargar_modelo()
         logger.info("Modelo de embeddings cargado")
     except Exception as exc:
         logger.warning("No se pudo cargar el modelo de embeddings: %s", exc)
