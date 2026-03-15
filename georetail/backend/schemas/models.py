@@ -20,6 +20,18 @@ class EstadoBusqueda(str, Enum):
     INVIABLE_LEGAL = "inviable_legal"
 
 
+class EstadoServicio(str, Enum):
+    OK       = "ok"
+    DEGRADED = "degraded"
+    DOWN     = "down"
+
+
+class AccionRefinamiento(str, Enum):
+    FILTRO_APLICADO = "filtro_aplicado"
+    NUEVA_BUSQUEDA  = "nueva_busqueda"
+    RESPUESTA       = "respuesta"
+
+
 class Recomendacion(str, Enum):
     MUY_RECOMENDADO = "Muy recomendado"
     RECOMENDADO     = "Recomendado"
@@ -431,16 +443,7 @@ class ExportarResponse(BaseModel):
 # ── Health ────────────────────────────────────────────────────────────────────
 
 class ServiceStatus(BaseModel):
-    status:      str
-    latencia_ms: Optional[int] = None
-    detalle:     Optional[str] = None
-
-
-class HealthResponse(BaseModel):
-    status:               str
-    version:              str
-    postgresql:           ServiceStatus
-    redis:                ServiceStatus
-    celery:               ServiceStatus
-    llm_proveedor_activo: Optional[str] = None
-    modelo_scoring:       Optional[str] = None
+    name:       str
+    status:     EstadoServicio
+    latency_ms: Optional[float] = None
+    message:    Optional[str]   = None

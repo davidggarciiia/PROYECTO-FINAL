@@ -112,7 +112,7 @@ async def _check_celery() -> ServiceStatus:
         # inspect() hace broadcast a todos los workers — si no hay respuesta en timeout → degraded
         inspect = celery_app.control.inspect(timeout=_TIMEOUT_CELERY_S)
         stats = await asyncio.wait_for(
-            asyncio.get_event_loop().run_in_executor(None, inspect.stats),
+            asyncio.get_running_loop().run_in_executor(None, inspect.stats),
             timeout=_TIMEOUT_CELERY_S + 0.5,
         )
 
@@ -164,17 +164,15 @@ async def _check_llm() -> ServiceStatus:
     """
     from db.redis_client import get_redis
 
-    proveedores_fallback = ["claude", "openai", "groq", "gemini", "ollama"]
+    proveedores_fallback = ["anthropic", "openai", "deepseek", "kimi", "gemini"]
 
     try:
         t0 = time.perf_counter()
         r = get_redis()
 
         # Verificar proveedor activo
-        proveedor_activo = await r.get("llm:proveedor_activo")
-        proveedor_activo = (
-            proveedor_activo.decode() if proveedor_activo else "claude"
-        )
+        # Redis usa decode_responses=True → las respuestas ya son str, no bytes
+        proveedor_activo = await r.get("llm:proveedor_activo") or "anthropic"
 
         # Verificar si todos los proveedores están marcados como exhausted
         exhausted = []

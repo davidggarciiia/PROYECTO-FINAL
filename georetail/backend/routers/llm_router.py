@@ -39,6 +39,7 @@ _ANT:     Optional[anthropic.AsyncAnthropic] = None   # cliente Anthropic
 _OAI:     Optional[AsyncOpenAI]              = None   # cliente OpenAI
 _DEEP:    Optional[AsyncOpenAI]              = None   # cliente DeepSeek (API compatible OpenAI)
 _KIMI:    Optional[AsyncOpenAI]              = None   # cliente Kimi (API compatible OpenAI)
+_GEM:     Optional[google_genai.Client]      = None   # cliente Google Gemini
 
 # ── Modelos activos ───────────────────────────────────────────────────────────
 # Cambiar el nombre del modelo aquí para actualizar toda la app de golpe.
@@ -134,6 +135,18 @@ def _kimi():
     return _KIMI
 
 
+def _gemini():
+    # API key: GEMINI_API_KEY en el .env
+    # Registro: https://aistudio.google.com/apikey
+    global _GEM
+    if not _GEM:
+        key = os.environ.get("GEMINI_API_KEY", "")
+        if not key:
+            raise _SE()  # sin key → saltar proveedor
+        _GEM = google_genai.Client(api_key=key)
+    return _GEM
+
+
 # ── Función principal — llamar desde cualquier endpoint del backend ───────────
 async def completar(mensajes: list[dict], sistema: str, endpoint: str,
                     session_id: Optional[str] = None, max_tokens: int = 1500,
@@ -211,10 +224,8 @@ async def _llamar(proveedor, mensajes, sistema, max_tokens, temperature):
     # API key: GEMINI_API_KEY en el .env
     # Registro: https://aistudio.google.com/apikey
     if proveedor == "gemini":
-        key = os.environ.get("GEMINI_API_KEY", "")
-        if not key: raise _SE()   # sin key → tratar como fallo de servidor y saltar
         try:
-            client = google_genai.Client(api_key=key)
+            client = _gemini()  # singleton cacheado; lanza _SE() si no hay key
             contents = [
                 {"role": "user" if m["role"] == "user" else "model",
                  "parts": [{"text": m["content"]}]}

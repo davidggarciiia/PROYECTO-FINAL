@@ -158,14 +158,18 @@ async def refinamiento(body: RefinamientoRequest) -> RefinamientoResponse:
                 nombre=z["nombre"],
                 barrio=z["barrio"],
                 distrito=z["distrito"],
-                score_global=round(z["score_global"], 1),
-                probabilidad_supervivencia_3a=round(z["probabilidad_supervivencia_3a"], 2),
-                alquiler_estimado=z["alquiler_estimado"],
-                m2_disponibles=z.get("m2_disponibles"),
-                color=_score_to_color(z["score_global"]),
+                score_global=round(z.get("score_global", 50.0) or 50.0, 1),
+                probabilidad_supervivencia_3a=(
+                    round(z["probabilidad_supervivencia_3a"], 2)
+                    if z.get("probabilidad_supervivencia_3a") is not None
+                    else None
+                ),
+                alquiler_estimado=z.get("alquiler_estimado") or z.get("alquiler_mensual"),
+                m2_disponibles=z.get("m2_disponibles") or z.get("m2"),
+                color=_score_to_color(z.get("score_global", 50.0) or 50.0),
                 lat=z["lat"],
                 lng=z["lng"],
-                resumen_ia=z.get("resumen_ia", ""),
+                resumen_ia=z.get("resumen_ia"),
             )
             for z in resultado["zonas_actualizadas"]
         ]

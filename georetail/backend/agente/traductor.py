@@ -95,7 +95,10 @@ async def traducir_dict(
         )
         limpio = respuesta.strip()
         if limpio.startswith("```"):
-            limpio = "\n".join(limpio.split("\n")[1:-1])
+            lines = limpio.split("\n")[1:]
+            while lines and lines[-1].strip() in ("```", ""):
+                lines.pop()
+            limpio = "\n".join(lines)
         traducidos = json.loads(limpio)
         return {**data, **traducidos}
     except Exception as e:

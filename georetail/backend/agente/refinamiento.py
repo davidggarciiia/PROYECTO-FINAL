@@ -5,8 +5,10 @@ Permite al usuario filtrar las zonas ya mostradas usando frases como:
   "solo las del Eixample"
   "quita las que tengan mucha competencia"
   "solo las que tengan score >70"
+  "máximo 1200€ de alquiler"
 
-El LLM interpreta la frase y devuelve una acción estructurada.
+El LLM interpreta la frase y devuelve filtros estructurados.
+Los filtros se aplican en memoria sobre la lista de zonas de la sesión.
 Usado por: POST /api/refinamiento
 """
 from __future__ import annotations
@@ -15,90 +17,164 @@ import json
 import logging
 from typing import Optional
 
-from routers.llm_router import llamar_llm
+from routers.llm_router import completar
 from agente.traductor import traducir
 
 logger = logging.getLogger(__name__)
 
-_PROMPT_REFINAMIENTO = """You are the filter engine of a commercial premises recommendation app.
+_SISTEMA = """You are the filter engine of a commercial premises recommendation app in Barcelona.
 
-The user has a list of zones and wants to filter it with this instruction:
-"{instruccion}"
+The user wants to refine their current search results. Interpret the instruction and return ONLY valid JSON:
+{
+  "accion":         "filtro_aplicado" | "respuesta",
+  "filtros": {
+    "score_min":    null | number 0-100,
+    "alquiler_max": null | number (euros/month),
+    "barrio":       null | string (neighbourhood or district name),
+    "m2_min":       null | number,
+    "m2_max":       null | number
+  },
+  "respuesta_texto": "short explanation of what was done, or answer to the question (in English)"
+}
 
-Current zones (available ids): {zona_ids}
-
-Return ONLY a JSON with this structure, no additional text:
-{{
-  "accion":    "filtrar" | "ordenar" | "destacar" | "sin_cambio",
-  "zona_ids":  ["id1", "id2"],   // zones remaining after the filter (all if sin_cambio)
-  "criterio":  "short description of the applied criterion",
-  "mensaje":   "short phrase explaining what was done (in English)"
-}}
-
-Recognisable filtering criteria:
-- Neighbourhood or geographic area: filter by name
-- Minimum score: filter by score_global
-- Low/high competition: filter by score_competencia
-- Price: filter by score_precio_alquiler
-- Transport: filter by score_transporte
-- If you cannot understand the instruction → accion="sin_cambio", return all zona_ids"""
+Rules:
+- Filter request  → accion="filtro_aplicado", populate relevant filtros fields, leave others null
+- Question        → accion="respuesta", set all filtros to null, answer in respuesta_texto
+- "quitar filtros" / "resetear" → accion="filtro_aplicado" with ALL filtros null (returns all zones)
+- Always write respuesta_texto in English"""
 
 
 async def procesar_refinamiento(
-    instruccion: str,
-    zona_ids: list[str],
-    scores: dict[str, dict],
+    session_id: str,
+    mensaje: str,
+    sesion: dict,
 ) -> dict:
     """
-    Interpreta la instrucción del usuario y devuelve qué zonas mostrar.
+    Interpreta el mensaje del usuario y devuelve zonas actualizadas o respuesta de texto.
 
     Parámetros:
-      instruccion  → frase del usuario ("solo las del Eixample")
-      zona_ids     → IDs de las zonas actuales en el mapa
-      scores       → dict {zona_id: {score_global, barrio, ...}} para contexto
+      session_id  → ID de sesión (para logs LLM)
+      mensaje     → frase del usuario ("solo las del Eixample")
+      sesion      → dict de sesión con zonas_actuales y perfil
 
     Devuelve:
       {
-        "accion":   "filtrar",
-        "zona_ids": ["bcn_eixample_01", ...],
-        "criterio": "barrio Eixample",
-        "mensaje":  "Mostrando zonas del Eixample"   ← ya en español
+        "accion":             "filtro_aplicado" | "respuesta",
+        "respuesta_ia":       str   ← texto al usuario (en español)
+        "zonas_actualizadas": list[dict] | None  ← None si accion="respuesta"
       }
     """
-    contexto = {
-        zid: {
-            "barrio":       scores.get(zid, {}).get("barrio", ""),
-            "score_global": scores.get(zid, {}).get("score_global", 50),
-        }
-        for zid in zona_ids
-    }
+    zonas_actuales: list[dict] = sesion.get("zonas_actuales", [])
 
-    prompt = _PROMPT_REFINAMIENTO.format(
-        instruccion = instruccion,
-        zona_ids    = json.dumps(contexto, ensure_ascii=False),
+    # Contexto resumido de zonas para el LLM (limitado para no saturar el contexto)
+    contexto_zonas = [
+        {
+            "zona_id":          z.get("zona_id"),
+            "barrio":           z.get("barrio", ""),
+            "distrito":         z.get("distrito", ""),
+            "score_global":     z.get("score_global", 50),
+            "alquiler_estimado": z.get("alquiler_estimado") or z.get("alquiler_mensual"),
+            "m2":               z.get("m2") or z.get("m2_disponibles"),
+        }
+        for z in zonas_actuales[:20]
+    ]
+
+    prompt = (
+        f"User instruction: {mensaje}\n\n"
+        f"Current zones ({len(zonas_actuales)} total):\n"
+        f"{json.dumps(contexto_zonas, ensure_ascii=False)}"
     )
 
     try:
-        respuesta = await llamar_llm(
-            prompt     = prompt,
-            endpoint   = "refinamiento",
-            max_tokens = 300,
+        respuesta = await completar(
+            mensajes=[{"role": "user", "content": prompt}],
+            sistema=_SISTEMA,
+            endpoint="refinamiento",
+            session_id=session_id,
+            max_tokens=300,
+            temperature=0.2,
+            requiere_json=True,
         )
-        texto = respuesta.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        resultado = json.loads(texto)
 
-        # Traducir "mensaje" al español antes de devolver al frontend
-        mensaje_en = resultado.get("mensaje", "")
-        if mensaje_en:
-            resultado["mensaje"] = await traducir(mensaje_en)
+        limpio = respuesta.strip()
+        if limpio.startswith("```"):
+            lines = limpio.split("\n")[1:]
+            while lines and lines[-1].strip() in ("```", ""):
+                lines.pop()
+            limpio = "\n".join(lines)
 
-        return resultado
+        resultado = json.loads(limpio)
+
+        accion = resultado.get("accion", "respuesta")
+        filtros = resultado.get("filtros") or {}
+        respuesta_texto_en = resultado.get("respuesta_texto", "")
+
+        # Traducir respuesta al español
+        respuesta_es = (
+            await traducir(respuesta_texto_en, session_id)
+            if respuesta_texto_en
+            else ""
+        )
+
+        if accion == "filtro_aplicado":
+            zonas_filtradas = _aplicar_filtros(zonas_actuales, filtros)
+            return {
+                "accion":             "filtro_aplicado",
+                "respuesta_ia":       respuesta_es,
+                "zonas_actualizadas": zonas_filtradas,
+            }
+        else:
+            return {
+                "accion":             "respuesta",
+                "respuesta_ia":       respuesta_es,
+                "zonas_actualizadas": None,
+            }
 
     except Exception as exc:
-        logger.warning("Error procesando refinamiento '%s': %s", instruccion, exc)
+        logger.warning("Error procesando refinamiento session=%s: %s", session_id, exc)
         return {
-            "accion":   "sin_cambio",
-            "zona_ids": zona_ids,
-            "criterio": "",
-            "mensaje":  "No se pudo aplicar el filtro. Mostrando todos los resultados.",
+            "accion":             "respuesta",
+            "respuesta_ia":       "No se pudo aplicar el filtro. Mostrando todos los resultados.",
+            "zonas_actualizadas": None,
         }
+
+
+def _aplicar_filtros(zonas: list[dict], filtros: dict) -> list[dict]:
+    """Aplica filtros del LLM a la lista de zonas en memoria (sin BD)."""
+    resultado = list(zonas)
+
+    score_min = filtros.get("score_min")
+    if score_min is not None:
+        resultado = [z for z in resultado if (z.get("score_global") or 0) >= score_min]
+
+    alquiler_max = filtros.get("alquiler_max")
+    if alquiler_max is not None:
+        resultado = [
+            z for z in resultado
+            if (z.get("alquiler_estimado") or z.get("alquiler_mensual") or 0) <= alquiler_max
+        ]
+
+    barrio = filtros.get("barrio")
+    if barrio:
+        barrio_lower = barrio.lower()
+        resultado = [
+            z for z in resultado
+            if barrio_lower in (z.get("barrio") or "").lower()
+            or barrio_lower in (z.get("distrito") or "").lower()
+        ]
+
+    m2_min = filtros.get("m2_min")
+    if m2_min is not None:
+        resultado = [
+            z for z in resultado
+            if (z.get("m2") or z.get("m2_disponibles") or 0) >= m2_min
+        ]
+
+    m2_max = filtros.get("m2_max")
+    if m2_max is not None:
+        resultado = [
+            z for z in resultado
+            if (z.get("m2") or z.get("m2_disponibles") or float("inf")) <= m2_max
+        ]
+
+    return resultado

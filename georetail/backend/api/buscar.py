@@ -28,7 +28,7 @@ from schemas.models import ZonaResumen, ColorZona, EstadoBusqueda
 from agente.validador import validar_negocio
 from agente.cuestionario import iniciar_cuestionario
 from scoring.motor import calcular_scores_batch
-from db.sesiones import crear_sesion, get_sesion, guardar_busqueda
+from db.sesiones import crear_sesion, get_sesion, guardar_busqueda, actualizar_sesion
 from db.zonas import filtrar_zonas_candidatas
 
 logger = logging.getLogger(__name__)
@@ -231,7 +231,16 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
     zonas_merged.sort(key=lambda z: z.get("score_global", 0), reverse=True)
     zonas_response = [_build_zona_resumen(z) for z in zonas_merged]
 
-    # ── 4. Guardar búsqueda para analytics ───────────────────────────────────
+    # ── 4. Guardar zonas en sesión (necesario para POST /api/refinamiento) ────
+    try:
+        await actualizar_sesion(session_id, {
+            "zonas_actuales": [z.model_dump() for z in zonas_response],
+            "perfil": perfil,
+        })
+    except Exception as exc:
+        logger.warning("No se pudo actualizar sesion con zonas: %s", exc)
+
+    # ── 5. Guardar búsqueda para analytics ────────────────────────────────────
     try:
         await guardar_busqueda(
             session_id=session_id,

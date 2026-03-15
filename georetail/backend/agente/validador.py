@@ -33,7 +33,10 @@ async def validar_negocio(descripcion: str, session_id: str) -> dict:
     try:
         limpio = respuesta.strip()
         if limpio.startswith("```"):
-            limpio = "\n".join(limpio.split("\n")[1:-1])
+            lines = limpio.split("\n")[1:]
+            while lines and lines[-1].strip() in ("```", ""):
+                lines.pop()
+            limpio = "\n".join(lines)
         parsed = json.loads(limpio)
     except json.JSONDecodeError as e:
         logger.error("JSON inválido en validar_negocio: %s | respuesta: %s", e, respuesta[:200])

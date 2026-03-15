@@ -42,7 +42,11 @@ async def analizar_zona(zona_data: dict, perfil_negocio: dict,
 
     try:
         limpio = respuesta.strip()
-        if limpio.startswith("```"): limpio = "\n".join(limpio.split("\n")[1:-1])
+        if limpio.startswith("```"):
+            lines = limpio.split("\n")[1:]
+            while lines and lines[-1].strip() in ("```", ""):
+                lines.pop()
+            limpio = "\n".join(lines)
         resultado = json.loads(limpio)
         # Traducir todos los campos de texto en una sola llamada LLM
         return await traducir_dict(resultado, _CAMPOS_TEXTO, session_id)
@@ -87,7 +91,7 @@ KEY DATA:
 - Average household income: {z.get("renta_media_hogar","N/A")} €/year
 - % foreigners: {z.get("pct_extranjeros","N/A")}
 - Tourism score: {z.get("score_turismo","N/A")}/100
-- Vacant premises: {z.get("pct_locales_vacios","N/A") and f"{z.get('pct_locales_vacios',0)*100:.0f}%"}
+- Vacant premises: {f"{z['pct_locales_vacios']*100:.0f}%" if z.get("pct_locales_vacios") is not None else "N/A"}
 - Business turnover rate: {z.get("tasa_rotacion_anual","N/A")}
 - Transport lines within 500m: {z.get("num_lineas_transporte","N/A")}
 - Available premises: {z.get("alquiler_mensual","N/A")} €/month · {z.get("m2","N/A")} m²

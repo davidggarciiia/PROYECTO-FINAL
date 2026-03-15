@@ -45,7 +45,10 @@ async def iniciar_cuestionario(session_id: str, validacion: dict) -> dict:
     try:
         limpio = respuesta.strip()
         if limpio.startswith("```"):
-            limpio = "\n".join(limpio.split("\n")[1:-1])
+            lines = limpio.split("\n")[1:]
+            while lines and lines[-1].strip() in ("```", ""):
+                lines.pop()
+            limpio = "\n".join(lines)
         resultado = json.loads(limpio)
         mensaje_en = resultado.get("mensaje", "How much can you pay in rent per month?")
         return {
@@ -97,7 +100,10 @@ async def procesar_respuesta(
     try:
         limpio = respuesta.strip()
         if limpio.startswith("```"):
-            limpio = "\n".join(limpio.split("\n")[1:-1])
+            lines = limpio.split("\n")[1:]
+            while lines and lines[-1].strip() in ("```", ""):
+                lines.pop()
+            limpio = "\n".join(lines)
         resultado = json.loads(limpio)
         mensaje_en = resultado.get("mensaje", "Can you give me more details?")
         return {
