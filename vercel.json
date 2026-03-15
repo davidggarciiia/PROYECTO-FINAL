@@ -1,0 +1,7 @@
+{
+  "buildCommand": "cd georetail/frontend && npm install && npm run build",
+  "outputDirectory": "georetail/frontend/.next",
+  "installCommand": "cd georetail/frontend && npm install",
+  "framework": "nextjs",
+  "regions": ["mad1"]
+}

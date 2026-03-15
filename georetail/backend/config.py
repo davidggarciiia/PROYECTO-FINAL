@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     SENTRY_DSN: str = ""
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    # En producción, añadir aquí los dominios reales:
+    # CORS_ORIGINS=["https://tu-app.vercel.app","https://tu-backend.up.railway.app"]
+    CORS_ALLOW_ALL_ORIGINS: bool = False  # Poner True en Railway para testing
     EXPORTS_DIR: str = "/data/exports"
     OPTUNA_DIR: str = "/data/optuna"
     PORT: int = 8000
