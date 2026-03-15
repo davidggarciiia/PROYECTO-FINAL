@@ -4,9 +4,10 @@ routers/geocoding_router.py — Geocodificación con caché y fallback.
 Cadena: Caché PG → Google Geocoding → Nominatim → OpenCage
 """
 from __future__ import annotations
-import hashlib, logging, os
+import hashlib, logging
 from typing import Optional
 import httpx
+from config import settings
 from db.conexion import get_db
 from db.redis_client import get_redis
 
@@ -71,7 +72,7 @@ async def _guardar_cache(norm: str, lat: float, lng: float,
 
 async def _llamar(prv: str, addr: str) -> Optional[tuple[float, float, str]]:
     if prv == "google":
-        key = os.environ.get("GOOGLE_MAPS_API_KEY","")
+        key = settings.GOOGLE_MAPS_API_KEY
         if not key: return None
         async with httpx.AsyncClient(timeout=_TIMEOUT) as c:
             r = await c.get("https://maps.googleapis.com/maps/api/geocode/json",
@@ -98,7 +99,7 @@ async def _llamar(prv: str, addr: str) -> Optional[tuple[float, float, str]]:
         return None
 
     if prv == "opencage":
-        key = os.environ.get("OPENCAGE_API_KEY","")
+        key = settings.OPENCAGE_API_KEY
         if not key: return None
         async with httpx.AsyncClient(timeout=_TIMEOUT) as c:
             r = await c.get("https://api.opencagedata.com/geocode/v1/json",

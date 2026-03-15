@@ -5,9 +5,10 @@ Cadena: Google Places (New API) → Foursquare → Yelp → Overpass OSM
 Los resultados se normalizan a un formato común antes de guardarse en negocios_activos.
 """
 from __future__ import annotations
-import logging, os
+import logging
 from typing import Optional
 import httpx
+from config import settings
 from db.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
@@ -73,7 +74,7 @@ class _RateLimitError(Exception): pass
 
 
 async def _buscar_google(lat, lng, sector, radio_m, limite) -> list[dict]:
-    key = os.environ.get("GOOGLE_MAPS_API_KEY","")
+    key = settings.GOOGLE_MAPS_API_KEY
     if not key: raise Exception("Sin GOOGLE_MAPS_API_KEY")
 
     tipos = _TIPOS_GOOGLE.get(sector, ["store"])
@@ -131,7 +132,7 @@ def _parsear_horario_google(h: dict) -> Optional[dict]:
 
 
 async def _buscar_foursquare(lat, lng, sector, radio_m, limite) -> list[dict]:
-    key = os.environ.get("FOURSQUARE_API_KEY","")
+    key = settings.FOURSQUARE_API_KEY
     if not key: raise Exception("Sin FOURSQUARE_API_KEY")
 
     cat = _CATEGORIAS_FSQ.get(sector,"13000")
@@ -156,7 +157,7 @@ async def _buscar_foursquare(lat, lng, sector, radio_m, limite) -> list[dict]:
 
 
 async def _buscar_yelp(lat, lng, sector, radio_m, limite) -> list[dict]:
-    key = os.environ.get("YELP_API_KEY","")
+    key = settings.YELP_API_KEY
     if not key: raise Exception("Sin YELP_API_KEY")
 
     termino = _TERMINOS_YELP.get(sector,"retail")

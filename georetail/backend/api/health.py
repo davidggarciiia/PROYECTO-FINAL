@@ -26,7 +26,15 @@ from datetime import datetime, timezone
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from schemas.models import ServiceStatus, EstadoServicio
+from schemas.models import EstadoServicio
+
+
+class ServiceStatus(BaseModel):
+    """Estado de un servicio individual para el health check."""
+    name:       str
+    status:     EstadoServicio
+    latency_ms: Optional[float] = None
+    message:    Optional[str]   = None
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["health"])
@@ -164,7 +172,7 @@ async def _check_llm() -> ServiceStatus:
     """
     from db.redis_client import get_redis
 
-    proveedores_fallback = ["claude", "openai", "groq", "gemini", "ollama"]
+    proveedores_fallback = ["anthropic", "openai", "deepseek", "kimi", "gemini"]
 
     try:
         t0 = time.perf_counter()
@@ -172,9 +180,8 @@ async def _check_llm() -> ServiceStatus:
 
         # Verificar proveedor activo
         proveedor_activo = await r.get("llm:proveedor_activo")
-        proveedor_activo = (
-            proveedor_activo.decode() if proveedor_activo else "claude"
-        )
+        # El cliente Redis usa decode_responses=True → los valores ya son strings
+        proveedor_activo = proveedor_activo if proveedor_activo else "anthropic"
 
         # Verificar si todos los proveedores están marcados como exhausted
         exhausted = []

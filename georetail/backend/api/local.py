@@ -188,7 +188,8 @@ async def local_detalle(body: DetalleRequest) -> DetalleResponse:
         # Fuente: Claude Sonnet (llm_router) en tiempo real
         # Prompt en `agente/prompts/analisis_zona.txt`
         # Incluye datos de zona, scores y perfil del usuario para personalizar
-        generar_analisis_zona(zona=zona, perfil=sesion.get("perfil", {})),
+        generar_analisis_zona(zona=zona, perfil=sesion.get("perfil", {}),
+                              session_id=body.session_id),
 
         # Fuente: `requisitos_legales_sector` + `restricciones_geograficas_sector`
         # Verifica con PostGIS si la zona supera el máximo de establecimientos

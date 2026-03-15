@@ -38,6 +38,18 @@ class ModeloLegal(str, Enum):
     AUTORIZACION_PREVIA    = "autorizacion_previa"
 
 
+class AccionRefinamiento(str, Enum):
+    RESPUESTA       = "respuesta"        # solo texto, sin cambios en el mapa
+    FILTRO_APLICADO = "filtro_aplicado"  # zonas actualizadas con nuevo filtro
+    NUEVA_BUSQUEDA  = "nueva_busqueda"   # nueva búsqueda completa
+
+
+class EstadoServicio(str, Enum):
+    OK       = "ok"
+    DEGRADED = "degraded"
+    DOWN     = "down"
+
+
 # ── Zona — resumen (resultado de búsqueda) ────────────────────────────────────
 
 class ZonaResumen(BaseModel):
