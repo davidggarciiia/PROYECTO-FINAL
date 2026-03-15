@@ -7,6 +7,7 @@ Frecuencias (ver arquitectura.md):
   precios:             Semanal lunes 05:00
   scores:              Semanal martes 06:00
   demografia:          Mensual día 1, 07:00
+  ine_idescat:         Mensual día 1, 09:00  ← INE + Idescat + variables BCN faltantes
   registre_merc:       Mensual día 1, 08:00
   params_fin:          Semanal domingo 03:00
   mercado_locales_alq: Cada 3 días, 02:00
@@ -27,8 +28,9 @@ def init_scheduler() -> None:
     _scheduler.add_job(_run_aforaments, CronTrigger(hour=4,  minute=0),               id="aforaments",  replace_existing=True)
     _scheduler.add_job(_run_precios,    CronTrigger(day_of_week="mon", hour=5),        id="precios",     replace_existing=True)
     _scheduler.add_job(_run_scores,     CronTrigger(day_of_week="tue", hour=6),        id="scores",      replace_existing=True)
-    _scheduler.add_job(_run_demografia, CronTrigger(day=1, hour=7),                    id="demografia",  replace_existing=True)
-    _scheduler.add_job(_run_registre,   CronTrigger(day=1, hour=8),                    id="registre",    replace_existing=True)
+    _scheduler.add_job(_run_demografia,   CronTrigger(day=1, hour=7),                  id="demografia",   replace_existing=True)
+    _scheduler.add_job(_run_ine_idescat,  CronTrigger(day=1, hour=9),                  id="ine_idescat",  replace_existing=True)
+    _scheduler.add_job(_run_registre,     CronTrigger(day=1, hour=8),                  id="registre",     replace_existing=True)
     _scheduler.add_job(_run_params_fin, CronTrigger(day_of_week="sun", hour=3),        id="params_fin",  replace_existing=True)
 
     # ── Mercado inmobiliario (multi-portal) ───────────────────────────────────
@@ -80,6 +82,13 @@ async def _run_demografia():
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline demografia error: %s", e)
+
+async def _run_ine_idescat():
+    try:
+        from pipelines.ine_idescat import ejecutar
+        await ejecutar()
+    except Exception as e:
+        logger.error("Pipeline ine_idescat error: %s", e)
 
 async def _run_registre():
     try:

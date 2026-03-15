@@ -251,6 +251,8 @@ async def _run(nombre: str) -> dict:
             from pipelines.precios import ejecutar
         elif nombre == "transporte":
             from pipelines.transporte import ejecutar
+        elif nombre == "ine_idescat":
+            from pipelines.ine_idescat import ejecutar
         else:
             raise ValueError(f"Pipeline desconocido: {nombre}")
 
@@ -302,8 +304,12 @@ async def main() -> None:
         await _run("precios")
 
         # ── 5. Transporte (opcional — requiere TMB_APP_ID) ─────────────────
-        logger.info("\n[5/5] Transporte público (TMB)")
+        logger.info("\n[5/6] Transporte público (TMB)")
         await _run("transporte")
+
+        # ── 6. INE + Idescat + variables BCN complementarias ────────────────────
+        logger.info("\n[6/6] INE + Idescat + variables complementarias")
+        await _run("ine_idescat")
 
         # ── Resumen ────────────────────────────────────────────────────────
         async with get_db() as conn:
