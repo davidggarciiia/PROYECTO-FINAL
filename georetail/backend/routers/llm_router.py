@@ -117,10 +117,14 @@ class _SE(Exception): pass   # Server Error → exhausted 15 minutos
 
 def _ant() -> anthropic.AsyncAnthropic:
     # API key: ANTHROPIC_API_KEY en el .env
-    # Registro: https://console.anthropic.com
+    # Si la key empieza por sk-ant-si- es un token de sesión que requiere Bearer auth
     global _ANT
     if not _ANT:
-        _ANT = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        key = settings.ANTHROPIC_API_KEY
+        if key.startswith("sk-ant-si-"):
+            _ANT = anthropic.AsyncAnthropic(auth_token=key)
+        else:
+            _ANT = anthropic.AsyncAnthropic(api_key=key)
     return _ANT
 
 def _oai() -> AsyncOpenAI:

@@ -52,6 +52,33 @@ class EstadoServicio(str, Enum):
 
 # ── Zona — resumen (resultado de búsqueda) ────────────────────────────────────
 
+class LocalListItem(BaseModel):
+    """Item en el listado de locales (vista lista con filtros)."""
+    zona_id:    str
+    nombre:     str
+    direccion:  Optional[str] = None
+    barrio:     str
+    distrito:   str
+    score_global: float
+    color:      ColorZona
+    alquiler_mensual: Optional[float] = None
+    m2:         Optional[float] = None
+    disponible: Optional[bool] = None
+    probabilidad_supervivencia_3a: float = 0.5
+    resumen_ia: Optional[str] = ""
+
+
+class FiltrosDisponibles(BaseModel):
+    """Rangos reales de los datos para construir sliders en el frontend."""
+    distritos:    list[str] = Field(default_factory=list)
+    score_min:    float = 0.0
+    score_max:    float = 100.0
+    alquiler_min: float = 0.0
+    alquiler_max: float = 0.0
+    m2_min:       int = 0
+    m2_max:       int = 0
+
+
 class ZonaResumen(BaseModel):
     """Una zona en el listado de resultados del mapa."""
     zona_id:    str

@@ -3,8 +3,37 @@ from __future__ import annotations
 import logging
 from typing import Optional
 from db.conexion import get_db
+from db.sesiones import get_sesion
 
 logger = logging.getLogger(__name__)
+
+
+async def get_zonas_sesion(session_id: str, sector: str) -> list[dict]:
+    """
+    Devuelve todas las zonas de la última búsqueda de una sesión.
+    Los datos se leen directamente de `zonas_actuales` en la sesión Redis/PG.
+    """
+    sesion = await get_sesion(session_id)
+    if not sesion:
+        return []
+    zonas = sesion.get("zonas_actuales", [])
+    # Normalizar nombres de campos para compatibilidad con LocalListItem
+    result = []
+    for z in zonas:
+        result.append({
+            "zona_id":   z.get("zona_id", ""),
+            "nombre":    z.get("nombre", ""),
+            "direccion": z.get("direccion") or z.get("calle"),
+            "barrio":    z.get("barrio", ""),
+            "distrito":  z.get("distrito", ""),
+            "score_global": float(z.get("score_global", 50)),
+            "alquiler_mensual": z.get("alquiler_estimado") or z.get("alquiler_mensual"),
+            "m2":        z.get("m2_disponibles") or z.get("m2"),
+            "disponible": z.get("disponible"),
+            "probabilidad_supervivencia_3a": float(z.get("probabilidad_supervivencia_3a", 0.5)),
+            "resumen_ia": z.get("resumen_ia", ""),
+        })
+    return result
 
 
 async def filtrar_zonas_candidatas(filtros: dict) -> list[dict]:
