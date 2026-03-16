@@ -119,8 +119,10 @@ def _score_manual(datos: dict, sector: dict) -> dict:
     s_demo = min(100.0, max(0.0, (renta - 17000) / 430.0))
 
     # COMPETENCIA — score_saturacion invertido (menos saturación = mejor)
-    saturacion = datos.get("score_saturacion") or 50
-    s_comp = 100.0 - saturacion
+    # Nota: se usa `is None` para respetar saturacion=0 (caso sin competencia)
+    sat_raw = datos.get("score_saturacion")
+    saturacion = 50 if sat_raw is None else sat_raw
+    s_comp = max(0.0, min(100.0, 100.0 - saturacion))
 
     # PRECIO ALQUILER — inversamente proporcional al precio (más barato = mejor)
     # Rango BCN: 8-45 €/m². Score 100 = 8€/m², Score 0 = 45€/m²
@@ -136,7 +138,7 @@ def _score_manual(datos: dict, sector: dict) -> dict:
     s_seg = min(100.0, max(0.0, (120.0 - incidencias) / 1.15))
 
     # TURISMO
-    s_turismo = float(datos.get("score_turismo") or 40.0)
+    s_turismo = min(100.0, max(0.0, float(datos.get("score_turismo") or 40.0)))
 
     # ENTORNO COMERCIAL — % locales vacíos invertido + tasa de rotación
     vacios = datos.get("pct_locales_vacios") or 0.15
@@ -230,7 +232,20 @@ def _calcular_shap(X: np.ndarray) -> Optional[dict]:
 
 
 def _score_neutro() -> dict:
-    return {"score_global": 50.0, "modelo_version": "fallback"}
+    return {
+        "score_global":               50.0,
+        "score_flujo_peatonal":       50.0,
+        "score_demografia":           50.0,
+        "score_competencia":          50.0,
+        "score_precio_alquiler":      50.0,
+        "score_transporte":           50.0,
+        "score_seguridad":            50.0,
+        "score_turismo":              50.0,
+        "score_entorno_comercial":    50.0,
+        "probabilidad_supervivencia": None,
+        "shap_values":                None,
+        "modelo_version":             "fallback",
+    }
 
 
 async def _get_datos_sector(sector: str) -> dict:
