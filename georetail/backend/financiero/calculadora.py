@@ -99,8 +99,9 @@ async def calcular_proyeccion(params: dict) -> dict:
     # ing_be = cf_mes / (1 - coste_mercancia_pct)
     # clientes_be = ing_be / (ticket × dias)
     ing_be = cf_mes / max(0.01, 1 - p["coste_mercancia_pct"])
-    clientes_be_raw = ing_be / (p["ticket_medio"] * p["dias_apertura_mes"])
-    breakeven_clientes = max(1, math.ceil(clientes_be_raw))
+    denominador_be = (p["ticket_medio"] or 0) * (p["dias_apertura_mes"] or 0)
+    clientes_be_raw = ing_be / denominador_be if denominador_be > 0 else float("inf")
+    breakeven_clientes = max(1, math.ceil(clientes_be_raw)) if math.isfinite(clientes_be_raw) else 1
 
     return {
         "inversion_total":              round(inversion),
