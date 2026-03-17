@@ -57,8 +57,8 @@ _GEMINI: Optional[google_genai.Client]      = None   # cliente Gemini (Google)
 #               Último Claude Sonnet. Mejor balance calidad/precio de Anthropic.
 #               Contexto: 200k tokens.
 #
-#   openai    → gpt-4o
-#               Modelo general de OpenAI. Referencia de calidad en el mercado.
+#   openai    → gpt-4o-mini
+#               Modelo ligero de OpenAI. 16x más barato que GPT-4o, ideal para pruebas.
 #               Contexto: 128k tokens.
 #
 #   deepseek  → deepseek-chat   (alias de DeepSeek-V3.2)
@@ -78,7 +78,7 @@ _GEMINI: Optional[google_genai.Client]      = None   # cliente Gemini (Google)
 #               NOTA: gemini-1.5-flash está deprecated desde nov 2025.
 _MODELS = {
     "anthropic": "claude-sonnet-4-6",
-    "openai":    "gpt-4o",
+    "openai":    "gpt-4o-mini",
     "deepseek":  "deepseek-chat",
     "kimi":      "kimi-k2.5",
     "gemini":    "gemini-2.0-flash",
@@ -90,7 +90,7 @@ _MODELS = {
 # Actualizar si los proveedores cambian precios.
 _COSTES = {
     "anthropic": (3.0,   15.0),   # Anthropic Sonnet 4.6
-    "openai":    (2.5,   10.0),   # GPT-4o
+    "openai":    (0.15,   0.60),   # GPT-4o-mini
     "deepseek":  (0.27,  1.10),   # DeepSeek-V3.2 (cache miss)
     "kimi":      (0.15,  0.60),   # Kimi K2.5
     "gemini":    (0.075, 0.30),   # Gemini 2.0 Flash

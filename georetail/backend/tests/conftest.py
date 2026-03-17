@@ -1,0 +1,101 @@
+"""
+tests/conftest.py — Configuración global de pytest para GeoRetail.
+
+Estrategia de aislamiento:
+  Los módulos del proyecto tienen imports a nivel de módulo de dependencias
+  pesadas (asyncpg, anthropic, openai, google-genai, pydantic-settings, etc.)
+  que no están disponibles en el entorno de CI/CD sin base de datos.
+
+  Para poder testear las FUNCIONES PURAS (sin I/O) inyectamos stubs en
+  sys.modules ANTES de que los módulos productivos se importen.
+
+  Esto es equivalente a un "shim" de dependencias — práctica estándar
+  en proyectos que mezclan lógica de negocio con infraestructura.
+"""
+from __future__ import annotations
+import sys
+import os
+from unittest.mock import MagicMock, AsyncMock
+from contextlib import asynccontextmanager
+
+# ─── Añadir backend al path ───────────────────────────────────────────────────
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+# ─── Stub de pydantic_settings ───────────────────────────────────────────────
+
+class _FakeBaseSettings:
+    model_config = {}
+    def __init__(self, **_):
+        pass
+
+_pydantic_settings = MagicMock()
+_pydantic_settings.BaseSettings = _FakeBaseSettings
+_pydantic_settings.SettingsConfigDict = dict
+sys.modules.setdefault("pydantic_settings", _pydantic_settings)
+
+
+# ─── Stubs de drivers de BD ───────────────────────────────────────────────────
+
+sys.modules.setdefault("asyncpg",       MagicMock())
+sys.modules.setdefault("redis",         MagicMock())
+sys.modules.setdefault("redis.asyncio", MagicMock())
+
+
+# ─── Stubs de LLM providers ──────────────────────────────────────────────────
+
+sys.modules.setdefault("anthropic",           MagicMock())
+sys.modules.setdefault("openai",              MagicMock())
+sys.modules.setdefault("google",              MagicMock())
+sys.modules.setdefault("google.genai",        MagicMock())
+
+
+# ─── Stubs de config y DB ─────────────────────────────────────────────────────
+# Stub de config.py para que get_settings() devuelva un objeto con atributos
+
+class _FakeSettings:
+    database_url   = "postgresql://test:test@localhost/test"
+    redis_url      = "redis://localhost:6379"
+    anthropic_api_key = "sk-ant-test"
+    openai_api_key    = "sk-test"
+    models_dir        = "/tmp/models"
+    debug             = False
+
+_fake_config = MagicMock()
+_fake_config.get_settings = lambda: _FakeSettings()
+_fake_config.settings     = _FakeSettings()
+sys.modules.setdefault("config", _fake_config)
+
+
+# ─── Stub de db.conexion ──────────────────────────────────────────────────────
+# get_db es un context manager async; los tests de funciones puras nunca lo llaman.
+
+@asynccontextmanager
+async def _fake_get_db():
+    yield MagicMock()
+
+_fake_conexion = MagicMock()
+_fake_conexion.get_db = _fake_get_db
+
+_fake_db = MagicMock()
+_fake_db.conexion = _fake_conexion
+sys.modules.setdefault("db",          _fake_db)
+sys.modules.setdefault("db.conexion", _fake_conexion)
+
+
+# ─── Stub de routers.llm_router ──────────────────────────────────────────────
+
+_fake_llm_router = MagicMock()
+_fake_llm_router.completar = AsyncMock(return_value='{"ok": true}')
+
+_fake_routers = MagicMock()
+_fake_routers.llm_router = _fake_llm_router
+sys.modules.setdefault("routers",            _fake_routers)
+sys.modules.setdefault("routers.llm_router", _fake_llm_router)
+
+
+# ─── Stub de db.financiero ────────────────────────────────────────────────────
+
+_fake_db_financiero = MagicMock()
+_fake_db_financiero.get_benchmarks_sector = AsyncMock(return_value={})
+sys.modules.setdefault("db.financiero", _fake_db_financiero)
