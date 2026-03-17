@@ -144,7 +144,7 @@ def _clientes_flujo(sector, vz, comp, bench) -> tuple[PE,PE]:
 
 
 def _clientes_cita(m2, bench) -> tuple[PE,PE]:
-    e_m2 = bench.get("empleados_por_m2",15.0)
+    e_m2 = bench.get("empleados_por_m2", 15.0) or 15.0  # evita división por cero
     puestos = max(1, math.floor(m2/e_m2))
     cmin = bench.get("clientes_dia_por_puesto_min",2.0)
     cmax = bench.get("clientes_dia_por_puesto_max",5.0)
