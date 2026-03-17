@@ -12,6 +12,8 @@ Frecuencias (ver arquitectura.md):
   mercado_locales_alq: Cada 3 días, 02:00
   mercado_locales_vta: Semanal miércoles 02:30
   mercado_viviendas:   Cada 14 días, 01:00
+  transporte:          Semanal sábado 01:00
+  purgar_portales:     Mensual día 15, 00:00
 """
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -35,6 +37,12 @@ def init_scheduler() -> None:
     _scheduler.add_job(_run_mercado_locales_alq, CronTrigger(day="*/3", hour=2, minute=0),          id="mercado_locales_alq", replace_existing=True)
     _scheduler.add_job(_run_mercado_locales_vta, CronTrigger(day_of_week="wed", hour=2, minute=30), id="mercado_locales_vta", replace_existing=True)
     _scheduler.add_job(_run_mercado_viviendas,   CronTrigger(day="*/14", hour=1, minute=0),         id="mercado_viviendas",   replace_existing=True)
+
+    # ── Transporte público (TMB) ───────────────────────────────────────────────
+    _scheduler.add_job(_run_transporte, CronTrigger(day_of_week="sat", hour=1, minute=0), id="transporte", replace_existing=True)
+
+    # ── Mantenimiento BD ──────────────────────────────────────────────────────
+    _scheduler.add_job(_run_purgar_portales, CronTrigger(day=15, hour=0, minute=0), id="purgar_portales", replace_existing=True)
 
     _scheduler.start()
     logger.info("APScheduler iniciado con %d jobs", len(_scheduler.get_jobs()))
@@ -121,3 +129,19 @@ async def _run_mercado_viviendas():
         logger.info("Mercado viviendas — %s", stats)
     except Exception as e:
         logger.error("Pipeline mercado viviendas error: %s", e)
+
+async def _run_transporte():
+    try:
+        from pipelines.transporte import ejecutar
+        await ejecutar()
+    except Exception as e:
+        logger.error("Pipeline transporte error: %s", e)
+
+async def _run_purgar_portales():
+    try:
+        from db.conexion import get_db
+        async with get_db() as conn:
+            deleted = await conn.fetchval("SELECT purgar_portales_antiguos()")
+            logger.info("Portales purgados: %d filas eliminadas", deleted or 0)
+    except Exception as e:
+        logger.error("Mantenimiento purgar_portales error: %s", e)

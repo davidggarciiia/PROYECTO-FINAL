@@ -19,7 +19,7 @@ rankeadas por score de viabilidad + análisis financiero automático.
 | Capa | Tecnología |
 |---|---|
 | Frontend | Next.js + TypeScript + CSS Modules |
-| Mapa | Mapbox GL JS |
+| Mapa | Leaflet + OpenStreetMap (sin token, gratuito) |
 | Backend | FastAPI + Python 3.11 |
 | Cola asíncrona | Celery + Redis |
 | Base de datos | PostgreSQL 15 + PostGIS + pgvector |
@@ -89,28 +89,45 @@ backend/
 ├── exportar/
 │   └── generador.py                   ← WeasyPrint + Jinja2, mapa estático Mapbox
 └── pipelines/
-    ├── scheduler.py                   ← APScheduler, 7 jobs
+    ├── scheduler.py                   ← APScheduler, 12 jobs
     ├── aforaments.py                  ← flujo peatonal CKAN (ST_DWithin + ponderación distancia)
     ├── resenas.py                     ← Google Places + Foursquare + NLP
     ├── precios.py                     ← Idealista + Open Data BCN
     ├── scores.py                      ← recálculo semanal XGBoost
     ├── demografia.py                  ← padró + renda BCN
     ├── registre_mercantil.py          ← training data XGBoost
-    └── parametros_financieros.py      ← pre-cálculo semanal financiero
+    ├── parametros_financieros.py      ← pre-cálculo semanal financiero
+    ├── transporte.py                  ← líneas/paradas TMB (semanal sábado 01:00)
+    └── mercado_inmobiliario.py        ← scraping multi-portal locales/viviendas
 ```
 
-### ❌ Pendiente de escribir
+### ✅ Archivos adicionales implementados
 
 ```
 backend/
 ├── db/migraciones/
-│   └── 001_schema_inicial.sql         ← esquema completo de BD
+│   ├── 001_schema_inicial.sql         ← esquema completo de BD (32 tablas)
+│   └── 004_inmuebles_portales.sql     ← tabla multi-portal + vista v_mercado_zona
 ├── requirements.txt
 ├── Dockerfile
-└── .env.example
+├── pytest.ini
+├── tests/                             ← suite completa (191 tests, 7 módulos)
+│   ├── conftest.py                    ← stubs asyncpg/openai/anthropic/google para CI
+│   ├── test_calculadora.py
+│   ├── test_estimador.py
+│   ├── test_scorer.py
+│   ├── test_motor.py
+│   ├── test_features.py
+│   └── test_agente.py
+└── .env.example                       ← en raíz del proyecto (georetail/.env.example)
 
-frontend/                              ← Next.js completo (aún no empezado)
-docker-compose.yml
+frontend/                              ← Next.js completo con Leaflet + OpenStreetMap
+├── src/app/page.tsx                   ← página principal
+├── src/components/                    ← MapView, SearchBox, DetailPanel, FinancialPanel,
+│                                         ZoneList, ScoreBars (con CSS Modules)
+└── src/lib/                           ← api.ts, types.ts
+
+docker-compose.yml                     ← postgres + redis + backend + worker + frontend
 ```
 
 ---
@@ -283,6 +300,7 @@ docker-compose up -d postgres redis
 
 # 2. Migrar BD
 cd backend && psql $DATABASE_URL < db/migraciones/001_schema_inicial.sql
+cd backend && psql $DATABASE_URL < db/migraciones/004_inmuebles_portales.sql
 
 # 3. Backend
 cd backend && uvicorn main:app --reload --port 8000
