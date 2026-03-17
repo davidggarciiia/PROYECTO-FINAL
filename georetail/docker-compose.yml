@@ -51,8 +51,10 @@ services:
     container_name: georetail_backend
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/georetail
-      REDIS_URL:    redis://redis:6379
+      DATABASE_URL:            postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/georetail
+      REDIS_URL:               redis://redis:6379
+      CELERY_BROKER_URL:       redis://redis:6379/1
+      CELERY_RESULT_BACKEND:   redis://redis:6379/2
     ports:
       - "8000:8000"
     volumes:
@@ -74,8 +76,10 @@ services:
     container_name: georetail_worker
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/georetail
-      REDIS_URL:    redis://redis:6379
+      DATABASE_URL:            postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/georetail
+      REDIS_URL:               redis://redis:6379
+      CELERY_BROKER_URL:       redis://redis:6379/1
+      CELERY_RESULT_BACKEND:   redis://redis:6379/2
     volumes:
       - ./backend:/app
       - models_data:/data/models
