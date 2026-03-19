@@ -176,6 +176,19 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
     return result
 
 
+async def get_zonas_sesion(session_id: str, sector: str) -> list[dict]:
+    """Devuelve las zonas de la última búsqueda de esta sesión."""
+    from db.sesiones import get_sesion
+    sesion = await get_sesion(session_id)
+    if not sesion:
+        return []
+    zonas = list(sesion.get("zonas_actuales", []))
+    for z in zonas:
+        if "probabilidad_supervivencia_3a" not in z:
+            z["probabilidad_supervivencia_3a"] = z.pop("probabilidad_supervivencia", None) or 0.5
+    return zonas
+
+
 async def get_zonas_lista(filtros: dict, sector: str,
                           pagina: int = 1, por_pagina: int = 20) -> dict:
     """Vista lista con filtros, paginación y filtros disponibles."""
