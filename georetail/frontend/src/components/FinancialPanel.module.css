@@ -1,57 +1,214 @@
-.container { padding: 16px 20px; display: flex; flex-direction: column; gap: 20px; }
-.loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px; color: var(--text-muted); font-size: 13px; }
-.empty { padding: 40px 20px; text-align: center; color: var(--text-muted); }
-
-/* KPIs */
-.kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-.kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; }
-.kpiVal { display: block; font-size: 16px; font-weight: 700; }
-.kpiLabel { font-size: 11px; color: var(--text-muted); margin-top: 2px; display: block; }
-
-/* Alerta alquiler */
-.alertaAlquiler {
-  background: rgba(239,68,68,0.08);
-  border: 1px solid rgba(239,68,68,0.25);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  font-size: 13px;
-  color: var(--red);
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
-/* Gráfico */
-.chart { margin-top: 8px; }
-.sectionTitle { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px; }
+.loadingState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
 
-/* Sliders */
-.sliders { display: flex; flex-direction: column; gap: 12px; }
-.slider {}
-.sliderHeader { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
-.sliderVal { font-weight: 600; color: var(--accent); }
-.range {
-  width: 100%;
-  height: 4px;
-  -webkit-appearance: none;
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ── KPIs ── */
+.kpiGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
   background: var(--border);
-  border-radius: 2px;
-  outline: none;
+  border-bottom: 1px solid var(--border);
 }
-.range::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--accent);
-  cursor: pointer;
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 16px;
+  background: var(--surface);
 }
-.sliderFuente { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.kpiVal {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+.kpiLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.kpiSub {
+  font-size: 10px;
+  color: var(--text-subtle);
+}
 
-/* Breakeven */
-.breakeven {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 12px;
-  font-size: 13px;
+/* ── Rent alert ── */
+.rentAlert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--yellow);
+  background: var(--yellow-dim);
+  border-bottom: 1px solid var(--yellow-border);
+  line-height: 1.5;
+}
+
+/* ── Sections ── */
+.section {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
   color: var(--text-muted);
 }
-.breakeven strong { color: var(--text); }
+.breakEvenTag {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--green);
+  background: var(--green-dim);
+  border: 1px solid var(--green-border);
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+
+/* ── Chart ── */
+.chartWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.chartLegend {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+}
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.legendDot {
+  width: 8px; height: 3px;
+  border-radius: 2px;
+}
+
+/* ── Breakeven card ── */
+.breakevenCard {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+}
+.breakevenLeft {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+}
+.breakevenNum {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1;
+}
+.breakevenLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.breakevenRight {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-left: 1px solid var(--border);
+  padding-left: 16px;
+}
+.breakevenRight strong { color: var(--text); }
+
+/* ── Sliders ── */
+.sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.slider { display: flex; flex-direction: column; gap: 6px; }
+
+.sliderTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.sliderLabel { font-size: 12px; color: var(--text-muted); }
+.sliderVal { font-size: 13px; font-weight: 700; color: var(--text); }
+
+.sliderTrack {
+  position: relative;
+  height: 4px;
+  background: var(--surface-3);
+  border-radius: 4px;
+}
+.sliderProgress {
+  position: absolute;
+  top: 0; left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-light));
+  border-radius: 4px;
+  pointer-events: none;
+}
+.sliderInput {
+  position: absolute;
+  top: 50%; left: 0;
+  transform: translateY(-50%);
+  width: 100%; height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+}
+.sliderMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: var(--text-subtle);
+}
+.sliderFuente { color: var(--text-subtle); font-style: italic; }
