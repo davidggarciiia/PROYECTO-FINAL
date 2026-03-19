@@ -31,20 +31,6 @@
   font-size: 11px; color: var(--text-muted);
 }
 
-/* Override leaflet tooltip */
-:global(.leaflet-tooltip) {
-  background: rgba(13,18,32,0.95) !important;
-  border: 1px solid rgba(255,255,255,0.1) !important;
-  border-radius: 10px !important;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
-  padding: 10px 12px !important;
-  color: #F1F5F9 !important;
-  backdrop-filter: blur(12px);
-  font-size: 13px;
-}
-:global(.leaflet-tooltip-top::before) {
-  border-top-color: rgba(255,255,255,0.1) !important;
-}
 
 /* ── Legend ── */
 .legend {
