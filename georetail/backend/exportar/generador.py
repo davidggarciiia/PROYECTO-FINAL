@@ -24,6 +24,17 @@ from db.zonas import get_zona_completa
 logger = logging.getLogger(__name__)
 
 
+async def encolar_generacion_pdf(
+    pdf_id: str,
+    session_id: str,
+    zona_ids: list[str],
+    opciones: dict,
+) -> None:
+    """Encola la generación del PDF en Celery."""
+    from workers.tasks import generar_pdf_task
+    generar_pdf_task.delay(pdf_id, session_id, zona_ids, opciones)
+
+
 async def generar(pdf_id: str, session_id: str, zona_ids: list[str], opciones: dict) -> str:
     """
     Genera el PDF completo y lo guarda en disco.

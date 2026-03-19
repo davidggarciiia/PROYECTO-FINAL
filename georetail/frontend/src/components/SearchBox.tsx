@@ -16,9 +16,6 @@ export default function SearchBox({ onResults, sessionId, externalQuery, onQuery
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [pregunta, setPregunta] = useState<string | null>(null);
-  const [progreso, setProgreso] = useState(0);
-  const [currentSessionId, setCurrentSessionId] = useState(sessionId);
   const [successCount, setSuccessCount] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -30,113 +27,73 @@ export default function SearchBox({ onResults, sessionId, externalQuery, onQuery
     }
   }, [externalQuery, onQueryUsed]);
 
-  const buscar = useCallback(async (descripcion: string, sid?: string) => {
-    if (!descripcion.trim() && !sid) return;
+  const buscar = useCallback(async (descripcion: string) => {
+    if (!descripcion.trim()) return;
     setLoading(true);
     setError("");
     setSuccessCount(null);
     try {
       const res = await api.buscar({
         descripcion,
-        session_id: sid || currentSessionId || undefined,
+        session_id: sessionId || undefined,
       });
-      setCurrentSessionId(res.session_id);
-      setProgreso(res.progreso_pct ?? 0);
 
-      if (res.estado === "cuestionario" && res.pregunta) {
-        setPregunta(res.pregunta);
+      const zonas = res.zonas ?? [];
+
+      if (res.estado === "ok" && zonas.length > 0) {
+        // Mapear ZonaResumen → ZonaPreview
+        const zonasPreview = zonas.map(z => ({
+          zona_id: z.zona_id,
+          nombre: z.nombre,
+          barrio: z.barrio,
+          distrito: z.distrito,
+          lat: z.lat,
+          lng: z.lng,
+          score_global: z.score_global,
+          alquiler_mensual: z.alquiler_estimado,
+          m2: z.m2_disponibles,
+          color: z.color,
+        }));
+        setSuccessCount(zonasPreview.length);
+        onResults(zonasPreview, res.session_id);
         setInput("");
-      } else if (res.estado === "ok" && res.zonas.length > 0) {
-        setPregunta(null);
-        setSuccessCount(res.zonas.length);
-        onResults(res.zonas, res.session_id);
-        setInput("");
-        setProgreso(0);
+      } else if (res.estado === "cuestionario") {
+        setError("Describe tu negocio con más detalle: tipo de local, público objetivo y presupuesto aproximado.");
       } else if (res.estado === "error_tipo_negocio") {
-        setError(res.mensaje || "No puedo identificar el tipo de negocio. Sé más específico.");
+        setError(res.motivo || "No puedo identificar el tipo de negocio. Sé más específico.");
       } else if (res.estado === "inviable_legal") {
-        setError(res.mensaje || "Este tipo de negocio tiene restricciones legales en Barcelona.");
+        setError(res.motivo || "Este tipo de negocio tiene restricciones legales en Barcelona.");
       } else {
         setError("No se encontraron zonas. Intenta con otra descripción.");
       }
-    } catch {
-      setError("Error al conectar con el servidor.");
-    } finally {
-      setLoading(false);
-    }
-  }, [currentSessionId, onResults]);
-
-  const responderCuestionario = useCallback(async (respuesta: string) => {
-    if (!respuesta.trim() || !currentSessionId) return;
-    setLoading(true);
-    setError("");
-    try {
-      const res = await api.cuestionario({ session_id: currentSessionId, respuesta });
-      setProgreso(res.progreso_pct ?? 0);
-
-      if (res.trigger_busqueda) {
-        setPregunta(null);
-        await buscar("", currentSessionId);
-      } else if (res.pregunta) {
-        setPregunta(res.pregunta);
-        setInput("");
-      } else if (res.estado === "ok") {
-        setPregunta(null);
-        await buscar("", currentSessionId);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (msg.includes("422")) {
+        setError("La descripción es demasiado corta. Añade más detalles sobre tu negocio.");
+      } else {
+        setError("Error al conectar con el servidor.");
       }
-    } catch {
-      setError("Error al procesar respuesta.");
     } finally {
       setLoading(false);
     }
-  }, [currentSessionId, buscar]);
+  }, [sessionId, onResults]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pregunta) responderCuestionario(input);
-    else buscar(input);
+    buscar(input);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e as unknown as React.FormEvent);
+      buscar(input);
     }
   };
 
-  const progresoVisible = progreso > 0 && progreso < 100;
-
   return (
     <div className={styles.container}>
-      {/* Progress bar */}
-      <div className={`${styles.progressTrack} ${progresoVisible ? styles.progressVisible : ""}`}>
-        <div
-          className={styles.progressFill}
-          style={{ width: `${progresoVisible ? progreso : loading ? 40 : 0}%` }}
-        />
-      </div>
-
-      {/* Cuestionario bubble */}
-      {pregunta && (
-        <div className={styles.bubble}>
-          <div className={styles.bubbleHeader}>
-            <div className={styles.bubbleIcon}>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.5"/>
-                <path d="M6 3.5v3M6 8h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </div>
-            <span className={styles.bubbleLabel}>Pregunta</span>
-            {progreso > 0 && (
-              <span className={styles.progresoLabel}>{progreso}%</span>
-            )}
-          </div>
-          <p className={styles.bubbleText}>{pregunta}</p>
-        </div>
-      )}
-
       {/* Success hint */}
-      {successCount !== null && !pregunta && (
+      {successCount !== null && (
         <div className={styles.successHint}>
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <circle cx="6" cy="6" r="5" fill="var(--green)" opacity="0.2"/>
@@ -149,7 +106,7 @@ export default function SearchBox({ onResults, sessionId, externalQuery, onQuery
       {/* Input form */}
       <form onSubmit={handleSubmit} className={styles.form}>
         <div className={styles.inputWrapper}>
-          {!pregunta && !loading && (
+          {!loading && (
             <div className={styles.searchIcon}>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5"/>
@@ -163,12 +120,8 @@ export default function SearchBox({ onResults, sessionId, externalQuery, onQuery
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={
-              pregunta
-                ? "Escribe tu respuesta..."
-                : "Describe tu negocio: tipo, público, estilo..."
-            }
-            rows={pregunta ? 2 : 3}
+            placeholder="Describe tu negocio: tipo, público, estilo..."
+            rows={3}
             disabled={loading}
             className={styles.textarea}
           />
@@ -180,8 +133,6 @@ export default function SearchBox({ onResults, sessionId, externalQuery, onQuery
         >
           {loading
             ? <><div className="spinner" /><span>Analizando...</span></>
-            : pregunta
-            ? "Responder →"
             : "Buscar ubicación →"
           }
         </button>

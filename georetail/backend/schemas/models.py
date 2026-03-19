@@ -38,6 +38,18 @@ class ModeloLegal(str, Enum):
     AUTORIZACION_PREVIA    = "autorizacion_previa"
 
 
+class AccionRefinamiento(str, Enum):
+    RESPUESTA       = "respuesta"
+    FILTRO_APLICADO = "filtro_aplicado"
+    NUEVA_BUSQUEDA  = "nueva_busqueda"
+
+
+class EstadoServicio(str, Enum):
+    OK       = "ok"
+    DEGRADED = "degraded"
+    DOWN     = "down"
+
+
 # ── Zona — resumen (resultado de búsqueda) ────────────────────────────────────
 
 class ZonaResumen(BaseModel):
@@ -381,6 +393,31 @@ class FinancieroResponse(BaseModel):
 
 
 # ── Locales lista ─────────────────────────────────────────────────────────────
+
+class LocalListItem(BaseModel):
+    zona_id:    str
+    nombre:     str
+    barrio:     str
+    distrito:   str
+    score_global: float
+    color:        ColorZona
+    direccion:                    Optional[str]   = None
+    alquiler_mensual:             Optional[float] = None
+    m2:                           Optional[float] = None
+    disponible:                   Optional[bool]  = None
+    probabilidad_supervivencia_3a: float = 0.5
+    resumen_ia:                   str   = ""
+
+
+class FiltrosDisponibles(BaseModel):
+    distritos:    list[str] = []
+    score_min:    float = 0.0
+    score_max:    float = 100.0
+    alquiler_min: float = 0.0
+    alquiler_max: float = 0.0
+    m2_min:       int   = 0
+    m2_max:       int   = 0
+
 
 class LocalesResponse(BaseModel):
     total:               int
