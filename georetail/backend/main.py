@@ -21,7 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from db.conexion import init_db_pool, close_db_pool
 from db.redis_client import init_redis, close_redis
-from nlp.embeddings import cargar_modelo
+from nlp.embeddings import cargar_modelo as cargar_embeddings
+from scoring.scorer import cargar_modelo as cargar_xgb
 from pipelines.scheduler import init_scheduler, stop_scheduler
 
 # Endpoints
@@ -56,10 +57,16 @@ async def lifespan(app: FastAPI):
     logger.info("Redis inicializado")
 
     try:
-        cargar_modelo()
+        cargar_embeddings()
         logger.info("Modelo de embeddings cargado")
     except Exception as exc:
         logger.warning("No se pudo cargar el modelo de embeddings: %s", exc)
+
+    try:
+        await cargar_xgb()
+        logger.info("Modelo XGBoost cargado")
+    except Exception as exc:
+        logger.warning("No se pudo cargar el modelo XGBoost: %s", exc)
 
     init_scheduler()
     logger.info("Scheduler iniciado")
