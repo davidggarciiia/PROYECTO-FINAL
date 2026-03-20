@@ -26,9 +26,8 @@ from pydantic import BaseModel, Field
 
 from schemas.models import ZonaResumen, ColorZona, EstadoBusqueda
 from agente.validador import validar_negocio
-from agente.cuestionario import iniciar_cuestionario
 from scoring.motor import calcular_scores_batch
-from db.sesiones import crear_sesion, get_sesion, guardar_busqueda
+from db.sesiones import crear_sesion, get_sesion, guardar_busqueda, actualizar_sesion
 from db.zonas import filtrar_zonas_candidatas
 
 logger = logging.getLogger(__name__)
@@ -186,17 +185,7 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
             motivo=validacion.get("motivo_legal"),
         )
 
-    # ── 3c. Falta información → cuestionario ─────────────────────────────────
-    if not validacion["informacion_suficiente"]:
-        primera_pregunta = await iniciar_cuestionario(session_id, validacion)
-        return BuscarResponse(
-            session_id=session_id,
-            estado=EstadoBusqueda.CUESTIONARIO,
-            pregunta=primera_pregunta["pregunta"],
-            progreso_cuestionario=primera_pregunta["progreso"],
-        )
-
-    # ── 3d. Información suficiente → buscar y rankear zonas ──────────────────
+    # ── 3c/3d. Buscar y rankear zonas (sin cuestionario) ─────────────────────
     perfil = {
         **sesion.get("perfil", {}),
         "sector":    validacion["sector_detectado"],
@@ -231,7 +220,15 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
     zonas_merged.sort(key=lambda z: z.get("score_global", 0), reverse=True)
     zonas_response = [_build_zona_resumen(z) for z in zonas_merged]
 
-    # ── 4. Guardar búsqueda para analytics ───────────────────────────────────
+    # ── 4. Persistir zonas en sesión + guardar búsqueda para analytics ────────
+    try:
+        await actualizar_sesion(session_id, {
+            "zonas_actuales": zonas_merged,
+            "perfil": perfil,
+        })
+    except Exception as exc:
+        logger.warning("No se pudo actualizar zonas_actuales en sesión: %s", exc)
+
     try:
         await guardar_busqueda(
             session_id=session_id,

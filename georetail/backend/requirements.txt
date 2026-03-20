@@ -40,7 +40,7 @@ shapely==2.0.6                # manipulación de polígonos en Python
 pyproj==3.6.1                 # conversión entre sistemas de coordenadas
 
 # ─── HTTP (llamadas a APIs externas) ──────────────────────────────────────────
-httpx[http2]==0.27.2          # cliente HTTP asíncrono (http2 para scrapers)
+httpx[http2]==0.28.1          # cliente HTTP asíncrono (http2 para scrapers)
 aiohttp==3.10.5
 
 # ─── Scraping anti-bot ────────────────────────────────────────────────────────
