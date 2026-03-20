@@ -164,10 +164,15 @@ def _gemini() -> google_genai.Client:
     return _GEMINI
 
 
+_PLACEHOLDERS = {"sk-ant-...", "sk-...", "...", "sk-proj-...", "AIza..."}
+
 def _has_key(proveedor: str) -> bool:
-    """Devuelve True si el proveedor tiene API key configurada (no vacía)."""
+    """Devuelve True si el proveedor tiene API key real configurada (no vacía ni placeholder)."""
     fn = _API_KEYS.get(proveedor)
-    return bool(fn and fn().strip())
+    if not fn:
+        return False
+    key = fn().strip()
+    return bool(key) and key not in _PLACEHOLDERS and not key.endswith("...")
 
 
 # ── Función principal — llamar desde cualquier endpoint del backend ───────────
