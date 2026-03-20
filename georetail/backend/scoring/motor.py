@@ -60,6 +60,7 @@ async def calcular_scores_batch(
                 JOIN sectores s ON s.id = sz.sector_id
                 WHERE sz.zona_id = ANY($1)
                   AND s.codigo   = $2
+                  AND sz.modelo_version != 'seed_v1'
                 ORDER BY sz.fecha_calculo DESC
                 """,
                 zona_ids, sector_codigo,
@@ -125,6 +126,7 @@ async def get_scores_zona(
             JOIN sectores s ON s.id = sz.sector_id
             WHERE sz.zona_id = $1
               AND s.codigo   = $2
+              AND sz.modelo_version != 'seed_v1'
               AND sz.fecha_calculo >= NOW() - INTERVAL '7 days'
             ORDER BY sz.fecha_calculo DESC
             LIMIT 1
