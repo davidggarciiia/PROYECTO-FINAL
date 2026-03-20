@@ -1,34 +1,36 @@
 """
-pipelines/aforaments.py — Ingesta diaria de flujo peatonal desde Open Data BCN.
+pipelines/aforaments.py — Ingesta de flujo peatonal desde CSV local + API descriptiu BCN.
 
-Dataset: `aforaments-detall` (CKAN Open Data BCN)
-URL: https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search_sql
+Fuentes:
+  - CSV local: /data/csv/2025_aforament_detall_valor.csv (montado en Docker)
+    Columnas: Any, Id_aforament, Mes, Codi_tipus_dia, Desc_tipus_dia, Valor_IMD
+    Codi_tipus_dia: 1=dilluns, 2=laborables, 3=divendres, 4=dissabte, 5=diumenge
+
+  - API CKAN descriptiu (coordenadas):
+    resource_id: 36d41387-a4e5-48fa-801d-698257e3a106  (2025_aforament_descripcio)
+
 Tabla destino: variables_zona (columnas flujo_peatonal_*)
 
 ESTRATEGIA DE ASIGNACIÓN (v2):
-  En vez de ST_Within (solo asigna si el sensor cae exactamente dentro de la zona),
-  usamos ST_DWithin con radio 200m + ponderación por distancia inversa al cuadrado.
+  ST_DWithin radio 200m + ponderación por distancia inversa al cuadrado.
+  Cada sensor influye a todas las zonas dentro del radio, proporcional
+  al inverso del cuadrado de la distancia al centroide de la zona.
 
-  Esto resuelve que en un mismo barrio haya varias zonas pero solo una tenga
-  un aforador encima — ahora todas las zonas dentro de 200m reciben una
-  estimación proporcional a su distancia al sensor.
+  Usamos el IMD de días laborables (Codi_tipus_dia=2) promediado sobre
+  todos los meses disponibles como valor representativo anual.
 
-  Fórmula de ponderación:
-    peso_i = 1 / distancia_i²
-    flujo_zona_i = flujo_sensor × (peso_i / Σ pesos)
-
-  Si hay varios sensores dentro del radio de una zona, sus flujos se suman.
-
-ZONAS COMERCIALES:
-  Las zonas con actividad comercial alta reciben un multiplicador basado
-  en el ratio de locales comerciales vs total de locales (Cens Locals BCN).
-  Multiplicador: 1.0 (sin dato) → hasta 1.35 (zona muy comercial).
+  Distribución IMD → franjas horarias (proporciones empíricas BCN):
+    manana (8-14h):  35% del IMD diario
+    tarde  (14-20h): 42% del IMD diario
+    noche  (20-23h): 23% del IMD diario
 """
 from __future__ import annotations
 
+import csv
 import logging
 import os
-from datetime import date, timedelta
+from datetime import date
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -37,57 +39,57 @@ from db.conexion import get_db
 
 logger = logging.getLogger(__name__)
 
-# ── Open Data Barcelona ───────────────────────────────────────────────────────
-# API key opcional — sin key funciona con límite ~1000 req/día por IP.
-# Configurar OPEN_DATA_BCN_API_KEY en el .env para límite ~10.000 req/día.
-# Registro gratuito: https://opendata-ajuntament.barcelona.cat → Mi cuenta → API Key
-_CKAN_BASE  = "https://opendata-ajuntament.barcelona.cat/data/api/action"
-_CKAN_HEADERS: dict = (
-    {"Authorization": os.environ.get("OPEN_DATA_BCN_API_KEY", "")}
-    if os.environ.get("OPEN_DATA_BCN_API_KEY")
-    else {}
-)
-_RADIO_M   = 200   # Radio de influencia de cada sensor en metros
-_MAX_ZONAS = 8     # Máximo de zonas que puede influir un sensor
+# ── Configuración ──────────────────────────────────────────────────────────────
+_CSV_DIR   = Path(os.environ.get("CSV_DIR", "/data/csv"))
+_CSV_IMD   = _CSV_DIR / "2025_aforament_detall_valor.csv"
+
+# API descriptiu — coordenadas de los sensores 2025
+_CKAN_RESOURCE_DESCRIPTIU = "36d41387-a4e5-48fa-801d-698257e3a106"
+_CKAN_BASE = "https://opendata-ajuntament.barcelona.cat/data/api/action"
+
+_RADIO_M    = 200   # Radio de influencia de cada sensor (metros)
+_MAX_ZONAS  = 8     # Máximo zonas que puede influir un sensor
+
+# Proporciones IMD → franjas (estimación empírica Barcelona)
+_FRAC_MANANA = 0.35
+_FRAC_TARDE  = 0.42
+_FRAC_NOCHE  = 0.23
 
 
 async def ejecutar() -> dict:
     eid = await _init("aforaments")
     try:
-        desde = await _ultima_fecha("aforaments")
-        logger.info("Aforaments: procesando desde %s", desde)
+        # 1. Leer IMD desde CSV
+        imd_por_sensor = _leer_csv_imd()
+        if not imd_por_sensor:
+            msg = f"CSV no encontrado o vacío: {_CSV_IMD}"
+            logger.warning(msg)
+            await _fin(eid, 0, "ok", msg)
+            return {"registros": 0}
 
-        total = 0
-        offset = 0
-        limit  = 500
+        logger.info("CSV leído: %d sensores con IMD", len(imd_por_sensor))
 
-        async with httpx.AsyncClient(timeout=30.0, headers=_CKAN_HEADERS) as client:
-            while True:
-                sql = (
-                    f'SELECT * FROM "aforaments-detall" '
-                    f"WHERE \"Data\" >= '{desde}' "
-                    f"LIMIT {limit} OFFSET {offset}"
-                )
-                resp = await client.get(
-                    f"{_CKAN_BASE}/datastore_search_sql",
-                    params={"sql": sql},
-                )
-                resp.raise_for_status()
-                rows = resp.json().get("result", {}).get("records", [])
-                if not rows:
-                    break
+        # 2. Obtener coordenadas de sensores desde CKAN
+        coords_sensor = await _obtener_coordenadas()
+        logger.info("Coordenadas obtenidas: %d sensores", len(coords_sensor))
 
-                await _procesar_lote(rows)
-                total  += len(rows)
-                offset += limit
-                if len(rows) < limit:
-                    break
+        # 3. Cruzar: solo sensores con IMD Y coordenadas
+        sensores = {
+            sid: (imd_por_sensor[sid], *coords_sensor[sid])
+            for sid in imd_por_sensor
+            if sid in coords_sensor
+        }
+        logger.info("Sensores con datos completos: %d", len(sensores))
 
-        await _recalcular_totales(desde)
-        await imputar_zonas_sin_cobertura(desde)
+        # 4. Asignar flujo a zonas
+        fecha_ref = date.today()
+        total = await _asignar_zonas(sensores, fecha_ref)
+
+        await _recalcular_totales(fecha_ref)
+        await imputar_zonas_sin_cobertura(fecha_ref)
 
         await _fin(eid, total, "ok")
-        logger.info("Aforaments OK — %d registros", total)
+        logger.info("Aforaments OK — %d sensores procesados", total)
         return {"registros": total}
 
     except Exception as exc:
@@ -96,33 +98,98 @@ async def ejecutar() -> dict:
         raise
 
 
-async def _procesar_lote(rows: list[dict]) -> None:
-    async with get_db() as conn:
-        for row in rows:
+# ─── Lectura CSV ───────────────────────────────────────────────────────────────
+
+def _leer_csv_imd() -> dict[str, float]:
+    """
+    Lee el CSV y devuelve IMD medio de días laborables (Codi_tipus_dia=2)
+    promediado sobre todos los meses disponibles, por sensor.
+    """
+    if not _CSV_IMD.exists():
+        return {}
+
+    acum: dict[str, list[float]] = {}
+    with open(_CSV_IMD, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
             try:
-                lat   = float((row.get("Latitud",  "0") or "0").replace(",", "."))
-                lng   = float((row.get("Longitud", "0") or "0").replace(",", "."))
-                hora  = int(row.get("Hora", -1) or -1)
-                valor = float(row.get("Valor", "0") or 0)
-                fecha = str(row.get("Data", ""))[:10]
-
-                if not fecha or not lat or not lng or valor <= 0:
+                tipo = int(row.get("Codi_tipus_dia", -1) or -1)
+                if tipo != 2:          # solo laborables
                     continue
+                sid   = str(row.get("Id_aforament", "") or "").strip().strip('"')
+                valor = float(row.get("Valor_IMD", 0) or 0)
+                if sid and valor > 0:
+                    acum.setdefault(sid, []).append(valor)
+            except (ValueError, KeyError):
+                continue
 
-                franja = _hora_a_franja(hora)
-                if franja is None:
+    return {sid: sum(vals) / len(vals) for sid, vals in acum.items() if vals}
+
+
+# ─── Coordenadas desde CKAN ───────────────────────────────────────────────────
+
+async def _obtener_coordenadas() -> dict[str, tuple[float, float]]:
+    """
+    Descarga las coordenadas de los aforadores desde el dataset descriptivo de BCN.
+    Devuelve dict {Id_aforament: (lng, lat)}.
+    """
+    coords: dict[str, tuple[float, float]] = {}
+    offset = 0
+    limit  = 1000
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        while True:
+            resp = await client.get(
+                f"{_CKAN_BASE}/datastore_search",
+                params={
+                    "resource_id": _CKAN_RESOURCE_DESCRIPTIU,
+                    "limit": limit,
+                    "offset": offset,
+                },
+            )
+            if resp.status_code != 200:
+                logger.warning("CKAN descriptiu HTTP %d", resp.status_code)
+                break
+            records = resp.json().get("result", {}).get("records", [])
+            if not records:
+                break
+            for r in records:
+                sid = str(r.get("Id_aforament") or "").strip()
+                try:
+                    lng = float(r["Longitud"])
+                    lat = float(r["Latitud"])
+                    if sid and lng and lat:
+                        coords[sid] = (lng, lat)
+                except (TypeError, KeyError, ValueError):
                     continue
+            offset += limit
+            if len(records) < limit:
+                break
 
-                col = f"flujo_peatonal_{franja}"
+    return coords
 
-                # Zonas dentro del radio, ordenadas por distancia al centroide
+
+# ─── Asignación espacial ──────────────────────────────────────────────────────
+
+async def _asignar_zonas(
+    sensores: dict[str, tuple[float, float, float]],
+    fecha: str,
+) -> int:
+    """
+    Para cada sensor (imd, lng, lat), distribuye el flujo diario
+    entre las zonas dentro del radio usando ponderación por distancia inversa.
+    """
+    n = 0
+    async with get_db() as conn:
+        for sid, (imd, lng, lat) in sensores.items():
+            try:
                 zonas = await conn.fetch(
                     """
                     SELECT
                         z.id AS zona_id,
                         ST_Distance(
                             z.geometria::geography,
-                            ST_SetSRID(ST_MakePoint($1,$2),4326)::geography
+                            ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
                         ) AS distancia_m,
                         COALESCE(vz.ratio_locales_comerciales, 0.0) AS ratio_comercial
                     FROM zonas z
@@ -134,7 +201,7 @@ async def _procesar_lote(rows: list[dict]) -> None:
                     ) vz ON TRUE
                     WHERE ST_DWithin(
                         z.geometria::geography,
-                        ST_SetSRID(ST_MakePoint($1,$2),4326)::geography,
+                        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
                         $3
                     )
                     ORDER BY distancia_m ASC
@@ -146,35 +213,46 @@ async def _procesar_lote(rows: list[dict]) -> None:
                 if not zonas:
                     continue
 
-                # Ponderación por distancia inversa al cuadrado
-                pesos     = [1.0 / max(1.0, float(z["distancia_m"])) ** 2 for z in zonas]
+                pesos      = [1.0 / max(1.0, float(z["distancia_m"])) ** 2 for z in zonas]
                 suma_pesos = sum(pesos) or 1.0
 
                 for zona, peso in zip(zonas, pesos):
-                    fraccion  = peso / suma_pesos
-                    flujo_zona = valor * fraccion
+                    fraccion      = peso / suma_pesos
+                    flujo_dia     = imd * fraccion
 
-                    # Multiplicador comercial (calles comerciales tienen más peatones)
-                    ratio_com    = float(zona["ratio_comercial"] or 0.0)
+                    # Multiplicador comercial
+                    ratio_com     = float(zona["ratio_comercial"] or 0.0)
                     multiplicador = 1.0 + min(0.35, ratio_com * 0.70)
-                    flujo_zona   *= multiplicador
+                    flujo_dia    *= multiplicador
+
+                    manana = round(flujo_dia * _FRAC_MANANA, 1)
+                    tarde  = round(flujo_dia * _FRAC_TARDE,  1)
+                    noche  = round(flujo_dia * _FRAC_NOCHE,  1)
 
                     await conn.execute(
-                        f"""
-                        INSERT INTO variables_zona (zona_id, fecha, {col}, fuente)
-                        VALUES ($1, $2, $3, 'aforadors_bcn_v2')
+                        """
+                        INSERT INTO variables_zona
+                            (zona_id, fecha,
+                             flujo_peatonal_manana, flujo_peatonal_tarde,
+                             flujo_peatonal_noche,  fuente)
+                        VALUES ($1, $2, $3, $4, $5, 'aforadors_csv_2025')
                         ON CONFLICT (zona_id, fecha) DO UPDATE
-                        SET {col} = COALESCE(variables_zona.{col}, 0) + $3,
-                            fuente = 'aforadors_bcn_v2'
+                        SET flujo_peatonal_manana = COALESCE(variables_zona.flujo_peatonal_manana, 0) + $3,
+                            flujo_peatonal_tarde  = COALESCE(variables_zona.flujo_peatonal_tarde,  0) + $4,
+                            flujo_peatonal_noche  = COALESCE(variables_zona.flujo_peatonal_noche,  0) + $5,
+                            fuente = 'aforadors_csv_2025'
                         """,
-                        zona["zona_id"], fecha, round(flujo_zona, 1),
+                        zona["zona_id"], fecha, manana, tarde, noche,
                     )
+                n += 1
 
             except Exception as exc:
-                logger.debug("Error aforament row: %s", exc)
+                logger.debug("Error sensor %s: %s", sid, exc)
+
+    return n
 
 
-async def _recalcular_totales(desde: str) -> None:
+async def _recalcular_totales(desde: date) -> None:
     """Recalcula flujo_peatonal_total = suma de las tres franjas."""
     async with get_db() as conn:
         await conn.execute(
@@ -185,24 +263,24 @@ async def _recalcular_totales(desde: str) -> None:
                 COALESCE(flujo_peatonal_tarde,  0) +
                 COALESCE(flujo_peatonal_noche,  0)
             )
-            WHERE fecha >= $1 AND fuente = 'aforadors_bcn_v2'
+            WHERE fecha >= $1
+              AND fuente IN ('aforadors_csv_2025', 'aforadors_bcn_v2')
             """,
             desde,
         )
     logger.info("Totales recalculados desde %s", desde)
 
 
-async def imputar_zonas_sin_cobertura(fecha: str) -> int:
+async def imputar_zonas_sin_cobertura(fecha: date) -> int:
     """
     Para zonas sin aforador a menos de 200m, imputa con la media
-    de las zonas del mismo barrio que sí tienen dato real.
-    Fallback: media del distrito → medias globales históricas.
+    del barrio → distrito → global.
     """
     async with get_db() as conn:
         ids_con_dato = {
             r["zona_id"] for r in await conn.fetch(
                 "SELECT zona_id FROM variables_zona "
-                "WHERE fecha=$1 AND fuente='aforadors_bcn_v2' AND flujo_peatonal_total>0",
+                "WHERE fecha=$1 AND flujo_peatonal_total > 0",
                 fecha,
             )
         }
@@ -225,9 +303,9 @@ async def imputar_zonas_sin_cobertura(fecha: str) -> int:
                    AVG(vz.flujo_peatonal_noche)  AS noche,
                    AVG(vz.flujo_peatonal_total)  AS total
             FROM variables_zona vz
-            JOIN zonas z  ON z.id = vz.zona_id
+            JOIN zonas z   ON z.id = vz.zona_id
             JOIN barrios b ON z.barrio_id = b.id
-            WHERE vz.fecha=$1 AND vz.fuente='aforadors_bcn_v2'
+            WHERE vz.fecha = $1 AND vz.flujo_peatonal_total > 0
             GROUP BY b.id
             """, fecha,
         )}
@@ -239,10 +317,10 @@ async def imputar_zonas_sin_cobertura(fecha: str) -> int:
                    AVG(vz.flujo_peatonal_noche)  AS noche,
                    AVG(vz.flujo_peatonal_total)  AS total
             FROM variables_zona vz
-            JOIN zonas z  ON z.id = vz.zona_id
+            JOIN zonas z   ON z.id = vz.zona_id
             JOIN barrios b ON z.barrio_id = b.id
             JOIN distritos d ON b.distrito_id = d.id
-            WHERE vz.fecha=$1 AND vz.fuente='aforadors_bcn_v2'
+            WHERE vz.fecha = $1 AND vz.flujo_peatonal_total > 0
             GROUP BY d.id
             """, fecha,
         )}
@@ -256,7 +334,7 @@ async def imputar_zonas_sin_cobertura(fecha: str) -> int:
                 INSERT INTO variables_zona
                     (zona_id, fecha, flujo_peatonal_manana, flujo_peatonal_tarde,
                      flujo_peatonal_noche, flujo_peatonal_total, fuente)
-                VALUES ($1,$2,$3,$4,$5,$6,'imputado_barrio')
+                VALUES ($1, $2, $3, $4, $5, $6, 'imputado_barrio')
                 ON CONFLICT (zona_id, fecha) DO NOTHING
                 """,
                 zona["id"], fecha,
@@ -271,25 +349,7 @@ async def imputar_zonas_sin_cobertura(fecha: str) -> int:
     return n
 
 
-def _hora_a_franja(hora: int) -> Optional[str]:
-    if 8  <= hora < 14: return "manana"
-    if 14 <= hora < 20: return "tarde"
-    if 20 <= hora < 23: return "noche"
-    return None
-
-
-async def _ultima_fecha(pipeline: str) -> str:
-    async with get_db() as conn:
-        row = await conn.fetchrow(
-            "SELECT fecha_inicio FROM pipeline_ejecuciones "
-            "WHERE pipeline=$1 AND estado='ok' "
-            "ORDER BY fecha_inicio DESC LIMIT 1",
-            pipeline,
-        )
-    if row:
-        return str(row["fecha_inicio"].date() - timedelta(days=3))
-    return str(date.today() - timedelta(days=30))
-
+# ─── Helpers BD ───────────────────────────────────────────────────────────────
 
 async def _init(pipeline: str) -> int:
     async with get_db() as conn:

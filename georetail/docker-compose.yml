@@ -65,6 +65,7 @@ services:
       - ./backend:/app                     # hot reload (recarga automática) en desarrollo
       - models_data:/data/models           # modelos XGBoost entrenados
       - exports_data:/data/exports         # PDFs generados
+      - ../CSV:/data/csv:ro                # CSVs de Open Data BCN (aforaments, etc.)
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,6 +89,7 @@ services:
       - ./backend:/app
       - models_data:/data/models
       - exports_data:/data/exports
+      - ../CSV:/data/csv:ro                # CSVs de Open Data BCN
     depends_on:
       postgres:
         condition: service_healthy
