@@ -49,9 +49,11 @@ async def construir_features_batch(zona_ids: list[str], sector: str):
 
 
 def _build_array(vz, comp, precio, trans) -> np.ndarray:
-    total = vz.get("flujo_peatonal_total") or 0
+    # Distinguir None (sin dato → imputa) de 0 (flujo real cero → score 0)
+    _flujo_raw = vz.get("flujo_peatonal_total")
+    total = _flujo_raw if _flujo_raw is not None else 0
     raw = {
-        "flujo_peatonal_total": total or None,
+        "flujo_peatonal_total": _flujo_raw,
         "flujo_manana_pct": (vz.get("flujo_peatonal_manana") or 0)/total if total else None,
         "flujo_tarde_pct":  (vz.get("flujo_peatonal_tarde")  or 0)/total if total else None,
         "flujo_noche_pct":  (vz.get("flujo_peatonal_noche")  or 0)/total if total else None,
