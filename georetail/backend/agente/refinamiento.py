@@ -15,7 +15,7 @@ import json
 import logging
 from typing import Optional
 
-from routers.llm_router import llamar_llm
+from routers.llm_router import completar
 from agente.traductor import traducir
 
 logger = logging.getLogger(__name__)
@@ -79,8 +79,9 @@ async def procesar_refinamiento(
     )
 
     try:
-        respuesta = await llamar_llm(
-            prompt     = prompt,
+        respuesta = await completar(
+            mensajes   = [{"role": "user", "content": prompt}],
+            sistema    = "You are a filter engine for a commercial premises recommendation app.",
             endpoint   = "refinamiento",
             max_tokens = 300,
         )

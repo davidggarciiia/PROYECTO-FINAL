@@ -33,9 +33,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from schemas.models import (
-    LocalDetalle, FlujoPeatonalDia, ScoreDetalle, ShapExplicacion,
-    CompetidorCercano, AlertaNLP, InfoLegal, LicenciaNecesaria,
-    RestriccionZona, ColorZona, Recomendacion, ViabilidadLegal,
+    LocalDetalleResponse, ZonaDetalle, ScoresDimensiones, AnalisisIA,
+    CompetidorCercano, AlertaZona, InfoLegal, LicenciaNecesaria,
+    RestriccionZona, ColorZona, ViabilidadLegal,
 )
 from db.sesiones import get_sesion
 from db.zonas import get_zona_completa
@@ -126,16 +126,12 @@ class DetalleRequest(BaseModel):
     session_id: str
 
 
-class DetalleResponse(BaseModel):
-    detalle: LocalDetalle
-
-
 @router.post(
     "/local",
-    response_model=DetalleResponse,
+    response_model=LocalDetalleResponse,
     summary="Análisis completo de una zona (llamada pesada, ~1-3s)",
 )
-async def local_detalle(body: DetalleRequest) -> DetalleResponse:
+async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
     """
     Se llama al pulsar "Ver detalle" en el popup del mapa.
     Usa asyncio.gather para lanzar todas las consultas en paralelo.
@@ -179,7 +175,7 @@ async def local_detalle(body: DetalleRequest) -> DetalleResponse:
     ) = await asyncio.gather(
         # Fuente: `scores_zona` JSONB con shap_values y scores por dimensión
         # Calculado por pipeline semanal (`pipelines/scores.py`) con XGBoost v1
-        get_scores_zona(zona_id=body.zona_id, sector=sector),
+        get_scores_zona(zona_id=body.zona_id, sector_codigo=sector),
 
         # Fuente: `alertas_zona` generadas por `nlp/alertas.py`
         # Pipeline diario: embeddings de reseñas (Google/Foursquare/Yelp) → clasificación
@@ -222,71 +218,54 @@ async def local_detalle(body: DetalleRequest) -> DetalleResponse:
 
     # ── Construir respuesta ───────────────────────────────────────────────────
     score_global = scores_data.get("score_global", zona.get("score_global", 50.0))
+    prob = scores_data.get("probabilidad_supervivencia_3a")
 
-    detalle = LocalDetalle(
+    zona_detalle = ZonaDetalle(
         zona_id=zona["zona_id"],
-        local_id=body.local_id,
-        nombre_zona=zona["nombre"],
+        nombre=zona["nombre"],
         barrio=zona["barrio"],
         distrito=zona["distrito"],
+        lat=zona["lat"],
+        lng=zona["lng"],
 
-        # Scoring — `scores_zona` (PostgreSQL)
-        score_global=round(score_global, 1),
-        scores_dimension=ScoreDetalle(**scores_data["scores_dimension"]),
-        probabilidad_supervivencia_3a=round(scores_data["probabilidad_supervivencia_3a"], 2),
-        explicaciones_shap=[
-            ShapExplicacion(**s) for s in scores_data.get("explicaciones_shap", [])
-        ],
-
-        # Datos físicos — `locales` (PostgreSQL)
-        # Fuente original: Idealista API + Cens Locals BCN (Open Data BCN)
+        # Datos físicos
         direccion=zona.get("direccion"),
         m2=zona.get("m2"),
-        planta=zona.get("planta"),
-        escaparate_ml=zona.get("escaparate_ml"),
         alquiler_mensual=zona.get("alquiler_mensual"),
-        disponible=zona.get("disponible"),
+        disponible=zona.get("disponible", True),
 
-        # Competidores — `negocios_activos` (ST_DWithin 300m en PostGIS)
-        # Datos de Google Places / Foursquare / OSM via places_router.py
+        # Scoring
+        score_global=round(score_global, 1),
+        scores_dimensiones=ScoresDimensiones(**scores_data["scores_dimension"]),
+        probabilidad_supervivencia=round(prob, 3) if prob is not None else None,
+
+        # Variables demográficas y entorno
+        flujo_peatonal_dia=zona.get("flujo_peatonal_dia"),
+        renta_media_hogar=zona.get("renta_media_hogar"),
+        edad_media=zona.get("edad_media"),
+        pct_extranjeros=zona.get("pct_extranjeros"),
+        num_negocios_activos=zona.get("num_negocios_activos"),
+        pct_locales_vacios=zona.get("pct_locales_vacios"),
+        num_lineas_transporte=zona.get("num_lineas_transporte"),
+        num_paradas_transporte=zona.get("num_paradas_transporte"),
+
+        # Competidores
         competidores_cercanos=[
             CompetidorCercano(**c) for c in zona.get("competidores_cercanos", [])
         ],
 
-        # Alertas NLP — `alertas_zona` (pipeline diario)
-        alertas=[AlertaNLP(**a) for a in alertas_raw],
-
-        # Flujo peatonal — `variables_zona` (aforadors CKAN BCN)
-        flujo_peatonal_dia=FlujoPeatonalDia(
-            **zona.get("flujo_peatonal_dia", {"manana": 0, "tarde": 0, "noche": 0})
-        ),
-
-        # Transporte — `paradas_transporte` + `lineas_transporte` (TMB + GTFS)
-        tiempo_transporte_centro_min=zona.get("tiempo_transporte_centro_min"),
-        num_lineas_transporte=zona.get("num_lineas_transporte"),
+        # Alertas NLP
+        alertas=[AlertaZona(**a) for a in alertas_raw],
 
         # Análisis IA — Claude Sonnet en tiempo real
-        analisis_ia=analisis_data["texto"],
-        pros=analisis_data.get("pros", []),
-        contras=analisis_data.get("contras", []),
-        recomendacion_final=_score_to_recomendacion(score_global),
-
-        # Legal — `requisitos_legales_sector` + `restricciones_geograficas_sector`
-        info_legal=InfoLegal(
-            viabilidad=ViabilidadLegal(legal_data["viabilidad"]),
-            alerta=legal_data.get("alerta"),
-            licencias_necesarias=[
-                LicenciaNecesaria(**lic) for lic in legal_data["licencias_necesarias"]
-            ],
-            restriccion_zona=(
-                RestriccionZona(**legal_data["restriccion_zona"])
-                if legal_data.get("restriccion_zona") else None
-            ),
-            requisitos_local=legal_data.get("requisitos_local", []),
+        analisis_ia=AnalisisIA(
+            resumen=analisis_data.get("texto", ""),
+            puntos_fuertes=analisis_data.get("pros", []),
+            puntos_debiles=analisis_data.get("contras", []),
         ),
     )
 
-    return DetalleResponse(detalle=detalle)
+    return LocalDetalleResponse(zona=zona_detalle)
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -297,16 +276,6 @@ def _score_to_color(score: float) -> ColorZona:
     if score >= 50:
         return ColorZona.AMARILLO
     return ColorZona.ROJO
-
-
-def _score_to_recomendacion(score: float) -> Recomendacion:
-    if score > 82:
-        return Recomendacion.MUY_RECOMENDADO
-    if score > 65:
-        return Recomendacion.RECOMENDADO
-    if score > 50:
-        return Recomendacion.NEUTRO
-    return Recomendacion.NO_RECOMENDADO
 
 
 def _scores_fallback(zona: dict) -> dict:

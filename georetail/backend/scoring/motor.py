@@ -38,9 +38,43 @@ async def calcular_scores_batch(
         return []
 
     try:
-        # scorer.py devuelve dict[zona_id → score_dict]
-        resultados = await _scorer_batch(zona_ids, sector_codigo)
-        return [{"zona_id": k, **v} for k, v in resultados.items()]
+        # ── 1. Consultar scores precalculados en BD (cache) ────────────────────
+        from db.conexion import get_db
+        async with get_db() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT sz.zona_id,
+                       sz.score_global,
+                       sz.score_flujo_peatonal,
+                       sz.score_demografia,
+                       sz.score_competencia,
+                       sz.score_precio_alquiler,
+                       sz.score_transporte,
+                       sz.score_seguridad,
+                       sz.score_turismo,
+                       sz.score_entorno_comercial,
+                       sz.probabilidad_supervivencia,
+                       sz.shap_values,
+                       sz.modelo_version
+                FROM scores_zona sz
+                JOIN sectores s ON s.id = sz.sector_id
+                WHERE sz.zona_id = ANY($1)
+                  AND s.codigo   = $2
+                ORDER BY sz.fecha_calculo DESC
+                """,
+                zona_ids, sector_codigo,
+            )
+
+        cached = {r["zona_id"]: dict(r) for r in rows}
+        if len(cached) == len(zona_ids):
+            return list(cached.values())
+
+        # ── 2. Para zonas sin caché, calcular con scorer ──────────────────────
+        sin_cache = [z for z in zona_ids if z not in cached]
+        resultados = await _scorer_batch(sin_cache, sector_codigo)
+        calculados = [{"zona_id": k, **v} for k, v in resultados.items()]
+
+        return list(cached.values()) + calculados
 
     except Exception as exc:
         logger.error("calcular_scores_batch error: %s", exc, exc_info=True)

@@ -3,12 +3,11 @@ pipelines/scores.py — Pipeline semanal de recálculo de scores.
 Recalcula scores para todas las zonas × sectores activos.
 """
 from __future__ import annotations
-import asyncio, logging
+import logging
 from db.conexion import get_db
 
 logger = logging.getLogger(__name__)
 _SECTORES = ["restauracion","moda","estetica","tatuajes","shisha_lounge"]
-_MAX_CONC = 10
 
 
 async def ejecutar() -> dict:
@@ -17,19 +16,16 @@ async def ejecutar() -> dict:
     try:
         from scoring.scorer import calcular_scores_batch, guardar_scores
 
-        # Obtener todas las zonas activas
+        # Obtener todas las zonas (fuente primaria: tabla zonas, no variables_zona)
+        # Si se usara variables_zona como fuente, cuando está vacía (primera
+        # ejecución o tras un reset) ninguna zona recibiría score.
         async with get_db() as conn:
-            zona_rows = await conn.fetch("""
-                SELECT DISTINCT zona_id FROM variables_zona
-                WHERE fecha >= CURRENT_DATE - INTERVAL '60 days'
-            """)
+            zona_rows = await conn.fetch("SELECT id FROM zonas ORDER BY id")
             sector_ids = await conn.fetch("SELECT id, codigo FROM sectores")
 
-        zona_ids = [r["zona_id"] for r in zona_rows]
+        zona_ids = [r["id"] for r in zona_rows]
         sector_map = {r["codigo"]: r["id"] for r in sector_ids}
         logger.info("Recalculando scores: %d zonas × %d sectores", len(zona_ids), len(_SECTORES))
-
-        sem = asyncio.Semaphore(_MAX_CONC)
 
         for sector in _SECTORES:
             sid = sector_map.get(sector)

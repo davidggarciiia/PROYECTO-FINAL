@@ -4,34 +4,125 @@
   position: relative;
 }
 
+/* ── Tooltip ── */
 .tooltip {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 120px;
+  gap: 3px;
+  min-width: 160px;
+}
+.tooltipName {
   font-size: 13px;
+  font-weight: 700;
+  color: #F1F5F9;
+  line-height: 1.3;
+}
+.tooltipBarrio {
+  font-size: 11px;
+  color: #64748B;
+}
+.tooltipBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.07);
 }
 .tooltipScore {
-  font-weight: 700;
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.tooltipDot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.tooltipRent {
+  font-size: 11px;
+  color: #64748B;
 }
 
+/* ── Legend ── */
+.legend {
+  position: absolute;
+  bottom: 24px;
+  left: 16px;
+  background: rgba(13,18,32,0.92);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 500;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+}
+.legendTitle {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #475569;
+  margin-bottom: 2px;
+}
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: #94A3B8;
+}
+.legendDot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Empty overlay ── */
 .overlay {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 500;
+  pointer-events: none;
 }
-.overlayText {
-  background: rgba(26,29,39,0.85);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px 24px;
-  color: var(--text-muted);
-  font-size: 14px;
+.overlayCard {
+  background: rgba(13,18,32,0.88);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   text-align: center;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
   max-width: 260px;
+  pointer-events: auto;
+}
+.overlayIcon {
+  width: 56px; height: 56px;
+  border-radius: 16px;
+  background: rgba(99,102,241,0.1);
+  border: 1px solid rgba(99,102,241,0.2);
+  display: flex; align-items: center; justify-content: center;
+}
+.overlayTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: #F1F5F9;
+}
+.overlayDesc {
+  font-size: 12px;
+  color: #64748B;
+  line-height: 1.5;
 }

@@ -13,6 +13,7 @@ export interface ZonaPreview {
   m2?: number;
   alquiler_mensual?: number;
   score_global?: number;
+  color?: ColorZona;
 }
 
 export interface ZonaResumen {
@@ -142,12 +143,11 @@ export interface BuscarRequest {
 export interface BuscarResponse {
   estado: "ok" | "cuestionario" | "error_tipo_negocio" | "inviable_legal";
   session_id: string;
-  zonas: ZonaPreview[];
-  total: number;
-  task_id?: string;
+  zonas?: ZonaResumen[] | null;
+  total_zonas_analizadas?: number;
   pregunta?: string;
-  progreso_pct: number;
-  mensaje?: string;
+  progreso_cuestionario?: number;
+  motivo?: string;
 }
 
 export interface CuestionarioRequest {
