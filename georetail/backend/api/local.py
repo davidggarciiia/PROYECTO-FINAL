@@ -34,15 +34,13 @@ from pydantic import BaseModel
 
 from schemas.models import (
     LocalDetalleResponse, ZonaDetalle, ScoresDimensiones, AnalisisIA,
-    CompetidorCercano, AlertaZona, InfoLegal, LicenciaNecesaria,
-    RestriccionZona, ColorZona, ViabilidadLegal,
+    CompetidorCercano, AlertaZona, ColorZona,
 )
 from db.sesiones import get_sesion
 from db.zonas import get_zona_completa
 from scoring.motor import get_scores_zona
 from nlp.alertas import get_alertas_zona
 from agente.analisis import generar_analisis_zona
-from scoring.legal import get_info_legal_zona
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["local"])
@@ -171,7 +169,6 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
         scores_data,
         alertas_raw,
         analisis_data,
-        legal_data,
     ) = await asyncio.gather(
         # Fuente: `scores_zona` JSONB con shap_values y scores por dimensión
         # Calculado por pipeline semanal (`pipelines/scores.py`) con XGBoost v1
@@ -184,12 +181,7 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
         # Fuente: Claude Sonnet (llm_router) en tiempo real
         # Prompt en `agente/prompts/analisis_zona.txt`
         # Incluye datos de zona, scores y perfil del usuario para personalizar
-        generar_analisis_zona(zona=zona, perfil=sesion.get("perfil", {})),
-
-        # Fuente: `requisitos_legales_sector` + `restricciones_geograficas_sector`
-        # Verifica con PostGIS si la zona supera el máximo de establecimientos
-        # (restricciones de los Planes de Usos de Barcelona)
-        get_info_legal_zona(zona_id=body.zona_id, sector=sector),
+        generar_analisis_zona(zona=zona, perfil=sesion.get("perfil", {}), session_id=body.session_id),
 
         return_exceptions=True,  # No cancelar todo si una falla
     )
@@ -211,10 +203,6 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
             "pros": [],
             "contras": [],
         }
-
-    if isinstance(legal_data, Exception):
-        logger.error("Error get_info_legal_zona %s: %s", body.zona_id, legal_data)
-        legal_data = _legal_fallback()
 
     # ── Construir respuesta ───────────────────────────────────────────────────
     score_global = scores_data.get("score_global", zona.get("score_global", 50.0))
@@ -302,15 +290,4 @@ def _scores_fallback(zona: dict) -> dict:
     }
 
 
-def _legal_fallback() -> dict:
-    """
-    Fallback legal genérico cuando falla la consulta a BD.
-    Indica que hay que verificar manualmente.
-    """
-    return {
-        "viabilidad": "viable",
-        "alerta": "No se pudieron cargar los requisitos legales. Verifica con el Ayuntamiento.",
-        "licencias_necesarias": [],
-        "restriccion_zona": None,
-        "requisitos_local": [],
-    }
+

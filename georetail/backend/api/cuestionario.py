@@ -43,7 +43,7 @@ class CuestionarioResponse(BaseModel):
     session_id: str
     estado: str = Field(..., description="'continua' si hay más preguntas, 'completo' si terminó")
     pregunta: str | None = Field(None, description="Siguiente pregunta. None si estado='completo'.")
-    progreso: int = Field(..., ge=0, le=100, description="% de avance del cuestionario (0-100).")
+    progreso_pct: int = Field(..., ge=0, le=100, description="% de avance del cuestionario (0-100).")
     trigger_busqueda: bool = Field(
         ...,
         description="True cuando termina. El frontend debe relanzar POST /api/buscar.",
@@ -130,7 +130,7 @@ async def cuestionario(body: CuestionarioRequest) -> CuestionarioResponse:
             session_id=body.session_id,
             estado="completo",
             pregunta=None,
-            progreso=100,
+            progreso_pct=100,
             trigger_busqueda=True,
         )
 
@@ -138,6 +138,6 @@ async def cuestionario(body: CuestionarioRequest) -> CuestionarioResponse:
         session_id=body.session_id,
         estado="continua",
         pregunta=resultado["mensaje"],
-        progreso=resultado.get("progreso_pct", 30),
+        progreso_pct=resultado.get("progreso_pct", 30),
         trigger_busqueda=False,
     )

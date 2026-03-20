@@ -6,6 +6,14 @@ Los endpoints de la API importan desde aquí. Este módulo delega en scorer.py.
 Funciones públicas:
   - calcular_scores_batch(zona_ids, sector_codigo) → usado por POST /api/buscar
   - get_scores_zona(zona_id, sector_codigo)        → usado por POST /api/local
+
+Estrategia de caché:
+  - Se incluyen scores de cualquier versión (seed_v1 incluido).
+  - El score_global SIEMPRE se recalcula aplicando los pesos del sector sobre
+    las dimensiones almacenadas. Así el seed aporta diferenciación por zona
+    y los pesos del sector producen rankings distintos por tipo de negocio.
+  - Cuando llegan datos reales (model_version='manual_v1') el recálculo usa
+    esos datos en lugar del seed, sin cambiar ninguna lógica.
 """
 from __future__ import annotations
 
@@ -28,22 +36,24 @@ async def calcular_scores_batch(
 
     Devuelve lista de dicts con zona_id + score_global + scores por dimensión,
     ordenada por zona_id (el orden final lo hace api/buscar.py por score).
-
-    Parámetros:
-      zona_ids       → IDs de las zonas a puntuar
-      sector_codigo  → tipo de negocio ('restauracion', 'moda', 'tatuajes'...)
-      m2             → superficie del local (opcional, no afecta scoring actual)
     """
     if not zona_ids:
         return []
 
     try:
-        # ── 1. Consultar scores precalculados en BD (cache) ────────────────────
         from db.conexion import get_db
+
+        # Pesos del sector — necesarios para recalcular score_global
+        pesos = await _get_pesos_sector(sector_codigo)
+
+        # ── 1. Caché (incluye seed_v1) ─────────────────────────────────────────
+        # Tomamos el registro más reciente por zona, preferendo datos reales
+        # sobre seed. El ORDER BY garantiza que manual_v1 > seed_v1.
         async with get_db() as conn:
             rows = await conn.fetch(
                 """
-                SELECT sz.zona_id,
+                SELECT DISTINCT ON (sz.zona_id)
+                       sz.zona_id,
                        sz.score_global,
                        sz.score_flujo_peatonal,
                        sz.score_demografia,
@@ -60,16 +70,24 @@ async def calcular_scores_batch(
                 JOIN sectores s ON s.id = sz.sector_id
                 WHERE sz.zona_id = ANY($1)
                   AND s.codigo   = $2
-                ORDER BY sz.fecha_calculo DESC
+                ORDER BY sz.zona_id,
+                         (sz.modelo_version != 'seed_v1') DESC,
+                         sz.fecha_calculo DESC
                 """,
                 zona_ids, sector_codigo,
             )
 
-        cached = {r["zona_id"]: dict(r) for r in rows}
+        # Recalcular score_global con los pesos del sector pedido
+        cached = {}
+        for r in rows:
+            d = dict(r)
+            d["score_global"] = _recalcular_global(d, pesos)
+            cached[d["zona_id"]] = d
+
         if len(cached) == len(zona_ids):
             return list(cached.values())
 
-        # ── 2. Para zonas sin caché, calcular con scorer ──────────────────────
+        # ── 2. Zonas sin caché → calcular desde cero ──────────────────────────
         sin_cache = [z for z in zona_ids if z not in cached]
         resultados = await _scorer_batch(sin_cache, sector_codigo)
         calculados = [{"zona_id": k, **v} for k, v in resultados.items()]
@@ -78,7 +96,6 @@ async def calcular_scores_batch(
 
     except Exception as exc:
         logger.error("calcular_scores_batch error: %s", exc, exc_info=True)
-        # Fallback: devolver scores neutros para no romper la búsqueda
         return [
             {
                 "zona_id":                     z,
@@ -104,18 +121,14 @@ async def get_scores_zona(
     sector_codigo: str,
 ) -> dict:
     """
-    Devuelve el score detallado de una zona en el formato que espera api/local.py:
-      {
-        "score_global": float,
-        "probabilidad_supervivencia_3a": float | None,
-        "scores_dimension": { "flujo_peatonal": float, ... },
-        "explicaciones_shap": [ {"feature": str, "valor": float}, ... ],
-      }
+    Devuelve el score detallado de una zona en el formato que espera api/local.py.
 
-    Busca primero en caché (tabla scores_zona, < 7 días). Si no hay dato reciente,
-    recalcula con XGBoost (o pesos manuales como fallback).
+    Busca en caché (prefiriendo datos reales sobre seed). Si no hay nada,
+    recalcula con el scorer (XGBoost o pesos manuales).
     """
     from db.conexion import get_db
+
+    pesos = await _get_pesos_sector(sector_codigo)
 
     async with get_db() as conn:
         row = await conn.fetchrow(
@@ -125,15 +138,17 @@ async def get_scores_zona(
             JOIN sectores s ON s.id = sz.sector_id
             WHERE sz.zona_id = $1
               AND s.codigo   = $2
-              AND sz.fecha_calculo >= NOW() - INTERVAL '7 days'
-            ORDER BY sz.fecha_calculo DESC
+            ORDER BY (sz.modelo_version != 'seed_v1') DESC,
+                     sz.fecha_calculo DESC
             LIMIT 1
             """,
             zona_id, sector_codigo,
         )
 
     if row:
-        return _format_scores_for_api(dict(row))
+        d = dict(row)
+        d["score_global"] = _recalcular_global(d, pesos)
+        return _format_scores_for_api(d)
 
     # No hay caché — calcular ahora
     resultados = await calcular_scores_batch([zona_id], sector_codigo)
@@ -143,12 +158,46 @@ async def get_scores_zona(
 
 # ─── Helpers privados ─────────────────────────────────────────────────────────
 
+async def _get_pesos_sector(sector_codigo: str) -> dict:
+    """Lee los pesos del sector desde la BD."""
+    from db.conexion import get_db
+    async with get_db() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM sectores WHERE codigo = $1", sector_codigo
+        )
+    return dict(row) if row else {}
+
+
+def _recalcular_global(scores: dict, pesos: dict) -> float:
+    """
+    Recalcula score_global aplicando los pesos del sector sobre las dimensiones.
+
+    Esto garantiza que:
+    - Zonas distintas puntúan distinto (las dimensiones varían por zona).
+    - Sectores distintos producen rankings distintos (los pesos varían por sector).
+    """
+    dims = {
+        "score_flujo_peatonal":    pesos.get("peso_flujo",        0.25),
+        "score_demografia":        pesos.get("peso_demo",         0.20),
+        "score_competencia":       pesos.get("peso_competencia",  0.15),
+        "score_precio_alquiler":   pesos.get("peso_precio",       0.15),
+        "score_transporte":        pesos.get("peso_transporte",   0.10),
+        "score_seguridad":         pesos.get("peso_seguridad",    0.05),
+        "score_turismo":           pesos.get("peso_turismo",      0.05),
+        "score_entorno_comercial": pesos.get("peso_entorno",      0.05),
+    }
+    total = sum(
+        (scores.get(dim) or 50.0) * peso
+        for dim, peso in dims.items()
+    )
+    return round(total, 1)
+
+
 def _format_scores_for_api(raw: dict) -> dict:
     """
     Transforma el dict plano (columnas de scores_zona o resultado del scorer)
     al formato anidado que espera api/local.py.
     """
-    # shap_values puede venir como str JSON (de la BD) o como dict (del scorer)
     shap_raw = raw.get("shap_values") or {}
     if isinstance(shap_raw, str):
         try:
@@ -156,18 +205,16 @@ def _format_scores_for_api(raw: dict) -> dict:
         except Exception:
             shap_raw = {}
 
-    # Top 10 factores SHAP ordenados por valor absoluto
     explicaciones = [
         {"feature": k, "valor": round(float(v), 3)}
         for k, v in sorted(shap_raw.items(), key=lambda x: abs(x[1]), reverse=True)[:10]
     ] if shap_raw else []
 
-    # La probabilidad puede llamarse con o sin el sufijo _3a según el origen
     prob = raw.get("probabilidad_supervivencia_3a") or raw.get("probabilidad_supervivencia")
 
     return {
-        "score_global":                 raw.get("score_global", 50.0),
-        "probabilidad_supervivencia_3a": round(prob, 3) if prob is not None else None,
+        "score_global":                  raw.get("score_global", 50.0),
+        "probabilidad_supervivencia_3a":  round(prob, 3) if prob is not None else None,
         "scores_dimension": {
             "flujo_peatonal":    raw.get("score_flujo_peatonal"),
             "demografia":        raw.get("score_demografia"),
@@ -179,22 +226,4 @@ def _format_scores_for_api(raw: dict) -> dict:
             "entorno_comercial": raw.get("score_entorno_comercial"),
         },
         "explicaciones_shap": explicaciones,
-    }
-
-
-def _score_neutro(zona_id: str) -> dict:
-    return {
-        "zona_id":                    zona_id,
-        "score_global":               50.0,
-        "score_flujo_peatonal":       50.0,
-        "score_demografia":           50.0,
-        "score_competencia":          50.0,
-        "score_precio_alquiler":      50.0,
-        "score_transporte":           50.0,
-        "score_seguridad":            50.0,
-        "score_turismo":              50.0,
-        "score_entorno_comercial":    50.0,
-        "probabilidad_supervivencia": 0.50,
-        "shap_values":                {},
-        "modelo_version":             "sin_datos",
     }
