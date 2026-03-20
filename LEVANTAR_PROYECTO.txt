@@ -1,0 +1,186 @@
+===============================================================================
+  GEORETAIL — GUÍA PARA LEVANTAR EL PROYECTO
+  Copia y pega cada bloque en orden
+===============================================================================
+
+
+───────────────────────────────────────────────────────────────────────────────
+  REQUISITOS PREVIOS (instalar una vez)
+───────────────────────────────────────────────────────────────────────────────
+
+  - Docker Desktop   → https://www.docker.com/products/docker-desktop
+  - Git              → ya instalado si tienes el repo
+
+
+───────────────────────────────────────────────────────────────────────────────
+  PASO 1 — Clonar el repositorio (solo la primera vez)
+───────────────────────────────────────────────────────────────────────────────
+
+git clone https://github.com/davidggarciiia/PROYECTO-FINAL.git
+cd PROYECTO-FINAL/georetail
+
+
+───────────────────────────────────────────────────────────────────────────────
+  PASO 2 — Configurar el archivo .env (solo la primera vez)
+───────────────────────────────────────────────────────────────────────────────
+
+  El archivo .env ya existe en georetail/.env con las claves reales del proyecto.
+  No hace falta crearlo desde cero.
+
+  Si lo tienes que recrear desde cero, copia el ejemplo:
+
+    cp .env.example .env
+
+  Claves que YA están configuradas y funcionan:
+    OPENAI_API_KEY          → OpenAI GPT-4o-mini (LLM principal)
+    GOOGLE_MAPS_API_KEY     → Google Maps / Places
+    FOURSQUARE_API_KEY      → Foursquare (reseñas)
+    TMB_APP_ID / TMB_APP_KEY → Transporte BCN
+    NEXT_PUBLIC_MAPBOX_TOKEN → Mapa del frontend
+
+  Claves opcionales (dejar vacías si no las tienes):
+    ANTHROPIC_API_KEY       → Claude (fallback automático a OpenAI si está vacía)
+    DEEPSEEK_API_KEY        → DeepSeek (fallback)
+    GEMINI_API_KEY          → Gemini (fallback)
+
+
+───────────────────────────────────────────────────────────────────────────────
+  PASO 3 — Levantar TODO el proyecto con un solo comando
+───────────────────────────────────────────────────────────────────────────────
+
+  Desde la carpeta georetail/:
+
+docker-compose up -d
+
+  Esto arranca automáticamente:
+    • PostgreSQL + PostGIS  (puerto 5432)
+    • Redis                 (puerto 6379)
+    • Backend FastAPI       (puerto 8000)
+    • Worker Celery         (tareas en segundo plano)
+    • Frontend Next.js      (puerto 3000)
+
+  La primera vez tarda ~3-5 minutos porque descarga las imágenes Docker.
+  Las siguientes veces arranca en ~30 segundos.
+
+
+───────────────────────────────────────────────────────────────────────────────
+  PASO 4 — Verificar que todo está corriendo
+───────────────────────────────────────────────────────────────────────────────
+
+docker-compose ps
+
+  Todos los contenedores deben aparecer como "Up" o "Up (healthy)".
+
+  También puedes comprobar el backend directamente:
+
+curl http://localhost:8000/api/health
+
+
+───────────────────────────────────────────────────────────────────────────────
+  ACCEDER A LA APLICACIÓN
+───────────────────────────────────────────────────────────────────────────────
+
+  Frontend (app web):        http://localhost:3000
+  API docs (Swagger UI):     http://localhost:8000/docs
+  API docs (ReDoc):          http://localhost:8000/redoc
+
+
+───────────────────────────────────────────────────────────────────────────────
+  COMANDOS ÚTILES DEL DÍA A DÍA
+───────────────────────────────────────────────────────────────────────────────
+
+  Parar todo:
+    docker-compose stop
+
+  Volver a encender (sin reconstruir):
+    docker-compose start
+
+  Reiniciar todo desde cero (si algo va mal):
+    docker-compose down && docker-compose up -d
+
+  Ver logs en tiempo real:
+    docker-compose logs -f
+
+  Ver logs solo del backend:
+    docker-compose logs -f backend
+
+  Ver logs solo del frontend:
+    docker-compose logs -f frontend
+
+  Ver logs de los últimos errores:
+    docker-compose logs backend --tail=50
+
+
+───────────────────────────────────────────────────────────────────────────────
+  SI EL FRONTEND NO CARGA O DA ERROR
+───────────────────────────────────────────────────────────────────────────────
+
+  1. Esperar ~30 segundos más — Next.js tarda en compilar la primera vez
+  2. Mirar los logs del frontend:
+
+       docker-compose logs frontend --tail=30
+
+  3. Si sigue sin funcionar, reiniciar solo el frontend:
+
+       docker-compose restart frontend
+
+
+───────────────────────────────────────────────────────────────────────────────
+  SI EL BACKEND DA ERROR 500 O NO RESPONDE
+───────────────────────────────────────────────────────────────────────────────
+
+  1. Ver qué está pasando:
+
+       docker-compose logs backend --tail=50
+
+  2. Reiniciar backend y worker:
+
+       docker-compose up -d --force-recreate backend worker
+
+  3. Verificar que la BD está sana:
+
+       docker-compose exec postgres pg_isready -U postgres -d georetail
+
+
+───────────────────────────────────────────────────────────────────────────────
+  RECONSTRUIR IMÁGENES (si cambias código del backend o frontend)
+───────────────────────────────────────────────────────────────────────────────
+
+  El backend tiene hot-reload activo — los cambios en Python se aplican solos.
+  El frontend también tiene hot-reload — los cambios en TypeScript/React también.
+
+  Solo hace falta reconstruir si cambias requirements.txt o package.json:
+
+docker-compose up -d --build
+
+
+───────────────────────────────────────────────────────────────────────────────
+  BORRAR TODO Y EMPEZAR DE CERO (base de datos incluida)
+───────────────────────────────────────────────────────────────────────────────
+
+  ATENCIÓN: esto borra todos los datos de la BD.
+
+docker-compose down -v
+
+
+───────────────────────────────────────────────────────────────────────────────
+  ESTRUCTURA DEL PROYECTO
+───────────────────────────────────────────────────────────────────────────────
+
+  PROYECTO-FINAL/
+  └── georetail/
+      ├── .env                  ← claves API (NO subir a git)
+      ├── .env.example          ← plantilla con instrucciones
+      ├── docker-compose.yml    ← orquestación de todos los servicios
+      ├── backend/              ← API FastAPI (Python)
+      │   ├── api/              ← endpoints REST
+      │   ├── agente/           ← lógica LLM
+      │   ├── scoring/          ← modelo XGBoost
+      │   └── ...
+      └── frontend/             ← app Next.js (TypeScript)
+          └── src/
+              ├── app/          ← páginas
+              └── components/   ← componentes React
+
+
+===============================================================================
