@@ -48,7 +48,7 @@ from pydantic import BaseModel, Field
 
 from schemas.models import ProyeccionMes
 from financiero.estimador import (
-    estimar_parametros, ParametrosEstimados, ParametroEstimado as PE,
+    estimar_parametros, ParametrosEstimados, PE,
 )
 from financiero.calculadora import calcular_proyeccion
 from db.sesiones import get_sesion

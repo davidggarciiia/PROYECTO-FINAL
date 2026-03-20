@@ -76,6 +76,21 @@ def _construir_prompt(z: dict, p: dict) -> str:
     pct_vacios_raw = z.get("pct_locales_vacios")
     pct_vacios_str = f"{pct_vacios_raw * 100:.0f}%" if pct_vacios_raw is not None else "N/A"
 
+    # Scores por dimensión del modelo (0-100) — disponibles aunque falten datos crudos
+    def _s(key: str) -> str:
+        v = z.get(key)
+        return f"{v:.0f}/100" if v is not None else "N/A"
+
+    # Flujo peatonal: usar datos crudos si existen; si son 0, indicarlo y usar el score
+    flujo_manana = flujo.get("manana", 0)
+    flujo_tarde  = flujo.get("tarde",  0)
+    flujo_noche  = flujo.get("noche",  0)
+    hay_flujo_real = (flujo_manana + flujo_tarde + flujo_noche) > 0
+    if hay_flujo_real:
+        flujo_str = f"morning {flujo_manana} · afternoon {flujo_tarde} · evening {flujo_noche} pax/h"
+    else:
+        flujo_str = f"no sensor data — model score: {_s('score_flujo_peatonal')}"
+
     prompt = f"""
 BUSINESS: {p.get("sector", "unknown")} — {p.get("descripcion", "")}
 Target customer: {p.get("perfil_cliente", "not specified")}
@@ -85,11 +100,15 @@ ZONE: {z.get("nombre", "")} — {z.get("barrio", "")} ({z.get("distrito", "")})
 Global score: {z.get("score_global", "N/A")}/100
 3-year survival probability: {z.get("probabilidad_supervivencia", "N/A")}
 
-KEY DATA:
-- Pedestrian flow: morning {flujo.get("manana", 0)} · afternoon {flujo.get("tarde", 0)} · evening {flujo.get("noche", 0)} people/hour
+DIMENSION SCORES (model estimate, 0-100):
+- Pedestrian flow: {_s("score_flujo_peatonal")} | Demographics: {_s("score_demografia")} | Competition (lower saturated = higher score): {_s("score_competencia")}
+- Rent affordability: {_s("score_precio_alquiler")} | Transport access: {_s("score_transporte")} | Safety: {_s("score_seguridad")}
+- Tourism: {_s("score_turismo_dim") if z.get("score_turismo_dim") is not None else _s("score_turismo")} | Commercial environment: {_s("score_entorno_comercial")}
+
+RAW DATA (real-time sensors, may be unavailable):
+- Pedestrian flow: {flujo_str}
 - Average household income: {z.get("renta_media_hogar", "N/A")} €/year
 - % foreigners: {z.get("pct_extranjeros", "N/A")}
-- Tourism score: {z.get("score_turismo", "N/A")}/100
 - Vacant premises: {pct_vacios_str}
 - Business turnover rate: {z.get("tasa_rotacion_anual", "N/A")}
 - Transport lines within 500m: {z.get("num_lineas_transporte", "N/A")}

@@ -139,7 +139,7 @@ async def exportar(body: ExportarRequest) -> ExportarResponse:
     pdf_id = await registrar_exportacion(
         session_id=body.session_id,
         zona_ids=body.zona_ids,
-        expires_at=expires_at,
+        horas_expiracion=_TTL_PDF_HORAS,
     )
 
     # ── Encolar generación en Celery ──────────────────────────────────────────
