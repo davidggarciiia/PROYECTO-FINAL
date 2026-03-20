@@ -123,21 +123,21 @@ async def refinamiento(body: RefinamientoRequest) -> RefinamientoResponse:
             ),
         )
 
+    # ── Preparar argumentos para el agente de refinamiento ───────────────────
+    zonas_actuales = sesion.get("zonas_actuales", [])
+    zona_ids = [z["zona_id"] for z in zonas_actuales]
+    scores = {z["zona_id"]: z for z in zonas_actuales}
+
     # ── Procesar con LLM ──────────────────────────────────────────────────────
     # `procesar_refinamiento` en `agente/refinamiento.py`:
-    #   1. Construye el prompt con el contexto de la sesión y las zonas actuales
-    #   2. Llama al LLM (llm_router → Claude Sonnet)
-    #   3. El LLM devuelve JSON con:
-    #      { "accion": "filtro_aplicado"|"nueva_busqueda"|"respuesta",
-    #        "respuesta_texto": str,
-    #        "filtros_nuevos": dict | None,
-    #        "nueva_descripcion": str | None }
-    #   4. Si hay filtros nuevos, aplica la query PostGIS y devuelve las zonas
+    #   Recibe instrucción + lista de zona_ids + scores por zona
+    #   Devuelve: { accion, zona_ids, criterio, mensaje }
+    #   Acciones: "filtrar" | "ordenar" | "destacar" | "sin_cambio"
     try:
         resultado = await procesar_refinamiento(
-            session_id=body.session_id,
-            mensaje=body.mensaje,
-            sesion=sesion,
+            instruccion=body.mensaje,
+            zona_ids=zona_ids,
+            scores=scores,
         )
     except Exception as exc:
         logger.error(
@@ -149,9 +149,21 @@ async def refinamiento(body: RefinamientoRequest) -> RefinamientoResponse:
             detail="Error procesando el refinamiento. Inténtalo de nuevo.",
         )
 
-    # ── Serializar zonas actualizadas ─────────────────────────────────────────
+    # ── Mapear acción al enum del response model ───────────────────────────────
+    accion_raw = resultado.get("accion", "sin_cambio")
+    if accion_raw in ("filtrar", "ordenar", "destacar"):
+        accion = AccionRefinamiento.FILTRO_APLICADO
+    else:
+        accion = AccionRefinamiento.RESPUESTA
+
+    # ── Serializar zonas filtradas ─────────────────────────────────────────────
+    # El agente devuelve zona_ids con las zonas que pasan el filtro;
+    # filtramos zonas_actuales para obtener los datos completos.
+    ids_filtrados = set(resultado.get("zona_ids", zona_ids))
+    zonas_filtradas = [z for z in zonas_actuales if z["zona_id"] in ids_filtrados]
+
     zonas_actualizadas = None
-    if resultado.get("zonas_actualizadas"):
+    if accion == AccionRefinamiento.FILTRO_APLICADO and zonas_filtradas:
         zonas_actualizadas = [
             ZonaResumen(
                 zona_id=z["zona_id"],
@@ -159,22 +171,25 @@ async def refinamiento(body: RefinamientoRequest) -> RefinamientoResponse:
                 barrio=z["barrio"],
                 distrito=z["distrito"],
                 score_global=round(z["score_global"], 1),
-                probabilidad_supervivencia_3a=round(z["probabilidad_supervivencia_3a"], 2),
-                alquiler_estimado=z["alquiler_estimado"],
+                probabilidad_supervivencia_3a=(
+                    round(z["probabilidad_supervivencia_3a"], 2)
+                    if z.get("probabilidad_supervivencia_3a") is not None else None
+                ),
+                alquiler_estimado=z.get("alquiler_estimado"),
                 m2_disponibles=z.get("m2_disponibles"),
                 color=_score_to_color(z["score_global"]),
                 lat=z["lat"],
                 lng=z["lng"],
                 resumen_ia=z.get("resumen_ia", ""),
             )
-            for z in resultado["zonas_actualizadas"]
+            for z in zonas_filtradas
         ]
 
     return RefinamientoResponse(
         session_id=body.session_id,
-        respuesta_ia=resultado["respuesta_ia"],
+        respuesta_ia=resultado.get("mensaje", ""),
         zonas_actualizadas=zonas_actualizadas,
-        accion=AccionRefinamiento(resultado["accion"]),
+        accion=accion,
     )
 
 

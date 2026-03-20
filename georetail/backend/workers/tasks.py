@@ -82,13 +82,13 @@ async def _generar_pdf(pdf_id, session_id, zona_ids, opciones):
     from db.conexion import init_db_pool
     await init_db_pool()
     from exportar.generador import generar
-    from db.exportaciones import marcar_exportacion_ok, marcar_exportacion_error
+    from db.exportaciones import marcar_completada, marcar_error
     try:
-        await generar(pdf_id=pdf_id, session_id=session_id,
-                      zona_ids=zona_ids, opciones=opciones)
-        await marcar_exportacion_ok(pdf_id)
+        ruta = await generar(pdf_id=pdf_id, session_id=session_id,
+                             zona_ids=zona_ids, opciones=opciones)
+        await marcar_completada(pdf_id, ruta)
     except Exception as e:
-        await marcar_exportacion_error(pdf_id, str(e))
+        await marcar_error(pdf_id, str(e))
         raise
     return {"pdf_id": pdf_id}
 
@@ -96,8 +96,8 @@ async def _generar_pdf(pdf_id, session_id, zona_ids, opciones):
 async def _marcar_error(pdf_id, msg):
     from db.conexion import init_db_pool
     await init_db_pool()
-    from db.exportaciones import marcar_exportacion_error
-    await marcar_exportacion_error(pdf_id, msg)
+    from db.exportaciones import marcar_error
+    await marcar_error(pdf_id, msg)
 
 
 # ── Mercado inmobiliario ──────────────────────────────────────────────────────
