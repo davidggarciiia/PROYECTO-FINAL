@@ -172,7 +172,12 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
     ) = await asyncio.gather(
         # Fuente: `scores_zona` JSONB con shap_values y scores por dimensión
         # Calculado por pipeline semanal (`pipelines/scores.py`) con XGBoost v1
-        get_scores_zona(zona_id=body.zona_id, sector_codigo=sector),
+        get_scores_zona(
+            zona_id=body.zona_id,
+            sector_codigo=sector,
+            idea_tags=sesion.get("perfil", {}).get("idea_tags") or [],
+            descripcion_negocio=sesion.get("datos", {}).get("descripcion_original"),
+        ),
 
         # Fuente: `alertas_zona` generadas por `nlp/alertas.py`
         # Pipeline diario: embeddings de reseñas (Google/Foursquare/Yelp) → clasificación

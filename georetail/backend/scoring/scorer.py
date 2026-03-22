@@ -137,8 +137,20 @@ def _score_manual(datos: dict, sector: dict) -> dict:
     incidencias = datos.get("incidencias_por_1000hab") or 35
     s_seg = min(100.0, max(0.0, (120.0 - incidencias) / 1.15))
 
-    # TURISMO
-    s_turismo = min(100.0, max(0.0, float(datos.get("score_turismo") or 40.0)))
+    # TURISMO — corregido por proximidad real al litoral BCN.
+    # El campo score_turismo de variables_zona se agrega a nivel de barrio/distrito,
+    # lo que hace que zonas junto al mar reciban valores bajos (25) cuando deberían
+    # ser altos. dist_playa_m da granularidad real a nivel zona.
+    turismo_base = float(datos.get("score_turismo") or 40.0)
+    dist_playa = datos.get("dist_playa_m")
+    if dist_playa is not None:
+        if dist_playa < 300:
+            turismo_base = max(turismo_base, 85.0)   # frente al mar
+        elif dist_playa < 700:
+            turismo_base = max(turismo_base, 70.0)   # muy cerca del litoral
+        elif dist_playa < 1500:
+            turismo_base = max(turismo_base, 55.0)   # zona marítima amplia
+    s_turismo = min(100.0, max(0.0, turismo_base))
 
     # ENTORNO COMERCIAL — % locales vacíos invertido + tasa de rotación
     vacios = datos.get("pct_locales_vacios") or 0.15
@@ -260,11 +272,20 @@ async def _get_datos_zona_completos(zona_id: str, sector: str) -> dict:
             SELECT
                 vz.flujo_peatonal_total, vz.renta_media_hogar,
                 vz.score_turismo, vz.pct_locales_vacios, vz.tasa_rotacion_anual,
-                vz.incidencias_por_1000hab,
+                vz.incidencias_por_1000hab, vz.ratio_locales_comerciales,
                 cp.score_saturacion,
                 paz.precio_m2,
-                trans.cnt AS num_lineas_transporte
+                trans.cnt AS num_lineas_transporte,
+                -- distancia al litoral BCN: granularidad real de nivel zona
+                ST_Distance(
+                    ST_Centroid(z.geometria)::geography,
+                    ST_GeomFromText(
+                        'LINESTRING(2.1850 41.3740,2.1940 41.3792,2.2030 41.3840,'
+                        '2.2130 41.3900,2.2250 41.3970,2.2380 41.4020)', 4326
+                    )::geography
+                )::int AS dist_playa_m
             FROM variables_zona vz
+            JOIN zonas z ON z.id = vz.zona_id
             LEFT JOIN competencia_por_local cp ON cp.zona_id=vz.zona_id
                 AND cp.sector_codigo=$2 AND cp.radio_m=300
             LEFT JOIN LATERAL (
@@ -275,8 +296,7 @@ async def _get_datos_zona_completos(zona_id: str, sector: str) -> dict:
                 SELECT COUNT(DISTINCT pl2.linea_id)::int AS cnt
                 FROM paradas_transporte pt
                 JOIN paradas_lineas pl2 ON pl2.parada_id=pt.id
-                JOIN zonas z ON z.id=vz.zona_id
-                WHERE ST_DWithin(pt.geometria::geography, z.geometria::geography,500)
+                WHERE ST_DWithin(pt.geometria::geography, z.geometria::geography, 500)
             ) trans ON TRUE
             WHERE vz.zona_id=$1
             ORDER BY vz.fecha DESC LIMIT 1

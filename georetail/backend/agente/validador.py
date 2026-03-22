@@ -5,6 +5,7 @@ from routers.llm_router import completar
 from agente.prompts import VALIDACION_SISTEMA
 from agente.traductor import traducir
 from agente import extraer_json
+from scoring.perfil_negocio import PerfilNegocio
 
 logger = logging.getLogger(__name__)
 
@@ -52,15 +53,25 @@ async def validar_negocio(descripcion: str, session_id: str) -> dict:
     motivo_en = parsed.get("motivo_rechazo")
     motivo_es = await traducir(motivo_en, session_id) if motivo_en else None
 
+    # Perfil numérico — si el LLM lo devuelve, usarlo directamente;
+    # si no, derivarlo de los idea_tags como fallback.
+    idea_tags_llm = parsed.get("idea_tags") or []
+    perfil_raw = parsed.get("perfil_numerico")
+    if perfil_raw and isinstance(perfil_raw, dict):
+        perfil = PerfilNegocio.from_dict(perfil_raw)
+    else:
+        from scoring.perfil_negocio import perfil_desde_tags
+        perfil = perfil_desde_tags(idea_tags_llm)
+
     return {
         "es_retail":              parsed.get("es_retail", True) and estado != "error_tipo_negocio",
         "inviable_legal":         estado == "inviable_legal",
-        # motivo_legal: solo se rellena cuando el rechazo es legal
         "motivo_legal":           motivo_es if estado == "inviable_legal" else None,
-        # motivo: solo se rellena cuando el negocio no es retail
         "motivo":                 motivo_es if estado == "error_tipo_negocio" else None,
         "informacion_suficiente": parsed.get("info_suficiente", False),
         "sector_detectado":       parsed.get("sector") or "desconocido",
+        "idea_tags":              idea_tags_llm,
+        "perfil_negocio":         perfil.to_dict(),
         "variables_conocidas":    parsed.get("variables_extraidas") or {},
         "preguntas_necesarias":   parsed.get("preguntas_pendientes") or [],
     }
