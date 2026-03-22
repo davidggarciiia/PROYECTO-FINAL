@@ -24,19 +24,21 @@ cd PROYECTO-FINAL/georetail
   PASO 2 — Configurar el archivo .env (solo la primera vez)
 ───────────────────────────────────────────────────────────────────────────────
 
-  El archivo .env ya existe en georetail/.env con las claves reales del proyecto.
-  No hace falta crearlo desde cero.
-
-  Si lo tienes que recrear desde cero, copia el ejemplo:
+  El .env NO está en git (está en .gitignore). Tienes que crearlo tú:
 
     cp .env.example .env
 
-  Claves que YA están configuradas y funcionan:
-    OPENAI_API_KEY          → OpenAI GPT-4o-mini (LLM principal)
+  Luego abre el .env y rellena las claves. Las claves reales están en Notion
+  (acceso privado del equipo). Pídelas a David si no tienes acceso.
+
+  Claves OBLIGATORIAS (sin estas no arranca):
+    OPENAI_API_KEY          → OpenAI GPT-4o (LLM principal)
     GOOGLE_MAPS_API_KEY     → Google Maps / Places
-    FOURSQUARE_API_KEY      → Foursquare (reseñas)
-    TMB_APP_ID / TMB_APP_KEY → Transporte BCN
     NEXT_PUBLIC_MAPBOX_TOKEN → Mapa del frontend
+
+  Claves recomendadas (mejoran la app):
+    TMB_APP_ID / TMB_APP_KEY → Transporte BCN
+    FOURSQUARE_API_KEY      → Reseñas
 
   Claves opcionales (dejar vacías si no las tienes):
     ANTHROPIC_API_KEY       → Claude (fallback automático a OpenAI si está vacía)

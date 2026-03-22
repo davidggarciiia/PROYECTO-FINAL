@@ -97,17 +97,10 @@ ALTER TABLE precios_alquiler_zona
     ADD COLUMN IF NOT EXISTS fuente     TEXT    DEFAULT 'manual',
     ADD COLUMN IF NOT EXISTS n_muestras INTEGER DEFAULT 0;
 
--- Constraint para el ON CONFLICT del pipeline (upsert diario por zona+tipo)
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'uq_precios_zona_dia'
-    ) THEN
-        ALTER TABLE precios_alquiler_zona
-            ADD CONSTRAINT uq_precios_zona_dia
-            UNIQUE (zona_id, tipo, (DATE_TRUNC('day', fecha)));
-    END IF;
-END $$;
+-- Índice único para el ON CONFLICT del pipeline (upsert diario por zona+fuente)
+-- La tabla usa (zona_id, fecha, fuente) como clave natural
+CREATE UNIQUE INDEX IF NOT EXISTS uq_precios_zona_dia
+    ON precios_alquiler_zona (zona_id, fuente, DATE_TRUNC('day', fecha::timestamp));
 
 
 -- ── 4. Vista de mercado por zona ──────────────────────────────────────────────

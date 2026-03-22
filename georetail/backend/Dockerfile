@@ -24,6 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copiar e instalar dependencias Python
 # (se hace antes que el resto del código para aprovechar la caché de Docker)
 COPY requirements.txt .
+# PyTorch CPU-only (~200MB en vez de 797MB GPU) — suficiente para sentence-transformers
+RUN pip install --no-cache-dir \
+    torch==2.4.1 \
+    --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar el código fuente
