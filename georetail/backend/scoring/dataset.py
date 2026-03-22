@@ -210,17 +210,27 @@ async def _construir_features_historicas(
         # `variables_zona` tiene una fila por zona por fecha de actualización.
         # Tomamos la snapshot más reciente ANTERIOR a la fecha de apertura.
         vz_query = """
-            SELECT DISTINCT ON (zona_id)
-                zona_id,
-                flujo_peatonal_manana, flujo_peatonal_tarde, flujo_peatonal_noche,
-                flujo_peatonal_total,
-                renta_media_hogar, edad_media, pct_extranjeros, densidad_hab_km2,
-                pct_locales_vacios, tasa_rotacion_anual,
-                score_turismo, incidencias_por_1000hab,
-                nivel_ruido_db, score_equipamientos, m2_zonas_verdes_cercanas
-            FROM variables_zona
-            WHERE zona_id = ANY($1) AND fecha <= $2
-            ORDER BY zona_id, fecha DESC
+            SELECT DISTINCT ON (vz.zona_id)
+                vz.zona_id,
+                vz.flujo_peatonal_manana, vz.flujo_peatonal_tarde, vz.flujo_peatonal_noche,
+                vz.flujo_peatonal_total,
+                vz.renta_media_hogar, vz.edad_media, vz.pct_extranjeros, vz.densidad_hab_km2,
+                vz.pct_locales_vacios, vz.tasa_rotacion_anual,
+                vz.score_turismo, vz.incidencias_por_1000hab,
+                vz.nivel_ruido_db, vz.score_equipamientos, vz.m2_zonas_verdes_cercanas,
+                -- v2: granularidad geográfica de nivel zona
+                vz.ratio_locales_comerciales,
+                ST_Distance(
+                    ST_Centroid(z.geometria)::geography,
+                    ST_GeomFromText(
+                        'LINESTRING(2.1850 41.3740,2.1940 41.3792,2.2030 41.3840,'
+                        '2.2130 41.3900,2.2250 41.3970,2.2380 41.4020)', 4326
+                    )::geography
+                )::int AS dist_playa_m
+            FROM variables_zona vz
+            JOIN zonas z ON z.id = vz.zona_id
+            WHERE vz.zona_id = ANY($1) AND vz.fecha <= $2
+            ORDER BY vz.zona_id, vz.fecha DESC
         """
 
         comp_query = """
@@ -327,6 +337,9 @@ async def _construir_features_historicas(
             "num_lineas_transporte":    trans.get("num_lineas"),
             "num_paradas_500m":         trans.get("num_paradas"),
             "m2_zonas_verdes_cercanas": vz.get("m2_zonas_verdes_cercanas"),
+            # v2: granularidad geográfica de nivel zona
+            "dist_playa_m":              vz.get("dist_playa_m"),
+            "ratio_locales_comerciales": vz.get("ratio_locales_comerciales"),
         }
 
         # Imputar con medias del dataset de entrenamiento donde haya None

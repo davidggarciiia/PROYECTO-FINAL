@@ -188,8 +188,10 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
     # ── 3c/3d. Buscar y rankear zonas (sin cuestionario) ─────────────────────
     perfil = {
         **sesion.get("perfil", {}),
-        "sector":    validacion["sector_detectado"],
-        "variables": validacion["variables_conocidas"],
+        "sector":         validacion["sector_detectado"],
+        "idea_tags":      validacion.get("idea_tags") or [],
+        "perfil_negocio": validacion.get("perfil_negocio") or {},
+        "variables":      validacion["variables_conocidas"],
     }
 
     filtros = sesion["filtros"]
@@ -205,7 +207,15 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
     # calcular_scores_batch espera lista de IDs y el código de sector
     zona_ids      = [z["zona_id"] for z in zonas_candidatas]
     sector_codigo = perfil.get("sector", "desconocido")
-    scores_list   = await calcular_scores_batch(zona_ids, sector_codigo)
+    # Los idea_tags vienen del LLM directamente — capturan el concepto específico
+    # (ej: dog_friendly + clientela_local + specialty_coffee) con mucha más
+    # precisión que el sector genérico. La descripción es fallback si no hay tags.
+    scores_list = await calcular_scores_batch(
+        zona_ids,
+        sector_codigo,
+        idea_tags=validacion.get("idea_tags") or [],
+        descripcion_negocio=body.descripcion,
+    )
 
     # Construir lookup de scores por zona_id
     scores_by_id = {s["zona_id"]: s for s in scores_list}
