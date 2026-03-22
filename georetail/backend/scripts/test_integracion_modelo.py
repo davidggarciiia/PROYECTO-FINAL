@@ -112,8 +112,8 @@ def test_concepto_matcher():
             warn(f"'{desc[:45]}...' → {nombre} (sim={sim:.3f} — demasiado bajo)")
         else:
             ok(f"'{desc[:45]}...' → {nombre} (sim={sim:.3f}, {elapsed:.0f}ms)")
-            for m in matches[1:]:
-                info(f"    #{matches.index(m)+2} {m.get('nombre','?')} ({m.get('similarity',0):.3f})")
+            for i, m in enumerate(matches[1:], start=2):
+                info(f"    #{i} {m.get('nombre','?')} ({m.get('similarity',0):.3f})")
 
     print()
     if errores == 0:
@@ -141,7 +141,7 @@ async def test_scores_comparativos():
     try:
         async with get_db() as conn:
             rows = await conn.fetch(
-                "SELECT zona_id, nombre FROM zonas ORDER BY RANDOM() LIMIT 5"
+                "SELECT id AS zona_id, nombre FROM zonas ORDER BY RANDOM() LIMIT 5"
             )
         if not rows:
             warn("No hay zonas en la BD. ¿Has ejecutado el seed?")
@@ -225,7 +225,7 @@ async def test_score_afinidad():
 
     try:
         async with get_db() as conn:
-            row = await conn.fetchrow("SELECT zona_id, nombre FROM zonas LIMIT 1")
+            row = await conn.fetchrow("SELECT id AS zona_id, nombre FROM zonas LIMIT 1")
         if not row:
             warn("No hay zonas en la BD")
             return False
@@ -339,10 +339,44 @@ async def test_flujo_llm():
 # Main
 # ════════════════════════════════════════════════════════════════════════════
 
+async def _init_infra():
+    """Inicializa el pool de BD y Redis para los tests que los necesitan."""
+    try:
+        from db.conexion import init_db_pool
+        await init_db_pool()
+        ok("Pool BD inicializado")
+    except Exception as e:
+        warn(f"No se pudo inicializar la BD: {e}")
+
+    try:
+        from db.redis_client import init_redis
+        await init_redis()
+        ok("Redis inicializado")
+    except Exception as e:
+        warn(f"No se pudo inicializar Redis: {e}")
+
+
+async def _close_infra():
+    try:
+        from db.conexion import close_db_pool
+        await close_db_pool()
+    except Exception:
+        pass
+    try:
+        from db.redis_client import close_redis
+        await close_redis()
+    except Exception:
+        pass
+
+
 async def main():
     print(f"\n{BOLD}GeoRetail — Test de integración del modelo mejorado{RESET}")
     print("Asegúrate de ejecutar desde el directorio backend/")
     print(f"Rama: modelo-mejorado\n")
+
+    # Inicializar infraestructura
+    header("Inicializando BD y Redis")
+    await _init_infra()
 
     resultados = {}
 
@@ -379,6 +413,7 @@ async def main():
         print(f"\n  {YELLOW}Nota: Los tests con BD requieren docker-compose up -d postgres{RESET}")
         print(f"  {YELLOW}TEST 4 requiere ANTHROPIC_API_KEY configurada{RESET}")
 
+    await _close_infra()
     sys.exit(0 if pasados == total else 1)
 
 
