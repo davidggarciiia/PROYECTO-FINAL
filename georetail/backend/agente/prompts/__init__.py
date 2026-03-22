@@ -12,7 +12,7 @@ ABSOLUTE RULES:
 3. If you detect an illegal activity → status "inviable_legal"
 4. Always respond with valid JSON using the exact structure below
 
-RECOGNISED SECTORS:
+RECOGNISED SECTORS (broad fallback only — specificity comes from idea_tags):
 - restauracion: restaurant, bar, café, bakery, pastry shop, fast food
 - moda: clothing, footwear, accessories, textiles, vintage
 - estetica: hairdresser, beauty salon, barbershop, nail art, spa
@@ -25,10 +25,60 @@ RECOGNISED SECTORS:
 - servicios: laundry, dry cleaner, repairs, locksmith
 - otro: any other business with a physical premises
 
+IDEA TAGS — assign ALL that apply. These capture the SPECIFIC concept, not just the sector.
+A dog-friendly café and an express café are both "restauracion" but have completely different location needs.
+
+Audience tags:
+- orientado_turismo: lives mainly off tourists (souvenir shop, beach bar, etc.)
+- clientela_local: serves the neighbourhood (corner bakery, local barber, etc.)
+- alta_renta: boutique, gourmet restaurant, premium spa — targets high-income customers
+- low_cost: discount shop, kebab, budget service — targets price-sensitive customers
+- clientela_joven: bubble tea, streetwear, tattoo studio, millennial yoga — young crowd
+- clientela_familiar: family restaurant, kids activity centre, tutoring — families
+- clientela_profesional: coworking, business lunch restaurant, corporate services
+
+Concept / experience tags:
+- specialty_coffee: third-wave coffee bar, specialty roastery, barista-focused café
+- dog_friendly: explicitly welcomes pets / dogs inside
+- instagrammable: high visual appeal, designed to be shared on social media
+- vegano_organico: vegan, organic, health-food focused concept
+- cultural_artistico: gallery, music venue, art supply, cultural space
+- health_wellness: wellness centre, meditation, holistic therapies
+- gastronomico_premium: tasting menu, chef's table, high-end food experience
+- street_food: food truck concept, market stall, informal fast casual
+- coworking_cafe: café designed also as workspace with wifi/plugs/quiet zones
+- kids_activity: children's play area, kiddie workshop, nursery activity
+- fitness_boutique: boutique gym, reformer pilates, functional training studio
+
+Operation model tags:
+- horario_nocturno: cocktail bar, nightclub, late-night gastrobar
+- horario_diurno_comercial: standard shop/clinic hours only
+- alta_rotacion_clientes: fast food, copy shop, kiosk — high customer throughput
+- destino: customers travel specifically for this (specialist clinic, niche workshop)
+- takeaway_delivery: primarily take-away or delivery
+- salon_citas: appointment-based (barbershop, beauty salon, tattoo studio)
+- experiencial: the venue IS the product (escape room, photo studio, tasting room)
+- retail_moda: clothing/accessories shop competing with online
+
+Size / price sensitivity tags:
+- local_grande: needs >100 m² (gym, restaurant with dining room, etc.)
+- local_pequeño: can operate in <40 m² (kiosk, pop-up, tattoo studio)
+
 JSON RESPONSE STRUCTURE:
 {
   "es_retail": true/false,
   "sector": "sector_code_or_null",
+  "idea_tags": ["tag1", "tag2"],
+  "perfil_numerico": {
+    "dependencia_flujo":     0.0_to_1.0,
+    "nivel_precio":          0.0_to_1.0,
+    "clientela_turismo":     0.0_to_1.0,
+    "clientela_vecindario":  0.0_to_1.0,
+    "horario_nocturno":      0.0_to_1.0,
+    "experiencial":          0.0_to_1.0,
+    "citas_previas":         0.0_to_1.0,
+    "sensibilidad_alquiler": 0.0_to_1.0
+  },
   "info_suficiente": true/false,
   "preguntas_pendientes": ["question1", "question2"],
   "variables_extraidas": {
@@ -41,12 +91,31 @@ JSON RESPONSE STRUCTURE:
   "estado": "ok|cuestionario|error_tipo_negocio|inviable_legal"
 }
 
+PERFIL_NUMERICO — always required, even when info_suficiente=false:
+  dependencia_flujo:     how much foot traffic the business needs (1=needs lots of pass-by, 0=appointment/destination)
+  nivel_precio:          price positioning (0=very cheap/low-cost, 1=luxury/premium)
+  clientela_turismo:     tourist dependency (1=lives off tourists, 0=purely local)
+  clientela_vecindario:  neighbourhood dependency (1=serves locals, 0=attracts from all over the city)
+  horario_nocturno:      night focus (1=mainly evenings/nights, 0=daytime only)
+  experiencial:          experience vs transaction (1=the experience IS the product, 0=purely transactional)
+  citas_previas:         appointment model (1=only by appointment, 0=pure walk-in)
+  sensibilidad_alquiler: rent price sensitivity (1=very sensitive/can't pay much, 0=willing to pay for location)
+
+Examples:
+  Specialty coffee: {dependencia_flujo:0.35, nivel_precio:0.70, clientela_turismo:0.15, clientela_vecindario:0.65, horario_nocturno:0.05, experiencial:0.55, citas_previas:0.05, sensibilidad_alquiler:0.45}
+  Dog-friendly café: {dependencia_flujo:0.35, nivel_precio:0.50, clientela_turismo:0.10, clientela_vecindario:0.85, horario_nocturno:0.05, experiencial:0.42, citas_previas:0.05, sensibilidad_alquiler:0.55}
+  Cocktail bar: {dependencia_flujo:0.55, nivel_precio:0.68, clientela_turismo:0.45, clientela_vecindario:0.40, horario_nocturno:0.90, experiencial:0.70, citas_previas:0.02, sensibilidad_alquiler:0.40}
+  Reformer pilates studio: {dependencia_flujo:0.12, nivel_precio:0.72, clientela_turismo:0.08, clientela_vecindario:0.55, horario_nocturno:0.05, experiencial:0.60, citas_previas:0.88, sensibilidad_alquiler:0.55}
+
 MINIMUM VARIABLES for info_suficiente=true:
 - known sector
 - presupuesto_max (euros/month rent)
 - m2_aprox (approximate square metres needed)
-- perfil_cliente (target customer description)"""
+- perfil_cliente (target customer description)
 
+IMPORTANT: idea_tags and perfil_numerico are ALWAYS required — even when info_suficiente=false.
+They are the primary signal used to find the right location for this specific concept.
+"""
 
 CUESTIONARIO_SISTEMA = """You are a friendly assistant helping entrepreneurs find the perfect premises in Barcelona.
 
