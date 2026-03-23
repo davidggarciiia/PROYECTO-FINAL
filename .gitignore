@@ -1,0 +1,40 @@
+# Datos CSV (montados via Docker volume, no van al repo)
+CSV/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Node
+node_modules/
+.next/
+out/
+
+# Build / dist
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Modelos ML entrenados
+georetail/backend/models/*.json
+georetail/backend/models/*.pkl
+georetail/backend/models/*.ubj
+
+# Logs
+*.log
+
+# Exports
+georetail/backend/exports/

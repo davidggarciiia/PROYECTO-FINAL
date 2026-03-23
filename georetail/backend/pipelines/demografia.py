@@ -2,27 +2,41 @@
 pipelines/demografia.py — Pipeline mensual de datos demográficos.
 
 Fuentes:
-  - Padró Municipal BCN (CKAN `pad_mdbas`): población, edad, extranjeros
-  - Renda disponible llars BCN (CKAN `renda-disponible-llars-bcn`): renta por barrio
-  - INE API: datos complementarios si los BCN no están actualizados
+  - Renda disponible llars BCN (CSV descargable BCN Open Data): renta media por hogar
+    Dataset: "Disposable income of households per capita(€) in the city of Barcelona"
+    Columnas: Any, Codi_Districte, Nom_Districte, Codi_Barri, Nom_Barri,
+              Seccio_Censal, Import_Euros
+    Estrategia de matching: promedio por Codi_Districte (evita el mapeo barrio
+    oficial ↔ barrio simplificado de la BD, que no es 1:1).
+
+  - Padró Municipal BCN (CKAN datastore): población, edad, extranjeros
 """
 from __future__ import annotations
+import csv
+import io
 import logging
 import os
+from datetime import date
+
 import httpx
 from db.conexion import get_db
 
 logger = logging.getLogger(__name__)
 
 # ── Open Data Barcelona ───────────────────────────────────────────────────────
-# API key opcional — sin key funciona con límite ~1000 req/día por IP.
-# Configurar OPEN_DATA_BCN_API_KEY en el .env para límite ~10.000 req/día.
-# Registro gratuito: https://opendata-ajuntament.barcelona.cat → Mi cuenta → API Key
 _CKAN = "https://opendata-ajuntament.barcelona.cat/data/api/action"
 _CKAN_HEADERS: dict = (
     {"Authorization": os.environ.get("OPEN_DATA_BCN_API_KEY", "")}
     if os.environ.get("OPEN_DATA_BCN_API_KEY")
     else {}
+)
+
+# URL del CSV 2022 de renda disponible por persona (año más reciente disponible)
+_RENDA_CSV_URL = (
+    "https://opendata-ajuntament.barcelona.cat/data/dataset/"
+    "78db0c75-fa56-4604-9510-8b92834a7fd2/resource/"
+    "3df0c5b9-de69-4c94-b924-57540e52932f/download/"
+    "2022_renda_disponible_llars_per_persona.csv"
 )
 
 
@@ -41,40 +55,65 @@ async def ejecutar() -> dict:
 
 
 async def _poblar_renta() -> int:
-    """Carga renta media por hogar por barrio → variables_zona.renta_media_hogar"""
+    """
+    Descarga el CSV de renda disponible por persona y actualiza
+    variables_zona.renta_media_hogar usando el promedio por distrito.
+
+    Usa promedios por Codi_Districte porque nuestros 28 barrios simplificados
+    no mapean 1:1 con los 73 barrios oficiales de BCN.
+    """
     ok = 0
     try:
-        async with httpx.AsyncClient(timeout=30.0, headers=_CKAN_HEADERS) as c:
-            sql = """SELECT * FROM "renda-disponible-llars-bcn"
-                     WHERE "Codi_Barri" IS NOT NULL ORDER BY "Any" DESC LIMIT 2000"""
-            r = await c.get(f"{_CKAN}/datastore_search_sql", params={"sql": sql})
+        async with httpx.AsyncClient(
+            timeout=30.0, headers=_CKAN_HEADERS, follow_redirects=True
+        ) as c:
+            r = await c.get(_RENDA_CSV_URL)
             r.raise_for_status()
-            rows = r.json().get("result",{}).get("records",[])
+
+        # Calcular renta media por distrito (Codi_Districte)
+        dist_rentas: dict[str, list[float]] = {}
+        reader = csv.DictReader(io.StringIO(r.text))
+        for row in reader:
+            try:
+                dist = str(row.get("Codi_Districte", "") or "").strip().zfill(2)
+                renta = float(row.get("Import_Euros", 0) or 0)
+                if dist and renta > 0:
+                    dist_rentas.setdefault(dist, []).append(renta)
+            except (ValueError, TypeError):
+                continue
+
+        renta_por_distrito: dict[str, float] = {
+            d: sum(vals) / len(vals)
+            for d, vals in dist_rentas.items()
+            if vals
+        }
+        logger.info("Renta media por distrito: %s", {
+            d: round(v, 0) for d, v in renta_por_distrito.items()
+        })
+
+        fecha = date(2022, 6, 1)
 
         async with get_db() as conn:
+            # Para cada zona, obtener el distrito → renta
+            rows = await conn.fetch("""
+                SELECT z.id AS zona_id, d.codigo AS dist_codigo
+                FROM zonas z
+                JOIN barrios b ON b.id = z.barrio_id
+                JOIN distritos d ON d.id = b.distrito_id
+            """)
+
             for row in rows:
-                barri_code = str(row.get("Codi_Barri","")).zfill(6)
-                renta = float(str(row.get("Import_Ren_Bruta_Mit","0")).replace(".","").replace(",",".") or 0)
-                any_ = int(row.get("Any",2022))
-                fecha = f"{any_}-06-01"
-
-                if not renta: continue
-
-                # Mapear barrio a zonas
-                zona_ids = await conn.fetch("""
-                    SELECT z.id FROM zonas z
-                    JOIN barrios b ON b.id=z.barrio_id
-                    WHERE b.codigo=$1
-                """, barri_code)
-
-                for z in zona_ids:
-                    await conn.execute("""
-                        INSERT INTO variables_zona (zona_id, fecha, renta_media_hogar, fuente)
-                        VALUES ($1,$2,$3,'padro_bcn')
-                        ON CONFLICT (zona_id,fecha) DO UPDATE
-                        SET renta_media_hogar=EXCLUDED.renta_media_hogar
-                    """, z["id"], fecha, renta)
-                    ok += 1
+                dist = row["dist_codigo"]
+                renta = renta_por_distrito.get(dist)
+                if not renta:
+                    continue
+                await conn.execute("""
+                    INSERT INTO variables_zona (zona_id, fecha, renta_media_hogar, fuente)
+                    VALUES ($1, $2, $3, 'renda_bcn_2022')
+                    ON CONFLICT (zona_id, fecha) DO UPDATE
+                    SET renta_media_hogar = $3
+                """, row["zona_id"], fecha, round(renta, 2))
+                ok += 1
 
     except Exception as e:
         logger.warning("_poblar_renta error: %s", e)
