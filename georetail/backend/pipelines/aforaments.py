@@ -1,13 +1,14 @@
 """
-pipelines/aforaments.py — Ingesta de flujo peatonal desde CSV local + API descriptiu BCN.
+pipelines/aforaments.py — Ingesta de flujo peatonal desde CSVs locales.
 
 Fuentes:
-  - CSV local: /data/csv/2025_aforament_detall_valor.csv (montado en Docker)
+  - CSV local: /data/csv/aforaments/2025_aforament_detall_valor.csv
     Columnas: Any, Id_aforament, Mes, Codi_tipus_dia, Desc_tipus_dia, Valor_IMD
     Codi_tipus_dia: 1=dilluns, 2=laborables, 3=divendres, 4=dissabte, 5=diumenge
 
-  - API CKAN descriptiu (coordenadas):
-    resource_id: 36d41387-a4e5-48fa-801d-698257e3a106  (2025_aforament_descripcio)
+  - CSV local: /data/csv/aforaments/2025_aforament_descripcio.csv
+    Columnas: Id_aforament, Desc_aforament, ..., Longitud, Latitud, ...
+    (antes se obtenía de la API CKAN — ahora se lee directamente del CSV local)
 
 Tabla destino: variables_zona (columnas flujo_peatonal_*)
 
@@ -33,19 +34,15 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-import httpx
-
 from db.conexion import get_db
 
 logger = logging.getLogger(__name__)
 
 # ── Configuración ──────────────────────────────────────────────────────────────
-_CSV_DIR   = Path(os.environ.get("CSV_DIR", "/data/csv"))
-_CSV_IMD   = _CSV_DIR / "2025_aforament_detall_valor.csv"
-
-# API descriptiu — coordenadas de los sensores 2025
-_CKAN_RESOURCE_DESCRIPTIU = "36d41387-a4e5-48fa-801d-698257e3a106"
-_CKAN_BASE = "https://opendata-ajuntament.barcelona.cat/data/api/action"
+_CSV_DIR        = Path(os.environ.get("CSV_DIR", "/data/csv"))
+_CSV_AFORAMENTS = _CSV_DIR / "aforaments"
+_CSV_IMD        = _CSV_AFORAMENTS / "2025_aforament_detall_valor.csv"
+_CSV_DESCRIPCIO = _CSV_AFORAMENTS / "2025_aforament_descripcio.csv"
 
 _RADIO_M    = 200   # Radio de influencia de cada sensor (metros)
 _MAX_ZONAS  = 8     # Máximo zonas que puede influir un sensor
@@ -69,9 +66,9 @@ async def ejecutar() -> dict:
 
         logger.info("CSV leído: %d sensores con IMD", len(imd_por_sensor))
 
-        # 2. Obtener coordenadas de sensores desde CKAN
-        coords_sensor = await _obtener_coordenadas()
-        logger.info("Coordenadas obtenidas: %d sensores", len(coords_sensor))
+        # 2. Leer coordenadas de sensores desde CSV local
+        coords_sensor = _leer_coordenadas()
+        logger.info("Coordenadas leídas del CSV: %d sensores", len(coords_sensor))
 
         # 3. Cruzar: solo sensores con IMD Y coordenadas
         sensores = {
@@ -126,46 +123,31 @@ def _leer_csv_imd() -> dict[str, float]:
     return {sid: sum(vals) / len(vals) for sid, vals in acum.items() if vals}
 
 
-# ─── Coordenadas desde CKAN ───────────────────────────────────────────────────
+# ─── Coordenadas desde CSV local ─────────────────────────────────────────────
 
-async def _obtener_coordenadas() -> dict[str, tuple[float, float]]:
+def _leer_coordenadas() -> dict[str, tuple[float, float]]:
     """
-    Descarga las coordenadas de los aforadores desde el dataset descriptivo de BCN.
+    Lee las coordenadas de los sensores desde el CSV descriptiu local.
     Devuelve dict {Id_aforament: (lng, lat)}.
     """
+    if not _CSV_DESCRIPCIO.exists():
+        logger.warning("CSV descripcio no encontrado: %s", _CSV_DESCRIPCIO)
+        return {}
+
     coords: dict[str, tuple[float, float]] = {}
-    offset = 0
-    limit  = 1000
+    with open(_CSV_DESCRIPCIO, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            sid = str(row.get("Id_aforament", "") or "").strip().strip('"')
+            try:
+                lng = float(row.get("Longitud", 0) or 0)
+                lat = float(row.get("Latitud", 0) or 0)
+                if sid and lng and lat:
+                    coords[sid] = (lng, lat)
+            except (ValueError, TypeError):
+                continue
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        while True:
-            resp = await client.get(
-                f"{_CKAN_BASE}/datastore_search",
-                params={
-                    "resource_id": _CKAN_RESOURCE_DESCRIPTIU,
-                    "limit": limit,
-                    "offset": offset,
-                },
-            )
-            if resp.status_code != 200:
-                logger.warning("CKAN descriptiu HTTP %d", resp.status_code)
-                break
-            records = resp.json().get("result", {}).get("records", [])
-            if not records:
-                break
-            for r in records:
-                sid = str(r.get("Id_aforament") or "").strip()
-                try:
-                    lng = float(r["Longitud"])
-                    lat = float(r["Latitud"])
-                    if sid and lng and lat:
-                        coords[sid] = (lng, lat)
-                except (TypeError, KeyError, ValueError):
-                    continue
-            offset += limit
-            if len(records) < limit:
-                break
-
+    logger.info("CSV descripcio leído: %d sensores con coordenadas", len(coords))
     return coords
 
 
