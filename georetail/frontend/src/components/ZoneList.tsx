@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { ZonaPreview } from "@/lib/types";
 import styles from "./ZoneList.module.css";
 
@@ -7,6 +8,8 @@ interface Props {
   zonas: ZonaPreview[];
   selectedId?: string;
   onSelect: (zona: ZonaPreview) => void;
+  /** When true, renders as a bottom sheet (mobile map view) */
+  asBottomSheet?: boolean;
 }
 
 function ScoreRing({ score }: { score: number }) {
@@ -32,7 +35,7 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-export default function ZoneList({ zonas, selectedId, onSelect }: Props) {
+function ZoneCards({ zonas, selectedId, onSelect }: Omit<Props, "asBottomSheet">) {
   return (
     <div className={styles.list}>
       {zonas.map((zona, idx) => {
@@ -72,6 +75,41 @@ export default function ZoneList({ zonas, selectedId, onSelect }: Props) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+export default function ZoneList({ zonas, selectedId, onSelect, asBottomSheet }: Props) {
+  const [expanded, setExpanded] = useState(true);
+
+  // Desktop: plain scrollable list (unchanged)
+  if (!asBottomSheet) {
+    return <ZoneCards zonas={zonas} selectedId={selectedId} onSelect={onSelect} />;
+  }
+
+  // Mobile: bottom sheet
+  return (
+    <div
+      className={`${styles.bottomSheet} ${
+        expanded ? styles.bottomSheetExpanded : styles.bottomSheetCollapsed
+      }`}
+    >
+      {/* Handle + header — tap to toggle */}
+      <div className={styles.sheetHeader} onClick={() => setExpanded(e => !e)}>
+        <div className={styles.sheetHandle} />
+        <span className={styles.sheetTitle}>{zonas.length} ubicaciones</span>
+        <svg
+          className={`${styles.sheetToggleIcon} ${expanded ? styles.sheetToggleExpanded : ""}`}
+          width="16" height="16" viewBox="0 0 16 16" fill="none"
+        >
+          <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </div>
+
+      {/* Cards — only rendered / scrollable when expanded */}
+      {expanded && (
+        <ZoneCards zonas={zonas} selectedId={selectedId} onSelect={onSelect} />
+      )}
     </div>
   );
 }
