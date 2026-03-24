@@ -1,245 +1,132 @@
-/* ═══════════════════════════════════════════════════════════════════════════
-   page.module.css  —  Layout principal + responsive mobile
-   Breakpoint: < 1024px → mobile flow
-   ═══════════════════════════════════════════════════════════════════════════ */
+.app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
 
-   .app {
-    display: flex;
-    height: 100vh;
-    height: 100dvh; /* mobile browsers with URL bar */
-    overflow: hidden;
-    position: relative;
-  }
-  
-  /* ── Sidebar ── */
-  .sidebar {
-    width: var(--sidebar-w);
-    flex-shrink: 0;
-    display: flex;
+/* ── Sidebar ── */
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  z-index: 10;
+  overflow: hidden;
+}
+
+/* ── Logo bar ── */
+.logoBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.logoMark {
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 16px rgba(99,102,241,0.35);
+  flex-shrink: 0;
+}
+.logoText {
+  font-size: 15px; font-weight: 700;
+  color: var(--text); letter-spacing: -0.02em;
+}
+.logoBadge {
+  margin-left: auto;
+  font-size: 9px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-glow);
+  border: 1px solid rgba(99,102,241,0.3);
+  padding: 2px 7px; border-radius: 100px;
+}
+
+/* ── Results header ── */
+.resultsHeader {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px 6px;
+  flex-shrink: 0;
+}
+.resultsCount {
+  font-size: 11px; font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.07em;
+}
+.resultsHint {
+  font-size: 10px;
+  color: var(--text-subtle);
+}
+
+/* ── Empty state ── */
+.emptyState {
+  flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 24px 24px 40px;
+  text-align: center; gap: 16px;
+}
+.emptyIllustration {
+  width: 56px; height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--surface-2), var(--surface-3));
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent);
+}
+.emptyTitle { font-size: 14px; font-weight: 600; color: var(--text); }
+.emptyDesc {
+  font-size: 12px; color: var(--text-muted);
+  max-width: 240px; line-height: 1.6;
+}
+.exampleChips {
+  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+}
+.chip {
+  padding: 5px 12px; border-radius: 100px;
+  font-size: 12px; color: var(--text-muted);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer; transition: all 0.15s;
+}
+.chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+
+/* ── Map container ── */
+.mapContainer {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+.mapPlaceholder {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface);
+}
+
+/* ── Mobile layout ── */
+@media (max-width: 767px) {
+  .app {
     flex-direction: column;
-    background: var(--surface);
-    border-right: 1px solid var(--border);
-    z-index: 10;
-    overflow: hidden;
   }
-  
-  /* ── Logo bar ── */
-  .logoBar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 16px 20px;
+
+  .sidebar {
+    width: 100%;
+    /* On mobile, sidebar sits below the map when no detail panel */
+    max-height: 45vh;
+    border-right: none;
     border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
+    z-index: 10;
   }
-  .logoMark {
-    width: 30px; height: 30px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #6366F1, #8B5CF6);
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 0 16px rgba(99,102,241,0.35);
-    flex-shrink: 0;
-  }
-  .logoText {
-    font-size: 15px; font-weight: 700;
-    color: var(--text); letter-spacing: -0.02em;
-  }
-  .logoBadge {
-    margin-left: auto;
-    font-size: 9px; font-weight: 700;
-    letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--accent);
-    background: var(--accent-glow);
-    border: 1px solid rgba(99,102,241,0.3);
-    padding: 2px 7px; border-radius: 100px;
-  }
-  
-  /* ── Results header ── */
-  .resultsHeader {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 16px 6px;
-    flex-shrink: 0;
-  }
-  .resultsCount {
-    font-size: 11px; font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase; letter-spacing: 0.07em;
-  }
-  .resultsHint {
-    font-size: 10px;
-    color: var(--text-subtle);
-  }
-  
-  /* ── Empty state ── */
-  .emptyState {
-    flex: 1;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    padding: 24px 24px 40px;
-    text-align: center; gap: 16px;
-  }
-  .emptyIllustration {
-    width: 56px; height: 56px;
-    border-radius: 16px;
-    background: linear-gradient(135deg, var(--surface-2), var(--surface-3));
-    border: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: center;
-    color: var(--accent);
-  }
-  .emptyTitle { font-size: 14px; font-weight: 600; color: var(--text); }
-  .emptyDesc {
-    font-size: 12px; color: var(--text-muted);
-    max-width: 240px; line-height: 1.6;
-  }
-  .exampleChips {
-    display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
-  }
-  .chip {
-    padding: 5px 12px; border-radius: 100px;
-    font-size: 12px; color: var(--text-muted);
-    border: 1px solid var(--border);
-    background: var(--surface-2);
-    cursor: pointer; transition: all 0.15s;
-  }
-  .chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
-  
-  /* ── Map container ── */
+
   .mapContainer {
+    /* Map takes the top portion on mobile */
     flex: 1;
-    position: relative;
-    overflow: hidden;
+    min-height: 55vh;
   }
-  .mapPlaceholder {
-    width: 100%; height: 100%;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--surface);
-  }
-  
-  /* ═══════════════════════════════════════════════════════════════════════════
-     MOBILE  (<1024px)
-     ═══════════════════════════════════════════════════════════════════════════ */
-  
-  @media (max-width: 1023px) {
-  
-    /* Root: single column, views stack on top of each other */
-    .app {
-      flex-direction: column;
-    }
-  
-    /* Sidebar becomes a full-screen view, hidden by default */
-    .sidebar {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100dvh;
-      border-right: none;
-      z-index: 30;
-      transform: translateX(0);
-      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-  
-    /* Map fills the entire screen */
-    .mapContainer {
-      position: fixed;
-      inset: 0;
-      z-index: 10;
-    }
-  
-    /* ── Mobile view states ── */
-  
-    /* Search view: sidebar visible, map hidden */
-    .app[data-view="search"] .sidebar {
-      transform: translateX(0);
-      pointer-events: auto;
-    }
-    .app[data-view="search"] .mapContainer {
-      display: none;
-    }
-  
-    /* Map view: sidebar hidden off-screen left, map visible */
-    .app[data-view="map"] .sidebar {
-      transform: translateX(-100%);
-      pointer-events: none;
-    }
-    .app[data-view="map"] .mapContainer {
-      display: block;
-    }
-  
-    /* Detail view: same as map but detail panel overlays everything */
-    .app[data-view="detail"] .sidebar {
-      transform: translateX(-100%);
-      pointer-events: none;
-    }
-    .app[data-view="detail"] .mapContainer {
-      display: block;
-    }
-  
-    /* ── Mobile top bar (shown on map + detail views) ── */
-    .mobileTopBar {
-      position: fixed;
-      top: 0; left: 0; right: 0;
-      height: 52px;
-      background: rgba(8, 12, 20, 0.92);
-      backdrop-filter: blur(16px);
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 0 14px;
-      z-index: 20;
-    }
-    .mobileBackBtn {
-      width: 32px; height: 32px;
-      border-radius: 8px;
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: center;
-      color: var(--text-muted);
-      flex-shrink: 0;
-      transition: all 0.15s;
-    }
-    .mobileBackBtn:hover { background: var(--surface-3); color: var(--text); }
-  
-    .mobileTopBarTitle {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text);
-      flex: 1;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-  
-    .mobileTopBarBadge {
-      font-size: 9px; font-weight: 700;
-      letter-spacing: 0.08em; text-transform: uppercase;
-      color: var(--accent);
-      background: var(--accent-glow);
-      border: 1px solid rgba(99,102,241,0.3);
-      padding: 2px 7px; border-radius: 100px;
-      flex-shrink: 0;
-    }
-  
-    /* ── Search view: hide the logo bar in favor of full-width search ── */
-    .app[data-view="search"] .logoBar {
-      display: flex; /* keep it visible in search */
-    }
-  
-    /* ── Empty state adjustments ── */
-    .emptyState {
-      padding: 32px 24px 60px;
-      justify-content: flex-start;
-      padding-top: 48px;
-    }
-  
-    /* Chips bigger touch target */
-    .chip {
-      padding: 8px 14px;
-      font-size: 13px;
-    }
-  }
-  
-  /* Desktop: hide mobile-only elements */
-  @media (min-width: 1024px) {
-    .mobileTopBar { display: none; }
-  }
+}

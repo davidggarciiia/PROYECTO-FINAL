@@ -83,6 +83,17 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
 
   return (
     <div className={`${styles.panel} slideInRight`}>
+      {/* ── Mobile back bar (only visible on small screens) ── */}
+      <div className={styles.mobileBackBar}>
+        <button className={styles.mobileBackBtn} onClick={onClose} aria-label="Volver al mapa">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M11 4L6 9l5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Volver al mapa
+        </button>
+        <span className={styles.mobileBackLabel}>{z?.nombre ?? zona.nombre}</span>
+      </div>
+
       {/* ── Header ── */}
       <div className={styles.header}>
         <div className={styles.headerContent}>
