@@ -14,7 +14,31 @@
       "Bash(curl -s -X POST http://localhost:8000/api/buscar -H \"Content-Type: application/json\" -d \"{\"\"descripcion\"\": \"\"restaurante de tapas con terraza en el centro\"\", \"\"session_id\"\": null}\" -w \"\\\\nHTTP_STATUS: %{http_code}\")",
       "Bash(grep -v \"^$\")",
       "Bash(curl -s -X POST http://localhost:8000/api/buscar -H \"Content-Type: application/json\" -d '{\"\"\"\"descripcion\"\"\"\": \"\"\"\"restaurante de tapas con terraza\"\"\"\"}' -w \"\\\\nHTTP: %{http_code}\")",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(pip show:*)",
+      "Bash(py -m pytest --version)",
+      "Bash(ls /c/Python*)",
+      "Bash(conda info:*)",
+      "Bash(docker cp:*)",
+      "Bash(wc -l /c/Users/pirul/Documents/GitHub/PROYECTO-FINAL/CSV/*.csv)",
+      "Bash(python3 -c \"import csv; f=open\\(''/c/Users/pirul/Documents/GitHub/PROYECTO-FINAL/CSV/2016_cens_locals_plantabaixa.csv''\\); reader=csv.DictReader\\(f\\); print\\(''Columns:'', list\\(reader.fieldnames\\)[:15]\\); f.close\\(\\)\")",
+      "Bash(find c:/Users/pirul/Documents/GitHub/PROYECTO-FINAL -name *.csv -o -name *.rdf)",
+      "Bash(curl -s \"https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=41.3874,2.1686&radius=300&type=restaurant&key=AIzaSyCs0xfMeP8q5cXn9pnzFJrFStnokFNq3_E\")",
+      "Bash(mkdir -p aforaments cens_comercial turisme amb_opendata)",
+      "Bash(mv 2017_aforament_descripcio.csv aforaments/)",
+      "Bash(mv 2018_aforament_descripcio.csv aforaments/)",
+      "Bash(mv 2019_aforament_descripcio.csv aforaments/)",
+      "Bash(mv 2020_aforament_descripcio.csv aforaments/)",
+      "Bash(find c:/Users/pirul/Documents/GitHub/PROYECTO-FINAL/georetail/backend/pipelines -name *.py)",
+      "Bash(python3 -c \":*)",
+      "Bash(for ds:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{url_effective}\" \"https://iermbdb.uab.cat/tmp/export/1656400815-7880.csv\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{url_effective}\" \"https://iermbdb.uab.cat/tmp/export/1656332618-6952.csv\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{url_effective}\" \"https://iermbdb.uab.cat/tmp/export/1652100789-7334.csv\")",
+      "Bash(1 docker:*)",
+      "Bash(du -sh CSV/cens_comercial/* CSV/aforaments/2025_aforament_detall_valor.csv CSV/amb_opendata/cataleg.rdf)",
+      "Bash(ls c:/Users/pirul/Documents/GitHub/PROYECTO-FINAL/.git*)",
+      "Bash(ls c:/Users/pirul/Documents/GitHub/PROYECTO-FINAL/*.gitignore)"
     ]
   }
 }
