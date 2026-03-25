@@ -14,6 +14,11 @@ Frecuencias (ver arquitectura.md):
   mercado_viviendas:   Cada 14 días, 01:00
   transporte:          Semanal sábado 01:00
   purgar_portales:     Mensual día 15, 00:00
+  airbnb:              Mensual día 3, 05:00
+  llicencies:          Mensual día 5, 06:00
+  venues_ocio:         Mensual día 7, 07:00
+  booking:             Semanal jueves 03:00
+  google_maps:         Semanal miércoles 02:00
 """
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -49,6 +54,13 @@ def init_scheduler() -> None:
 
     # ── Mantenimiento BD ──────────────────────────────────────────────────────
     _scheduler.add_job(_run_purgar_portales, CronTrigger(day=15, hour=0, minute=0), id="purgar_portales", replace_existing=True, **_JOB_DEFAULTS)
+
+    # ── Nuevos pipelines v3: turismo y dinamismo comercial ────────────────────
+    _scheduler.add_job(_run_airbnb,      CronTrigger(day=3,              hour=5, minute=0), id="airbnb",      replace_existing=True, **_JOB_DEFAULTS)
+    _scheduler.add_job(_run_llicencies,  CronTrigger(day=5,              hour=6, minute=0), id="llicencies",  replace_existing=True, **_JOB_DEFAULTS)
+    _scheduler.add_job(_run_venues_ocio, CronTrigger(day=7,              hour=7, minute=0), id="venues_ocio", replace_existing=True, **_JOB_DEFAULTS)
+    _scheduler.add_job(_run_booking,     CronTrigger(day_of_week="thu",  hour=3, minute=0), id="booking",     replace_existing=True, **_JOB_DEFAULTS)
+    _scheduler.add_job(_run_google_maps, CronTrigger(day_of_week="wed",  hour=2, minute=0), id="google_maps", replace_existing=True, **_JOB_DEFAULTS)
 
     _scheduler.start()
     logger.info("APScheduler iniciado con %d jobs", len(_scheduler.get_jobs()))
@@ -151,3 +163,46 @@ async def _run_purgar_portales():
             logger.info("Portales purgados: %d filas eliminadas", deleted or 0)
     except Exception as e:
         logger.error("Mantenimiento purgar_portales error: %s", e)
+
+
+# ── Runners v3: turismo y dinamismo comercial ─────────────────────────────────
+
+async def _run_airbnb():
+    """Mensual día 3, 05:00 — Inside Airbnb → airbnb_listings_500m, airbnb_occupancy_est."""
+    try:
+        from pipelines.airbnb import ejecutar
+        await ejecutar()
+    except Exception as e:
+        logger.error("Pipeline airbnb error: %s", e)
+
+async def _run_llicencies():
+    """Mensual día 5, 06:00 — Open Data BCN llicències d'activitat → licencias_nuevas_1a."""
+    try:
+        from pipelines.llicencies import ejecutar
+        await ejecutar()
+    except Exception as e:
+        logger.error("Pipeline llicencies error: %s", e)
+
+async def _run_venues_ocio():
+    """Mensual día 7, 07:00 — OSM + Agenda BCN → tabla venues_ocio + eventos_culturales_500m."""
+    try:
+        from pipelines.venues_ocio import ejecutar
+        await ejecutar()
+    except Exception as e:
+        logger.error("Pipeline venues_ocio error: %s", e)
+
+async def _run_booking():
+    """Semanal jueves 03:00 — Booking.com API → tabla alojamientos_turisticos + booking_hoteles_500m."""
+    try:
+        from pipelines.booking import ejecutar
+        await ejecutar()
+    except Exception as e:
+        logger.error("Pipeline booking error: %s", e)
+
+async def _run_google_maps():
+    """Semanal miércoles 02:00 — Google Places → negocios_activos.review_count + google_place_id."""
+    try:
+        from pipelines.google_maps import ejecutar
+        await ejecutar()
+    except Exception as e:
+        logger.error("Pipeline google_maps error: %s", e)

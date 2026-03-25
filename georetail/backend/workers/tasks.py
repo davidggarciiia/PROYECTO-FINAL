@@ -63,6 +63,10 @@ async def _calcular_scores(zona_ids, sector, session_id):
     async with get_db() as conn:
         sid = await conn.fetchval("SELECT id FROM sectores WHERE codigo=$1", sector)
 
+    if sid is None:
+        logger.error("Sector '%s' no encontrado en BD — saltando guardar_scores", sector)
+        return {"ok": 0, "zona_ids": []}
+
     resultados = await calcular_scores_batch(zona_ids, sector)
 
     # Guardar en BD
