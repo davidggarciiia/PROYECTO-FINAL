@@ -468,16 +468,14 @@ class ExportarResponse(BaseModel):
 # ── Health ────────────────────────────────────────────────────────────────────
 
 class ServiceStatus(BaseModel):
-    status:      str
-    latencia_ms: Optional[int] = None
-    detalle:     Optional[str] = None
+    name:       str
+    status:     str
+    latency_ms: Optional[float] = None
+    message:    Optional[str] = None
 
 
 class HealthResponse(BaseModel):
-    status:               str
-    version:              str
-    postgresql:           ServiceStatus
-    redis:                ServiceStatus
-    celery:               ServiceStatus
-    llm_proveedor_activo: Optional[str] = None
-    modelo_scoring:       Optional[str] = None
+    status:    str
+    version:   str
+    timestamp: str
+    services:  list[ServiceStatus]

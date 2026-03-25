@@ -1,11 +1,21 @@
-"""scoring/features.py — Vector de 23 features para XGBoost.
+"""scoring/features.py — Vector de 29 features para XGBoost.
 
 Cambio v2: añadidas dos features de granularidad geográfica de nivel zona:
-  - dist_playa_m          → distancia PostGIS al litoral de Barcelona (metros)
+  - dist_playa_m              → distancia PostGIS al litoral de Barcelona (metros)
   - ratio_locales_comerciales → % de locales comerciales en la zona (vs residencial)
 
-NOTA: Los modelos entrenados con v1 (21 features) fallarán al recibir 23 features
-y caerán al scorer manual. Relanzar scoring/train.py para entrenar en v2.
+Cambio v3: añadidas seis features de turismo y dinamismo comercial al final
+(índices 23-28) para mantener compatibilidad de índices con modelos v2:
+  - airbnb_density_500m       → listados Airbnb en radio 500m (proxy turismo informal)
+  - airbnb_occupancy_est      → ocupación estimada Airbnb (Inside Airbnb)
+  - google_review_count_medio → media de reseñas Google de competidores en 300m
+  - licencias_nuevas_1a       → nuevas licencias de actividad último año en la zona
+  - eventos_culturales_500m   → venues culturales / ocio en radio 500m
+  - booking_hoteles_500m      → hoteles Booking en 500m (proxy turismo alojado)
+
+NOTA: Los modelos entrenados con v1 (21 features) o v2 (23 features) fallarán al
+recibir 29 features y caerán al scorer manual. Relanzar scoring/train.py para
+entrenar en v3.
 """
 from __future__ import annotations
 import logging
@@ -17,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 # v1 tenía 21 features; v2 añade dist_playa_m y ratio_locales_comerciales al final
 # para mantener compatibilidad de índices con modelos guardados.
+# v3 añade 6 features de turismo y dinamismo comercial al final (índices 23-28).
 FEATURE_NAMES = [
     "flujo_peatonal_total","flujo_manana_pct","flujo_tarde_pct","flujo_noche_pct",
     "renta_media_hogar","edad_media","pct_extranjeros","densidad_hab_km2",
@@ -28,6 +39,13 @@ FEATURE_NAMES = [
     # ── v2: granularidad geográfica real a nivel zona ──────────────────────────
     "dist_playa_m",              # distancia al litoral BCN en metros (PostGIS)
     "ratio_locales_comerciales", # fracción 0-1 de locales comerciales en la zona
+    # ── v3: turismo y dinamismo comercial ─────────────────────────────────────
+    "airbnb_density_500m",        # densidad Airbnb en 500m
+    "airbnb_occupancy_est",       # ocupación estimada Airbnb
+    "google_review_count_medio",  # media de reseñas Google de competidores en 300m
+    "licencias_nuevas_1a",        # nuevas licencias de actividad último año en la zona
+    "eventos_culturales_500m",    # venues culturales/ocio en 500m
+    "booking_hoteles_500m",       # hoteles Booking en 500m (proxy turismo alojado)
 ]
 
 # Medias de imputación calculadas sobre dataset de entrenamiento BCN
@@ -40,34 +58,41 @@ _MEDIAS = {
     "incidencias_por_1000hab":35.0,"nivel_ruido_db":63.0,"score_equipamientos":55.0,
     "num_lineas_transporte":6.0,"num_paradas_500m":4.0,"m2_zonas_verdes_cercanas":1200.0,
     # v2
-    "dist_playa_m": 3500.0,          # media BCN: ~3.5 km del mar para zona interior
+    "dist_playa_m": 3500.0,           # media BCN: ~3.5 km del mar para zona interior
     "ratio_locales_comerciales": 0.22, # ~22% de locales son comerciales en BCN
+    # v3 — estimaciones BCN a partir de datos Inside Airbnb 2024 y Open Data BCN
+    "airbnb_density_500m": 28.0,       # ~28 listados Airbnb en radio 500m (media BCN)
+    "airbnb_occupancy_est": 0.62,      # ~62% ocupación media estimada BCN
+    "google_review_count_medio": 145.0, # ~145 reseñas Google por negocio (media competidores)
+    "licencias_nuevas_1a": 4.0,        # ~4 nuevas licencias por zona/año (media BCN)
+    "eventos_culturales_500m": 3.0,    # ~3 venues culturales/ocio en radio 500m
+    "booking_hoteles_500m": 2.0,       # ~2 hoteles Booking en radio 500m (media BCN)
 }
 
 
 async def construir_features(zona_id: str, sector: str) -> np.ndarray:
     import asyncio
-    vz, comp, precio, trans, geo = await asyncio.gather(
+    vz, comp, precio, trans, geo, tur = await asyncio.gather(
         _vz(zona_id), _comp(zona_id, sector), _precio(zona_id), _trans(zona_id),
-        _geo(zona_id))
-    return _build_array(vz, comp, precio, trans, geo)
+        _geo(zona_id), _turismo(zona_id))
+    return _build_array(vz, comp, precio, trans, geo, tur)
 
 
 async def construir_features_batch(zona_ids: list[str], sector: str):
     import asyncio
-    vzs, comps, precios, transs, geos = await asyncio.gather(
+    vzs, comps, precios, transs, geos, turs = await asyncio.gather(
         _vzs(zona_ids), _comps(zona_ids, sector), _precios(zona_ids),
-        _transs(zona_ids), _geos(zona_ids))
+        _transs(zona_ids), _geos(zona_ids), _turismo_batch(zona_ids))
     rows = []
     for zid in zona_ids:
         arr = _build_array(vzs.get(zid, {}), comps.get(zid, {}),
                            precios.get(zid), transs.get(zid, {}),
-                           geos.get(zid, {}))
+                           geos.get(zid, {}), turs.get(zid, {}))
         rows.append(arr[0])
     return np.array(rows, dtype=np.float32), zona_ids
 
 
-def _build_array(vz, comp, precio, trans, geo) -> np.ndarray:
+def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
     # Distinguir None (sin dato → imputa) de 0 (flujo real cero → score 0)
     _flujo_raw = vz.get("flujo_peatonal_total")
     total = _flujo_raw if _flujo_raw is not None else 0
@@ -96,6 +121,13 @@ def _build_array(vz, comp, precio, trans, geo) -> np.ndarray:
         # v2: granularidad geográfica de nivel zona
         "dist_playa_m": geo.get("dist_playa_m"),
         "ratio_locales_comerciales": vz.get("ratio_locales_comerciales"),
+        # v3: turismo y dinamismo comercial
+        "airbnb_density_500m":       tur.get("airbnb_density_500m"),
+        "airbnb_occupancy_est":      tur.get("airbnb_occupancy_est"),
+        "google_review_count_medio": tur.get("google_review_count_medio"),
+        "licencias_nuevas_1a":       tur.get("licencias_nuevas_1a"),
+        "eventos_culturales_500m":   tur.get("eventos_culturales_500m"),
+        "booking_hoteles_500m":      tur.get("booking_hoteles_500m"),
     }
     vec = [float(raw.get(f) if raw.get(f) is not None else _MEDIAS[f]) for f in FEATURE_NAMES]
     return np.array([vec], dtype=np.float32)
@@ -198,3 +230,114 @@ async def _geos(zids: list[str]) -> dict:
             zids, _LITORAL_BCN_WKT,
         )
     return {r["zona_id"]: {"dist_playa_m": r["dist_playa_m"]} for r in rows}
+
+
+# ── Queries de turismo y dinamismo comercial (v3) ─────────────────────────────
+# Lee directamente de las nuevas columnas de variables_zona añadidas en la
+# migración 006_nuevos_datos.sql, más un join a negocios_activos para la media
+# de reseñas Google de los competidores en 300m.
+
+async def _turismo(zona_id: str) -> dict:
+    """Features de turismo y dinamismo comercial para una zona (v3).
+
+    Columnas leídas de variables_zona:
+      - airbnb_listings_500m    → airbnb_density_500m
+      - airbnb_occupancy_est    → airbnb_occupancy_est
+      - licencias_nuevas_1a     → licencias_nuevas_1a
+      - eventos_culturales_500m → eventos_culturales_500m
+      - booking_hoteles_500m    → booking_hoteles_500m
+
+    Calculado en tiempo real:
+      - google_review_count_medio → AVG(review_count) de negocios_activos en 300m
+    """
+    async with get_db() as conn:
+        vz_row = await conn.fetchrow(
+            """
+            SELECT
+                airbnb_listings_500m,
+                airbnb_occupancy_est,
+                licencias_nuevas_1a,
+                eventos_culturales_500m,
+                booking_hoteles_500m
+            FROM variables_zona
+            WHERE zona_id = $1
+            ORDER BY fecha DESC NULLS LAST
+            LIMIT 1
+            """,
+            zona_id,
+        )
+        reviews_avg = await conn.fetchval(
+            """
+            SELECT AVG(na.review_count)::float
+            FROM negocios_activos na
+            JOIN zonas z ON z.id = $1
+            WHERE na.activo = TRUE
+              AND ST_DWithin(na.geometria::geography, z.geometria::geography, 300)
+              AND na.review_count > 0
+            """,
+            zona_id,
+        )
+
+    result: dict = {}
+    if vz_row:
+        result["airbnb_density_500m"]   = vz_row["airbnb_listings_500m"]
+        result["airbnb_occupancy_est"]  = vz_row["airbnb_occupancy_est"]
+        result["licencias_nuevas_1a"]   = vz_row["licencias_nuevas_1a"]
+        result["eventos_culturales_500m"] = vz_row["eventos_culturales_500m"]
+        result["booking_hoteles_500m"]  = vz_row["booking_hoteles_500m"]
+    result["google_review_count_medio"] = reviews_avg
+    return result
+
+
+async def _turismo_batch(zona_ids: list[str]) -> dict:
+    """Batch de features de turismo y dinamismo comercial para múltiples zonas (v3)."""
+    async with get_db() as conn:
+        vz_rows = await conn.fetch(
+            """
+            SELECT DISTINCT ON (zona_id)
+                zona_id,
+                airbnb_listings_500m,
+                airbnb_occupancy_est,
+                licencias_nuevas_1a,
+                eventos_culturales_500m,
+                booking_hoteles_500m
+            FROM variables_zona
+            WHERE zona_id = ANY($1)
+            ORDER BY zona_id, fecha DESC NULLS LAST
+            """,
+            zona_ids,
+        )
+        reviews_rows = await conn.fetch(
+            """
+            SELECT
+                z.id AS zona_id,
+                AVG(na.review_count)::float AS avg_reviews
+            FROM zonas z
+            JOIN negocios_activos na
+                ON na.activo = TRUE
+               AND ST_DWithin(na.geometria::geography, z.geometria::geography, 300)
+               AND na.review_count > 0
+            WHERE z.id = ANY($1)
+            GROUP BY z.id
+            """,
+            zona_ids,
+        )
+
+    reviews_by_zone = {r["zona_id"]: r["avg_reviews"] for r in reviews_rows}
+
+    result: dict = {}
+    for row in vz_rows:
+        zid = row["zona_id"]
+        result[zid] = {
+            "airbnb_density_500m":    row["airbnb_listings_500m"],
+            "airbnb_occupancy_est":   row["airbnb_occupancy_est"],
+            "licencias_nuevas_1a":    row["licencias_nuevas_1a"],
+            "eventos_culturales_500m": row["eventos_culturales_500m"],
+            "booking_hoteles_500m":   row["booking_hoteles_500m"],
+            "google_review_count_medio": reviews_by_zone.get(zid),
+        }
+    # Zonas sin fila en variables_zona: devolver dict vacío para que se impute
+    for zid in zona_ids:
+        if zid not in result:
+            result[zid] = {"google_review_count_medio": reviews_by_zone.get(zid)}
+    return result

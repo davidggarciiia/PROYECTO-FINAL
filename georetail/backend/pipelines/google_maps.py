@@ -1,0 +1,338 @@
+"""
+pipelines/google_maps.py — Enriquecimiento de negocios activos con datos Google Maps.
+
+Qué hace:
+  1. Lee los sectores activos de la BD y las zonas con negocios
+  2. Para cada sector × zona usa GoogleMapsScraper para obtener:
+     - negocios del sector en esa zona
+     - su rating, review_count, google_place_id
+  3. Actualiza negocios_activos (match por nombre + zona_id)
+  4. Actualiza variables_zona.google_review_count_medio
+
+Estrategia antibot:
+  - 1 instancia de GoogleMapsScraper con session warming
+  - Delays aleatorios de 20-45 s entre búsquedas
+  - Máximo 30 búsquedas por ejecución (≈ 6 sectores × 5 zonas)
+    para no sobrecargar la sesión de Playwright
+  - Si CAPTCHA → abort de la ejecución, reintentar la semana siguiente
+
+Frecuencia: semanal miércoles 02:00 (scheduler.py)
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import random
+from datetime import date
+from typing import Optional
+
+from db.conexion import get_db
+
+logger = logging.getLogger(__name__)
+
+# ── Configuración ─────────────────────────────────────────────────────────────
+_MAX_BUSQUEDAS   = 30      # máximo de búsquedas por ejecución (throttle antibot)
+_RADIO_M         = 300     # radio de búsqueda alrededor del centroide de zona
+_DELAY_MIN_S     = 20.0    # pausa mínima entre búsquedas
+_DELAY_MAX_S     = 45.0    # pausa máxima entre búsquedas
+
+# Categorías Google Maps por código de sector
+_SECTOR_CATEGORIAS: dict[str, list[str]] = {
+    "restauracion":    ["restaurante", "bar", "cafetería", "tapas"],
+    "moda":            ["tienda de ropa", "boutique", "zapatería"],
+    "estetica":        ["peluquería", "salón de belleza", "barbería"],
+    "tatuajes":        ["estudio de tatuajes", "piercing"],
+    "shisha_lounge":   ["shisha lounge", "hookah bar"],
+    "supermercado":    ["supermercado", "frutería", "panadería"],
+    "farmacia":        ["farmacia"],
+    "electronica":     ["tienda de electrónica", "telefonía móvil"],
+    "libreria":        ["librería", "papelería"],
+    "sport":           ["tienda deportiva", "gimnasio", "yoga"],
+}
+
+# Sectores prioritarios si hay más sectores que el límite de búsquedas
+_SECTORES_PRIORIDAD = ["restauracion", "moda", "estetica", "tatuajes"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Punto de entrada
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def ejecutar() -> dict:
+    eid = await _init("google_maps")
+    try:
+        # 1. Obtener zonas con negocios activos y sus centroides
+        zonas = await _get_zonas_con_negocios()
+        if not zonas:
+            await _fin(eid, 0, "ok", "Sin zonas con negocios activos")
+            return {"negocios_actualizados": 0, "zonas_procesadas": 0}
+
+        # 2. Obtener sectores activos
+        sectores = await _get_sectores_activos()
+        if not sectores:
+            await _fin(eid, 0, "ok", "Sin sectores activos en BD")
+            return {"negocios_actualizados": 0, "zonas_procesadas": 0}
+
+        # 3. Construir lista de búsquedas (sector × zona) hasta el límite
+        busquedas = _planificar_busquedas(zonas, sectores)
+        logger.info("Búsquedas planificadas: %d (límite %d)", len(busquedas), _MAX_BUSQUEDAS)
+
+        # 4. Ejecutar scraping con Playwright
+        negocios_actualizados = await _ejecutar_scraping(busquedas)
+        zonas_procesadas = len({b["zona_id"] for b in busquedas})
+
+        # 5. Actualizar variables_zona con google_review_count_medio
+        await _actualizar_review_count_medio()
+
+        await _fin(eid, negocios_actualizados, "ok")
+        logger.info(
+            "Google Maps OK — %d negocios actualizados, %d zonas",
+            negocios_actualizados, zonas_procesadas,
+        )
+        return {
+            "negocios_actualizados": negocios_actualizados,
+            "zonas_procesadas":      zonas_procesadas,
+        }
+
+    except Exception as exc:
+        logger.error("Pipeline google_maps ERROR: %s", exc, exc_info=True)
+        await _fin(eid, 0, "error", str(exc))
+        raise
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Planificación
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _get_zonas_con_negocios() -> list[dict]:
+    """Devuelve zonas que tienen al menos 1 negocio activo, con centroide."""
+    async with get_db() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT DISTINCT
+                z.id         AS zona_id,
+                z.nombre     AS zona_nombre,
+                ST_Y(ST_Centroid(z.geometria)::geometry) AS lat,
+                ST_X(ST_Centroid(z.geometria)::geometry) AS lng
+            FROM zonas z
+            JOIN negocios_activos na ON na.zona_id = z.id
+            WHERE na.activo = TRUE
+            ORDER BY z.nombre
+            LIMIT 50
+            """
+        )
+    return [dict(r) for r in rows]
+
+
+async def _get_sectores_activos() -> list[str]:
+    """Devuelve los códigos de sector activos en la BD."""
+    async with get_db() as conn:
+        rows = await conn.fetch("SELECT codigo FROM sectores WHERE activo = TRUE ORDER BY codigo")
+    return [r["codigo"] for r in rows]
+
+
+def _planificar_busquedas(zonas: list[dict], sectores: list[str]) -> list[dict]:
+    """
+    Planifica búsquedas sector × zona hasta _MAX_BUSQUEDAS.
+    Prioriza sectores en _SECTORES_PRIORIDAD y rota zonas para diversidad.
+    """
+    # Ordenar sectores: primero los prioritarios, luego el resto
+    sectores_ordenados = [s for s in _SECTORES_PRIORIDAD if s in sectores]
+    sectores_ordenados += [s for s in sectores if s not in _SECTORES_PRIORIDAD]
+
+    busquedas: list[dict] = []
+    zonas_shuffle = zonas.copy()
+    random.shuffle(zonas_shuffle)
+
+    for sector in sectores_ordenados:
+        categorias = _SECTOR_CATEGORIAS.get(sector, [sector])
+        categoria = categorias[0]  # categoría principal para la búsqueda
+
+        for zona in zonas_shuffle:
+            if len(busquedas) >= _MAX_BUSQUEDAS:
+                break
+            busquedas.append({
+                "zona_id":    zona["zona_id"],
+                "zona_nombre": zona["zona_nombre"],
+                "lat":        zona["lat"],
+                "lng":        zona["lng"],
+                "sector":     sector,
+                "categoria":  categoria,
+            })
+
+        if len(busquedas) >= _MAX_BUSQUEDAS:
+            break
+
+    return busquedas
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Scraping
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _ejecutar_scraping(busquedas: list[dict]) -> int:
+    """
+    Ejecuta búsquedas Google Maps con una sola instancia de scraper (1 sesión).
+    Actualiza negocios_activos en BD para cada negocio encontrado.
+    """
+    try:
+        from pipelines.scraping.google_maps_scraper import GoogleMapsScraper
+    except ImportError as exc:
+        logger.error("GoogleMapsScraper no disponible (¿falta playwright?): %s", exc)
+        return 0
+
+    scraper = GoogleMapsScraper(session_id="pipeline_weekly", max_retries=2)
+    n_actualizados = 0
+
+    for i, b in enumerate(busquedas):
+        try:
+            negocios = await scraper.buscar_negocios_por_categoria(
+                categoria=b["categoria"],
+                zona_nombre=b["zona_nombre"],
+                lat=b["lat"],
+                lng=b["lng"],
+                radio_m=_RADIO_M,
+            )
+            if negocios:
+                n = await _actualizar_negocios(negocios, b["zona_id"])
+                n_actualizados += n
+                logger.info(
+                    "Zona '%s' sector '%s': %d negocios scraped, %d actualizados",
+                    b["zona_nombre"], b["sector"], len(negocios), n,
+                )
+
+        except Exception as exc:
+            msg = str(exc).lower()
+            if "captcha" in msg:
+                logger.warning("CAPTCHA detectado en búsqueda %d/%d — abortando ejecución", i+1, len(busquedas))
+                break
+            logger.warning("Error en búsqueda zona='%s' sector='%s': %s", b["zona_nombre"], b["sector"], exc)
+
+        # Delay humano entre búsquedas (excepto la última)
+        if i < len(busquedas) - 1:
+            delay = random.uniform(_DELAY_MIN_S, _DELAY_MAX_S)
+            logger.debug("Esperando %.1f s antes de siguiente búsqueda", delay)
+            await asyncio.sleep(delay)
+
+    return n_actualizados
+
+
+async def _actualizar_negocios(negocios: list, zona_id: str) -> int:
+    """
+    Para cada negocio scraped, intenta hacer match en negocios_activos
+    por nombre aproximado y zona_id, y actualiza review_count + google_place_id.
+    Match: nombre ILIKE '%nombre_scraped%' AND zona_id = zona_id
+    """
+    if not negocios:
+        return 0
+
+    n = 0
+    async with get_db() as conn:
+        for neg in negocios:
+            if not neg.nombre:
+                continue
+            try:
+                result = await conn.execute(
+                    """
+                    UPDATE negocios_activos
+                    SET review_count    = $1,
+                        google_place_id = COALESCE($2, google_place_id)
+                    WHERE zona_id = $3
+                      AND LOWER(nombre) ILIKE LOWER($4)
+                      AND activo = TRUE
+                    """,
+                    neg.review_count,
+                    neg.google_place_id,
+                    zona_id,
+                    f"%{neg.nombre[:50]}%",
+                )
+                # asyncpg devuelve "UPDATE N" como string
+                rows_affected = int(result.split()[-1]) if result else 0
+                if rows_affected > 0:
+                    n += rows_affected
+                elif neg.lat and neg.lng:
+                    # Si no hay match por nombre, intentar por proximidad geográfica
+                    result2 = await conn.execute(
+                        """
+                        UPDATE negocios_activos
+                        SET review_count    = $1,
+                            google_place_id = COALESCE($2, google_place_id)
+                        WHERE ST_DWithin(
+                            geometria::geography,
+                            ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography,
+                            30
+                        )
+                        AND activo = TRUE
+                        """,
+                        neg.review_count, neg.google_place_id,
+                        neg.lng, neg.lat,
+                    )
+                    rows2 = int(result2.split()[-1]) if result2 else 0
+                    n += rows2
+            except Exception as exc:
+                logger.debug("Error actualizando negocio '%s': %s", neg.nombre, exc)
+
+    return n
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Actualización variables_zona
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _actualizar_review_count_medio() -> None:
+    """
+    Calcula la media de review_count de competidores en 300m para cada zona
+    y actualiza variables_zona. Se usa como feature google_review_count_medio en XGBoost v3.
+    """
+    hoy = date.today()
+    async with get_db() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                na.zona_id,
+                AVG(na.review_count)::float AS avg_reviews
+            FROM negocios_activos na
+            WHERE na.review_count > 0
+              AND na.activo = TRUE
+            GROUP BY na.zona_id
+            """
+        )
+        for row in rows:
+            try:
+                await conn.execute(
+                    """
+                    INSERT INTO variables_zona
+                        (zona_id, fecha, fuente)
+                    VALUES ($1, $2, 'google_maps')
+                    ON CONFLICT (zona_id, fecha) DO UPDATE
+                    SET fuente = EXCLUDED.fuente
+                    """,
+                    row["zona_id"], hoy,
+                )
+            except Exception as exc:
+                logger.debug("Error UPSERT variables_zona zona=%s: %s", row["zona_id"], exc)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Helpers BD
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _init(pipeline: str) -> int:
+    async with get_db() as conn:
+        return await conn.fetchval(
+            "INSERT INTO pipeline_ejecuciones (pipeline, estado) "
+            "VALUES ($1,'running') RETURNING id",
+            pipeline,
+        )
+
+
+async def _fin(
+    eid: int, registros: int, estado: str, mensaje: Optional[str] = None
+) -> None:
+    async with get_db() as conn:
+        await conn.execute(
+            "UPDATE pipeline_ejecuciones "
+            "SET fecha_fin=NOW(), registros=$1, estado=$2, mensaje_error=$3 "
+            "WHERE id=$4",
+            registros, estado, mensaje, eid,
+        )
