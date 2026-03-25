@@ -157,41 +157,40 @@ def generar_dataset_sintetico(
     # Combina varios factores con correlaciones realistas
 
     logit = (
-        # Flujo peatonal: positivo moderado
-        + 0.0008 * (flujo_total - 850)
+        # Flujo peatonal: positivo — coeficiente amplificado para señal clara
+        + 0.0018 * (flujo_total - 850)
         # Renta: positivo (más poder adquisitivo → más ventas)
-        + 0.00003 * (renta_media_hogar - 32000)
+        + 0.000065 * (renta_media_hogar - 32000)
         # Saturación: negativo (más competencia = más difícil)
-        - 0.020 * (score_saturacion - 50)
+        - 0.040 * (score_saturacion - 50)
         # Precio alquiler: negativo (coste fijo alto)
-        - 0.060 * (precio_m2_alquiler - 18)
+        - 0.120 * (precio_m2_alquiler - 18)
         # Locales vacíos: negativo (señal de mala zona)
-        - 2.0 * (pct_locales_vacios - 0.15)
+        - 4.0 * (pct_locales_vacios - 0.15)
         # Tasa rotación: negativo (zona con mucho cierre)
-        - 2.5 * (tasa_rotacion_anual - 0.18)
+        - 5.0 * (tasa_rotacion_anual - 0.18)
         # Transporte: positivo
-        + 0.05 * (num_lineas_transporte - 6)
-        # Turismo: ligeramente positivo (tráfico extra)
-        + 0.008 * (score_turismo - 45)
-        # Airbnb density: ligeramente positivo (turismo informal)
-        + 0.004 * (airbnb_density_500m - 28)
-        # Reviews: ligeramente positivo (zona más activa = más negocio)
-        + 0.0008 * (google_review_count_medio - 145)
+        + 0.10 * (num_lineas_transporte - 6)
+        # Turismo: positivo (tráfico extra)
+        + 0.016 * (score_turismo - 45)
+        # Airbnb density: positivo (turismo informal)
+        + 0.008 * (airbnb_density_500m - 28)
+        # Reviews: positivo (zona más activa = más negocio)
+        + 0.0016 * (google_review_count_medio - 145)
         # Licencias nuevas: positivo (dinamismo comercial)
-        + 0.04 * (licencias_nuevas_1a - 4)
+        + 0.09 * (licencias_nuevas_1a - 4)
         # Eventos culturales: positivo (atrae público)
-        + 0.06 * (eventos_culturales_500m - 3)
-        # Hoteles booking: ligeramente positivo
-        + 0.03 * (booking_hoteles_500m - 2)
-        # Ruido: ligeramente negativo (mala imagen)
-        - 0.008 * (nivel_ruido_db - 63)
+        + 0.12 * (eventos_culturales_500m - 3)
+        # Hoteles booking: positivo
+        + 0.07 * (booking_hoteles_500m - 2)
+        # Ruido: negativo (mala imagen)
+        - 0.016 * (nivel_ruido_db - 63)
         # Incidencias: negativo
-        - 0.004 * (incidencias_por_1000hab - 35)
+        - 0.008 * (incidencias_por_1000hab - 35)
     )
 
     # Ajustar sesgo para que ~35% sean positivos
     # Calibración: prob = sigmoid(logit + bias)
-    # Con seed=42 este bias da ~35%
     bias = -0.30
     prob_surviv = 1.0 / (1.0 + np.exp(-(logit + bias)))
 
@@ -385,7 +384,7 @@ def imprimir_informe(resultado: dict, top10_shap: list[tuple[str, float]]) -> No
     print("  Métricas test hold-out (20%):")
     print(f"    AUC-ROC:    {resultado['auc_test']:.4f}")
     print(f"    PR-AUC:     {resultado['pr_auc_test']:.4f}")
-    print(f"    Brier:      {resultado['brier_test']:.4f}  (↓ mejor)")
+    print(f"    Brier:      {resultado['brier_test']:.4f}  (menor es mejor)")
     print(f"    Precision:  {precision:.4f}")
     print(f"    Recall:     {recall:.4f}")
     print(f"    F1:         {f1:.4f}")
@@ -397,7 +396,7 @@ def imprimir_informe(resultado: dict, top10_shap: list[tuple[str, float]]) -> No
     print()
     print("  SHAP feature importance — top 10:")
     for feat, imp in top10_shap:
-        bar = "█" * max(1, int(imp * 40))
+        bar = "#" * max(1, int(imp * 40))
         print(f"    {feat:<35} {bar} {imp:.4f}")
     print()
     print(f"  Tiempo:       {resultado['elapsed_s']:.1f}s")

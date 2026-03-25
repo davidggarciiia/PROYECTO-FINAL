@@ -405,6 +405,16 @@ async def _insertar_llicencies(llicencies: list[dict]) -> int:
             "ON llicencies_activitat(zona_id, data_lic DESC)"
         )
 
+        # Afegir columna updated_at ABANS del loop d'inserts perquè
+        # l'ON CONFLICT ... SET updated_at=NOW() la necessita des del primer run.
+        try:
+            await conn.execute(
+                "ALTER TABLE llicencies_activitat ADD COLUMN IF NOT EXISTS "
+                "updated_at TIMESTAMPTZ DEFAULT NOW()"
+            )
+        except Exception:
+            pass
+
         n = 0
         for lic in amb_zona:
             try:
@@ -431,15 +441,6 @@ async def _insertar_llicencies(llicencies: list[dict]) -> int:
                 n += 1
             except Exception as exc:
                 logger.debug("Insert llicència error: %s", exc)
-
-        # Afegir columna updated_at si no existeix (per al DO UPDATE)
-        try:
-            await conn.execute(
-                "ALTER TABLE llicencies_activitat ADD COLUMN IF NOT EXISTS "
-                "updated_at TIMESTAMPTZ DEFAULT NOW()"
-            )
-        except Exception:
-            pass
 
     return n
 
