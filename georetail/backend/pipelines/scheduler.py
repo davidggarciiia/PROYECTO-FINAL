@@ -4,6 +4,7 @@ pipelines/scheduler.py — APScheduler para todos los pipelines de datos.
 Frecuencias (ver arquitectura.md):
   resenas:             Diario 03:00
   aforaments:          Diario 04:00
+  vianants:            Mensual día 10, 05:00  ← NUEVO: peatones reales (sobreescribe aforaments)
   precios:             Semanal lunes 05:00
   scores:              Semanal martes 06:00
   demografia:          Mensual día 1, 07:00
@@ -19,6 +20,12 @@ Frecuencias (ver arquitectura.md):
   venues_ocio:         Mensual día 7, 07:00
   booking:             Semanal jueves 03:00
   google_maps:         Semanal miércoles 02:00
+
+NOTA sobre flujo peatonal:
+  aforaments.py mide TRÁFICO RODADO (vehicles + bicis) — proxy impreciso.
+  vianants.py mide PERSONAS A PIE — fuente correcta para análisis comercial.
+  El pipeline vianants sobreescribe variables_zona.fuente='vianants_bcn' cuando
+  hay datos disponibles, prevaleciendo sobre 'aforadors_csv_2025'.
 """
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -38,6 +45,8 @@ def init_scheduler() -> None:
     # ── Pipelines existentes ──────────────────────────────────────────────────
     _scheduler.add_job(_run_resenas,    CronTrigger(hour=3,  minute=0),               id="resenas",     replace_existing=True, **_JOB_DEFAULTS)
     _scheduler.add_job(_run_aforaments, CronTrigger(hour=4,  minute=0),               id="aforaments",  replace_existing=True, **_JOB_DEFAULTS)
+    # Peatones reales (mensual día 10, 05:00) — sobreescribe aforaments si hay datos
+    _scheduler.add_job(_run_vianants,   CronTrigger(day=10, hour=5, minute=0),        id="vianants",    replace_existing=True, **_JOB_DEFAULTS)
     _scheduler.add_job(_run_precios,    CronTrigger(day_of_week="mon", hour=5),        id="precios",     replace_existing=True, **_JOB_DEFAULTS)
     _scheduler.add_job(_run_scores,     CronTrigger(day_of_week="tue", hour=6),        id="scores",      replace_existing=True, **_JOB_DEFAULTS)
     _scheduler.add_job(_run_demografia, CronTrigger(day=1, hour=7),                    id="demografia",  replace_existing=True, **_JOB_DEFAULTS)
@@ -85,6 +94,18 @@ async def _run_aforaments():
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline aforaments error: %s", e)
+
+async def _run_vianants():
+    """
+    Mensual día 10, 05:00 — Comptadors de persones vianants (Open Data BCN).
+    Sobreescriu flujo_peatonal_* de aforaments.py quan hi ha dades disponibles.
+    ADVERTÈNCIA: aforaments.py mesura trànsit de vehicles, NO vianants a peu.
+    """
+    try:
+        from pipelines.vianants import ejecutar
+        await ejecutar()
+    except Exception as e:
+        logger.error("Pipeline vianants error: %s", e)
 
 async def _run_precios():
     try:
