@@ -55,7 +55,7 @@ async def traducir(texto: str, session_id: str | None = None) -> str:
             sistema=_SISTEMA,
             endpoint="traduccion",
             session_id=session_id,
-            max_tokens=min(int(len(texto.split()) * 2) + 50, 1000),
+            max_tokens=max(150, min(int(len(texto.split()) * 2) + 50, 1000)),
             temperature=0.1,
         )
     except Exception as e:

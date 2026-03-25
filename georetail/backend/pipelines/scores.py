@@ -7,9 +7,6 @@ import logging
 from db.conexion import get_db
 
 logger = logging.getLogger(__name__)
-_SECTORES = ["restauracion","moda","estetica","tatuajes","shisha_lounge"]
-
-
 async def ejecutar() -> dict:
     eid = await _init("scores")
     ok = 0
@@ -21,13 +18,24 @@ async def ejecutar() -> dict:
         # ejecución o tras un reset) ninguna zona recibiría score.
         async with get_db() as conn:
             zona_rows = await conn.fetch("SELECT id FROM zonas ORDER BY id")
-            sector_ids = await conn.fetch("SELECT id, codigo FROM sectores")
+            sector_rows = await conn.fetch("SELECT id, codigo FROM sectores")
+
+            # Advisory lock para evitar ejecuciones concurrentes de este pipeline
+            locked = await conn.fetchval(
+                "SELECT pg_try_advisory_lock(hashtext('pipeline_scores'))"
+            )
+            if not locked:
+                logger.warning("Pipeline scores ya está en ejecución — saltando")
+                await _fin(eid, 0, "ok", "skipped: lock not acquired")
+                return {"ok": 0, "skipped": True}
 
         zona_ids = [r["id"] for r in zona_rows]
-        sector_map = {r["codigo"]: r["id"] for r in sector_ids}
-        logger.info("Recalculando scores: %d zonas × %d sectores", len(zona_ids), len(_SECTORES))
+        # Usar sectores de BD en lugar de lista hardcoded
+        sector_map = {r["codigo"]: r["id"] for r in sector_rows}
+        sectores_activos = list(sector_map.keys())
+        logger.info("Recalculando scores: %d zonas × %d sectores", len(zona_ids), len(sectores_activos))
 
-        for sector in _SECTORES:
+        for sector in sectores_activos:
             sid = sector_map.get(sector)
             if not sid:
                 continue
@@ -44,6 +52,15 @@ async def ejecutar() -> dict:
         logger.error("Pipeline scores error: %s", e)
         await _fin(eid, ok, "error", str(e))
         raise
+    finally:
+        # Liberar advisory lock
+        try:
+            async with get_db() as conn:
+                await conn.execute(
+                    "SELECT pg_advisory_unlock(hashtext('pipeline_scores'))"
+                )
+        except Exception:
+            pass
 
 
 async def _init(pipeline):

@@ -174,9 +174,9 @@ async def _cargar_negocios(
         WHERE fecha_apertura <= $2
           AND ($3::text IS NULL OR sector_codigo = $3)
           -- Excluir negocios sin suficiente historia observable:
-          -- si cerraron antes del umbral Y abrieron cerca de fecha_corte,
-          -- no podemos saber si habrían sobrevivido → los excluimos.
-          AND NOT (fecha_cierre IS NULL AND fecha_apertura > $2)
+          -- (la condición fecha_apertura <= $2 de la línea anterior ya excluye
+          --  los que abrieron después de fecha_corte, por lo que no es necesario
+          --  un AND NOT adicional)
         ORDER BY fecha_apertura
     """
 
@@ -206,53 +206,6 @@ async def _construir_features_historicas(
     Devuelve una lista del mismo tamaño que los inputs, con None si no hay datos.
     """
     async with get_db() as conn:
-        # ── Variables de zona (snapshot histórica) ────────────────────────────
-        # `variables_zona` tiene una fila por zona por fecha de actualización.
-        # Tomamos la snapshot más reciente ANTERIOR a la fecha de apertura.
-        vz_query = """
-            SELECT DISTINCT ON (vz.zona_id)
-                vz.zona_id,
-                vz.flujo_peatonal_manana, vz.flujo_peatonal_tarde, vz.flujo_peatonal_noche,
-                vz.flujo_peatonal_total,
-                vz.renta_media_hogar, vz.edad_media, vz.pct_extranjeros, vz.densidad_hab_km2,
-                vz.pct_locales_vacios, vz.tasa_rotacion_anual,
-                vz.score_turismo, vz.incidencias_por_1000hab,
-                vz.nivel_ruido_db, vz.score_equipamientos, vz.m2_zonas_verdes_cercanas,
-                -- v2: granularidad geográfica de nivel zona
-                vz.ratio_locales_comerciales,
-                ST_Distance(
-                    ST_Centroid(z.geometria)::geography,
-                    ST_GeomFromText(
-                        'LINESTRING(2.1850 41.3740,2.1940 41.3792,2.2030 41.3840,'
-                        '2.2130 41.3900,2.2250 41.3970,2.2380 41.4020)', 4326
-                    )::geography
-                )::int AS dist_playa_m
-            FROM variables_zona vz
-            JOIN zonas z ON z.id = vz.zona_id
-            WHERE vz.zona_id = ANY($1) AND vz.fecha <= $2
-            ORDER BY vz.zona_id, vz.fecha DESC
-        """
-
-        comp_query = """
-            SELECT DISTINCT ON (zona_id)
-                zona_id,
-                num_competidores, rating_medio, score_saturacion
-            FROM competencia_por_local
-            WHERE zona_id = ANY($1)
-              AND sector_codigo = $2
-              AND radio_m = 300
-              AND fecha_calculo <= $3
-            ORDER BY zona_id, fecha_calculo DESC
-        """
-
-        precio_query = """
-            SELECT DISTINCT ON (zona_id)
-                zona_id, precio_m2
-            FROM precios_alquiler_zona
-            WHERE zona_id = ANY($1) AND fecha <= $2
-            ORDER BY zona_id, fecha DESC
-        """
-
         trans_query = """
             SELECT
                 z.id AS zona_id,
@@ -266,46 +219,97 @@ async def _construir_features_historicas(
             GROUP BY z.id
         """
 
-        # Agrupamos por fecha para minimizar queries — en la práctica la mayoría
-        # de negocios en el mismo sector tienen fechas similares.
-        # Para el dataset de entrenamiento, una aproximación por año es suficiente.
-        fechas_unicas = sorted(set(fechas))
+        # ── Per-negocio snapshots (evita data leakage) ───────────────────────
+        # Usamos unnest+ordinality para hacer una sola query que devuelve
+        # la snapshot correcta para cada negocio según su fecha_apertura.
+        # Esto es crucial: un negocio de 2015 debe ver las variables de 2015,
+        # no las actuales de 2024. Sin esto el modelo tiene data leakage.
 
-        # Acumular resultados indexados por zona_id
-        vz_dict:    dict[str, dict] = {}
-        comp_dict:  dict[str, dict] = {}
-        precio_dict: dict[str, float] = {}
-        trans_dict: dict[str, dict] = {}
+        # Queries por-negocio usando unnest
+        vz_per_negocio_query = """
+            WITH input AS (
+                SELECT (ordinality - 1)::int AS idx, zone_id, fecha_ref
+                FROM unnest($1::text[], $2::date[]) WITH ORDINALITY AS t(zone_id, fecha_ref, ordinality)
+            )
+            SELECT DISTINCT ON (i.idx)
+                i.idx,
+                vz.flujo_peatonal_manana, vz.flujo_peatonal_tarde, vz.flujo_peatonal_noche,
+                vz.flujo_peatonal_total,
+                vz.renta_media_hogar, vz.edad_media, vz.pct_extranjeros, vz.densidad_hab_km2,
+                vz.pct_locales_vacios, vz.tasa_rotacion_anual,
+                vz.score_turismo, vz.incidencias_por_1000hab,
+                vz.nivel_ruido_db, vz.score_equipamientos, vz.m2_zonas_verdes_cercanas,
+                vz.ratio_locales_comerciales,
+                ST_Distance(
+                    ST_Centroid(z.geometria)::geography,
+                    ST_GeomFromText(
+                        'LINESTRING(2.1850 41.3740,2.1940 41.3792,2.2030 41.3840,'
+                        '2.2130 41.3900,2.2250 41.3970,2.2380 41.4020)', 4326
+                    )::geography
+                )::int AS dist_playa_m
+            FROM input i
+            JOIN variables_zona vz ON vz.zona_id = i.zone_id AND vz.fecha <= i.fecha_ref
+            JOIN zonas z ON z.id = vz.zona_id
+            ORDER BY i.idx, vz.fecha DESC
+        """
 
-        # Trans no depende de fecha (la red de transporte es relativamente estable)
-        trans_rows = await conn.fetch(trans_query, list(set(zona_ids)))
-        trans_dict = {r["zona_id"]: dict(r) for r in trans_rows}
+        comp_per_negocio_query = """
+            WITH input AS (
+                SELECT (ordinality - 1)::int AS idx, zone_id, sec, fecha_ref
+                FROM unnest($1::text[], $2::text[], $3::date[]) WITH ORDINALITY
+                    AS t(zone_id, sec, fecha_ref, ordinality)
+            )
+            SELECT DISTINCT ON (i.idx)
+                i.idx,
+                cp.num_competidores, cp.rating_medio, cp.score_saturacion
+            FROM input i
+            JOIN competencia_por_local cp
+                ON cp.zona_id = i.zone_id
+                AND cp.sector_codigo = i.sec
+                AND cp.radio_m = 300
+                AND cp.fecha_calculo <= i.fecha_ref
+            ORDER BY i.idx, cp.fecha_calculo DESC
+        """
 
-        # Para el resto, usamos la fecha mediana como aproximación razonable
-        # (mejora futura: query por negocio individual)
-        fecha_mediana = fechas[len(fechas) // 2]
+        precio_per_negocio_query = """
+            WITH input AS (
+                SELECT (ordinality - 1)::int AS idx, zone_id, fecha_ref
+                FROM unnest($1::text[], $2::date[]) WITH ORDINALITY AS t(zone_id, fecha_ref, ordinality)
+            )
+            SELECT DISTINCT ON (i.idx)
+                i.idx,
+                paz.precio_m2
+            FROM input i
+            JOIN precios_alquiler_zona paz
+                ON paz.zona_id = i.zone_id
+                AND paz.fecha <= i.fecha_ref
+            ORDER BY i.idx, paz.fecha DESC
+        """
+
+        # Transporte no depende de fecha (la red es relativamente estable)
         zona_ids_unicos = list(set(zona_ids))
+        trans_rows = await conn.fetch(trans_query, zona_ids_unicos)
+        trans_dict: dict[str, dict] = {r["zona_id"]: dict(r) for r in trans_rows}
 
-        vz_rows = await conn.fetch(vz_query, zona_ids_unicos, fecha_mediana)
-        vz_dict = {r["zona_id"]: dict(r) for r in vz_rows}
+        # Per-negocio snapshots (indexed by position, same order as zona_ids/fechas)
+        vz_rows = await conn.fetch(vz_per_negocio_query, zona_ids, fechas)
+        vz_by_idx: dict[int, dict] = {r["idx"]: dict(r) for r in vz_rows}
 
-        # Competencia: necesitamos el sector — iteramos por sector único
-        sectores_unicos = set(sectores)
-        for sec in sectores_unicos:
-            comp_rows = await conn.fetch(comp_query, zona_ids_unicos, sec, fecha_mediana)
-            for r in comp_rows:
-                comp_dict[r["zona_id"]] = dict(r)
+        comp_rows = await conn.fetch(comp_per_negocio_query, zona_ids, sectores, fechas)
+        comp_by_idx: dict[int, dict] = {r["idx"]: dict(r) for r in comp_rows}
 
-        precio_rows = await conn.fetch(precio_query, zona_ids_unicos, fecha_mediana)
-        precio_dict = {r["zona_id"]: float(r["precio_m2"]) for r in precio_rows}
+        precio_rows = await conn.fetch(precio_per_negocio_query, zona_ids, fechas)
+        precio_by_idx: dict[int, Optional[float]] = {
+            r["idx"]: float(r["precio_m2"]) for r in precio_rows
+        }
 
     # ── Construir vector de features por negocio ──────────────────────────────
     resultados: list[Optional[list[float]]] = []
 
-    for zona_id in zona_ids:
-        vz    = vz_dict.get(zona_id, {})
-        comp  = comp_dict.get(zona_id, {})
-        precio = precio_dict.get(zona_id)
+    for idx, zona_id in enumerate(zona_ids):
+        vz    = vz_by_idx.get(idx, {})
+        comp  = comp_by_idx.get(idx, {})
+        precio = precio_by_idx.get(idx)
         trans = trans_dict.get(zona_id, {})
 
         # Si no hay datos de variables_zona para esta zona → descartamos

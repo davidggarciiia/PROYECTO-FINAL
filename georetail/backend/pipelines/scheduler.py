@@ -23,33 +23,39 @@ logger = logging.getLogger(__name__)
 _scheduler = AsyncIOScheduler(timezone="Europe/Madrid")
 
 
+_JOB_DEFAULTS = {
+    "max_instances": 1,        # evitar solapamiento de ejecuciones
+    "misfire_grace_time": 300, # si el scheduler arranca tarde, ejecutar si han pasado <5min
+}
+
+
 def init_scheduler() -> None:
     # ── Pipelines existentes ──────────────────────────────────────────────────
-    _scheduler.add_job(_run_resenas,    CronTrigger(hour=3,  minute=0),               id="resenas",     replace_existing=True)
-    _scheduler.add_job(_run_aforaments, CronTrigger(hour=4,  minute=0),               id="aforaments",  replace_existing=True)
-    _scheduler.add_job(_run_precios,    CronTrigger(day_of_week="mon", hour=5),        id="precios",     replace_existing=True)
-    _scheduler.add_job(_run_scores,     CronTrigger(day_of_week="tue", hour=6),        id="scores",      replace_existing=True)
-    _scheduler.add_job(_run_demografia, CronTrigger(day=1, hour=7),                    id="demografia",  replace_existing=True)
-    _scheduler.add_job(_run_registre,   CronTrigger(day=1, hour=8),                    id="registre",    replace_existing=True)
-    _scheduler.add_job(_run_params_fin, CronTrigger(day_of_week="sun", hour=3),        id="params_fin",  replace_existing=True)
+    _scheduler.add_job(_run_resenas,    CronTrigger(hour=3,  minute=0),               id="resenas",     replace_existing=True, **_JOB_DEFAULTS)
+    _scheduler.add_job(_run_aforaments, CronTrigger(hour=4,  minute=0),               id="aforaments",  replace_existing=True, **_JOB_DEFAULTS)
+    _scheduler.add_job(_run_precios,    CronTrigger(day_of_week="mon", hour=5),        id="precios",     replace_existing=True, **_JOB_DEFAULTS)
+    _scheduler.add_job(_run_scores,     CronTrigger(day_of_week="tue", hour=6),        id="scores",      replace_existing=True, **_JOB_DEFAULTS)
+    _scheduler.add_job(_run_demografia, CronTrigger(day=1, hour=7),                    id="demografia",  replace_existing=True, **_JOB_DEFAULTS)
+    _scheduler.add_job(_run_registre,   CronTrigger(day=1, hour=8),                    id="registre",    replace_existing=True, **_JOB_DEFAULTS)
+    _scheduler.add_job(_run_params_fin, CronTrigger(day_of_week="sun", hour=3),        id="params_fin",  replace_existing=True, **_JOB_DEFAULTS)
 
     # ── Mercado inmobiliario (multi-portal) ───────────────────────────────────
-    _scheduler.add_job(_run_mercado_locales_alq, CronTrigger(day="*/3", hour=2, minute=0),          id="mercado_locales_alq", replace_existing=True)
-    _scheduler.add_job(_run_mercado_locales_vta, CronTrigger(day_of_week="wed", hour=2, minute=30), id="mercado_locales_vta", replace_existing=True)
-    _scheduler.add_job(_run_mercado_viviendas,   CronTrigger(day="*/14", hour=1, minute=0),         id="mercado_viviendas",   replace_existing=True)
+    _scheduler.add_job(_run_mercado_locales_alq, CronTrigger(day="*/3", hour=2, minute=0),          id="mercado_locales_alq", replace_existing=True, **_JOB_DEFAULTS)
+    _scheduler.add_job(_run_mercado_locales_vta, CronTrigger(day_of_week="wed", hour=2, minute=30), id="mercado_locales_vta", replace_existing=True, **_JOB_DEFAULTS)
+    _scheduler.add_job(_run_mercado_viviendas,   CronTrigger(day="*/14", hour=1, minute=0),         id="mercado_viviendas",   replace_existing=True, **_JOB_DEFAULTS)
 
     # ── Transporte público (TMB) ───────────────────────────────────────────────
-    _scheduler.add_job(_run_transporte, CronTrigger(day_of_week="sat", hour=1, minute=0), id="transporte", replace_existing=True)
+    _scheduler.add_job(_run_transporte, CronTrigger(day_of_week="sat", hour=1, minute=0), id="transporte", replace_existing=True, **_JOB_DEFAULTS)
 
     # ── Mantenimiento BD ──────────────────────────────────────────────────────
-    _scheduler.add_job(_run_purgar_portales, CronTrigger(day=15, hour=0, minute=0), id="purgar_portales", replace_existing=True)
+    _scheduler.add_job(_run_purgar_portales, CronTrigger(day=15, hour=0, minute=0), id="purgar_portales", replace_existing=True, **_JOB_DEFAULTS)
 
     _scheduler.start()
     logger.info("APScheduler iniciado con %d jobs", len(_scheduler.get_jobs()))
 
 
 def stop_scheduler() -> None:
-    _scheduler.shutdown(wait=False)
+    _scheduler.shutdown(wait=True)  # esperar a que terminen los jobs en curso
 
 
 # ── Runners existentes ────────────────────────────────────────────────────────

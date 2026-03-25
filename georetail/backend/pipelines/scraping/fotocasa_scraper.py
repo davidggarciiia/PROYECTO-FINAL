@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from hashlib import md5
 from typing import Optional
 from urllib.parse import quote
 
@@ -209,8 +210,11 @@ def _parse_html_regex(html: str) -> list[dict]:
     lngs = re.findall(r'"longitude"\s*:\s*([\d.]+)', html)
 
     for i, price in enumerate(prices[:50]):
+        lat_str = lats[i] if i < len(lats) else ""
+        lng_str = lngs[i] if i < len(lngs) else ""
+        content_hash = md5(f"{price}{lat_str}{lng_str}".encode()).hexdigest()[:8]
         results.append({
-            "id": f"fotocasa_regex_{i}",
+            "id": f"fotocasa_{content_hash}",
             "fuente": "fotocasa",
             "precio": float(price),
             "m2": None,
@@ -225,18 +229,20 @@ def _parse_html_regex(html: str) -> list[dict]:
     return results
 
 
-def _deep_find_list(obj, key: str) -> Optional[list]:
+def _deep_find_list(obj, key: str, _depth: int = 0) -> Optional[list]:
     """Búsqueda recursiva de una clave que contiene una lista."""
+    if _depth > 6:
+        return None
     if isinstance(obj, dict):
         if key in obj and isinstance(obj[key], list) and len(obj[key]) > 0:
             return obj[key]
         for v in obj.values():
-            result = _deep_find_list(v, key)
+            result = _deep_find_list(v, key, _depth + 1)
             if result:
                 return result
     elif isinstance(obj, list):
         for item in obj:
-            result = _deep_find_list(item, key)
+            result = _deep_find_list(item, key, _depth + 1)
             if result:
                 return result
     return None

@@ -205,9 +205,10 @@ async def calcular_shap_global(
 
     X, y, _ = await construir_dataset(sector=sector)
 
-    # Muestra aleatoria para eficiencia
+    # Muestra aleatoria para eficiencia (seed fijo para reproducibilidad)
     if len(X) > n_samples:
-        idx = np.random.choice(len(X), n_samples, replace=False)
+        rng = np.random.default_rng(42)
+        idx = rng.choice(len(X), n_samples, replace=False)
         X_sample = X[idx]
     else:
         X_sample = X

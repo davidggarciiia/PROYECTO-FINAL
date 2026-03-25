@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 # XGBoost model — cargado en startup desde disco
 _xgb_model = None
 _xgb_version: Optional[str] = None
+_shap_explainer = None  # cacheado para no recrearlo en cada zona
 
 
 async def cargar_modelo() -> None:
@@ -44,6 +45,7 @@ async def cargar_modelo() -> None:
         _xgb_model = xgb.XGBClassifier()
         _xgb_model.load_model(ruta)
         _xgb_version = version
+        _shap_explainer = None  # resetear al cargar nuevo modelo
         logger.info("Modelo XGBoost %s cargado OK", version)
     except Exception as e:
         logger.error("Error cargando modelo XGBoost: %s", e)
@@ -115,7 +117,8 @@ def _score_manual(datos: dict, sector: dict) -> dict:
     s_flujo = min(100.0, flujo / 30.0)  # 3000 pax/h = score 100
 
     # DEMOGRAFÍA — renta media normalizada (17k-60k rango BCN)
-    renta = datos.get("renta_media_hogar") or 30000
+    _renta_raw = datos.get("renta_media_hogar")
+    renta = _renta_raw if _renta_raw is not None else 30000  # `or` sustituiría renta=0 legítima
     s_demo = min(100.0, max(0.0, (renta - 17000) / 430.0))
 
     # COMPETENCIA — score_saturacion invertido (menos saturación = mejor)
@@ -126,7 +129,8 @@ def _score_manual(datos: dict, sector: dict) -> dict:
 
     # PRECIO ALQUILER — inversamente proporcional al precio (más barato = mejor)
     # Rango BCN: 8-45 €/m². Score 100 = 8€/m², Score 0 = 45€/m²
-    precio_m2 = datos.get("precio_m2") or 20
+    _precio_raw = datos.get("precio_m2")
+    precio_m2 = _precio_raw if _precio_raw is not None else 20  # `or` trataría precio=0 como None
     s_precio = min(100.0, max(0.0, (45.0 - precio_m2) / 0.37))
 
     # TRANSPORTE — número de líneas a 500m (0-20 líneas rango BCN)
@@ -195,8 +199,8 @@ async def _score_xgboost(zona_id: str, sector: str, datos: dict) -> dict:
     # SHAP values
     shap = _calcular_shap(X)
 
-    # Score global: prob de supervivencia → escala 0-100 con ajuste
-    score_global = min(100.0, prob * 120.0)  # prob=1 → score≈100
+    # Score global: prob de supervivencia → escala 0-100
+    score_global = min(100.0, prob * 100.0)
 
     return {
         "score_global":             round(score_global, 1),
@@ -222,7 +226,7 @@ async def _scores_xgboost_batch(X: np.ndarray, ids: list[str], sector: str) -> d
         prob = float(probs[i])
         shap = _calcular_shap(X[i:i+1])
         resultados[zona_id] = {
-            "score_global": round(min(100.0, prob*120.0), 1),
+            "score_global": round(min(100.0, prob*100.0), 1),
             "probabilidad_supervivencia": round(prob, 3),
             "shap_values": shap,
             "modelo_version": f"xgboost_{_xgb_version}",
@@ -231,11 +235,13 @@ async def _scores_xgboost_batch(X: np.ndarray, ids: list[str], sector: str) -> d
 
 
 def _calcular_shap(X: np.ndarray) -> Optional[dict]:
+    global _shap_explainer
     from scoring.features import FEATURE_NAMES
     try:
         import shap
-        explainer = shap.TreeExplainer(_xgb_model)
-        vals = explainer.shap_values(X)
+        if _shap_explainer is None:
+            _shap_explainer = shap.TreeExplainer(_xgb_model)
+        vals = _shap_explainer.shap_values(X)
         if isinstance(vals, list): vals = vals[1]
         return {FEATURE_NAMES[i]: round(float(vals[0][i]),3) for i in range(len(FEATURE_NAMES))}
     except Exception as e:

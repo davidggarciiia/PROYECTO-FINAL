@@ -128,8 +128,9 @@ def _objective_factory(X: np.ndarray, y: np.ndarray):
             aucs.append(auc)
 
             # Pruning — si el fold intermedio ya es malo, cancelar trial
+            # (MedianPruner necesita al menos 2 pasos para hacer comparaciones)
             trial.report(np.mean(aucs), step)
-            if trial.should_prune():
+            if step >= 1 and trial.should_prune():
                 raise optuna.exceptions.TrialPruned()
 
         return float(np.mean(aucs))

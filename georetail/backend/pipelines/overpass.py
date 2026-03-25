@@ -132,39 +132,42 @@ async def ejecutar() -> dict:
         logger.info("Tiles a procesar: %d", len(tiles))
 
         url_idx = 0
-        for i, (min_lat, min_lng, max_lat, max_lng) in enumerate(tiles):
-            try:
-                elementos = await _consultar_tile(
-                    min_lat, min_lng, max_lat, max_lng,
-                    _OVERPASS_URLS[url_idx % len(_OVERPASS_URLS)],
-                )
-                if elementos:
-                    n = await _procesar_e_insertar(elementos)
-                    total_insertados += n
-                    if n > 0:
-                        logger.debug(
-                            "Tile %d/%d [%.3f,%.3f]: %d negocios",
-                            i + 1, len(tiles), min_lat, min_lng, n,
-                        )
-            except RateLimitError:
-                url_idx += 1
-                logger.warning("Rate limit — cambiando a mirror %d, esperando %.0fs",
-                               url_idx % len(_OVERPASS_URLS), _SLEEP_RETRY)
-                await asyncio.sleep(_SLEEP_RETRY)
-                # Reintentar el tile
+        async with httpx.AsyncClient(timeout=_TIMEOUT_S) as http_client:
+            for i, (min_lat, min_lng, max_lat, max_lng) in enumerate(tiles):
                 try:
                     elementos = await _consultar_tile(
                         min_lat, min_lng, max_lat, max_lng,
                         _OVERPASS_URLS[url_idx % len(_OVERPASS_URLS)],
+                        http_client,
                     )
                     if elementos:
-                        total_insertados += await _procesar_e_insertar(elementos)
-                except Exception as e2:
-                    logger.warning("Tile reintento fallido: %s", e2)
-            except Exception as exc:
-                logger.debug("Tile %d error: %s", i + 1, exc)
+                        n = await _procesar_e_insertar(elementos)
+                        total_insertados += n
+                        if n > 0:
+                            logger.debug(
+                                "Tile %d/%d [%.3f,%.3f]: %d negocios",
+                                i + 1, len(tiles), min_lat, min_lng, n,
+                            )
+                except RateLimitError:
+                    url_idx += 1
+                    logger.warning("Rate limit — cambiando a mirror %d, esperando %.0fs",
+                                   url_idx % len(_OVERPASS_URLS), _SLEEP_RETRY)
+                    await asyncio.sleep(_SLEEP_RETRY)
+                    # Reintentar el tile
+                    try:
+                        elementos = await _consultar_tile(
+                            min_lat, min_lng, max_lat, max_lng,
+                            _OVERPASS_URLS[url_idx % len(_OVERPASS_URLS)],
+                            http_client,
+                        )
+                        if elementos:
+                            total_insertados += await _procesar_e_insertar(elementos)
+                    except Exception as e2:
+                        logger.warning("Tile reintento fallido: %s", e2)
+                except Exception as exc:
+                    logger.warning("Tile %d error: %s", i + 1, exc)
 
-            await asyncio.sleep(_SLEEP_TILE)
+                await asyncio.sleep(_SLEEP_TILE)
 
         await _fin(eid, total_insertados, "ok")
         logger.info("Overpass OK — %d negocios insertados", total_insertados)
@@ -209,6 +212,7 @@ class RateLimitError(Exception):
 async def _consultar_tile(
     min_lat: float, min_lng: float, max_lat: float, max_lng: float,
     url: str,
+    client: httpx.AsyncClient,
 ) -> list[dict]:
     """Consulta los negocios de un tile de la malla."""
     bbox = f"{min_lat},{min_lng},{max_lat},{max_lng}"
@@ -221,18 +225,17 @@ async def _consultar_tile(
 );
 out center;"""
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT_S) as c:
-        try:
-            r = await c.post(url, data={"data": query})
-        except httpx.TimeoutException:
-            return []
+    try:
+        r = await client.post(url, data={"data": query})
+    except httpx.TimeoutException:
+        return []
 
     if r.status_code == 429:
         raise RateLimitError("429 Too Many Requests")
     if r.status_code == 504:
         return []  # Tile timeout — skip silently
     if r.status_code != 200:
-        logger.debug("Overpass HTTP %d para bbox %s", r.status_code, bbox)
+        logger.warning("Overpass HTTP %d para bbox %s", r.status_code, bbox)
         return []
 
     try:
@@ -327,7 +330,7 @@ async def _procesar_e_insertar(elementos: list[dict]) -> int:
                 )
                 n += 1
             except Exception as exc:
-                logger.debug("Insert error %s: %s", r["id"], exc)
+                logger.warning("Insert error %s: %s", r["id"], exc)
     return n
 
 

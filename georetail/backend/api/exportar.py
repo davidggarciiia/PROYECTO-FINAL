@@ -30,12 +30,18 @@ Fuentes de datos del PDF:
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
+
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+
+_EXPORTS_DIR = Path(os.environ.get("EXPORTS_DIR", "/data/exports")).resolve()
 
 from db.sesiones import get_sesion
 from db.exportaciones import registrar_exportacion, get_exportacion
@@ -181,7 +187,7 @@ async def exportar(body: ExportarRequest) -> ExportarResponse:
     "/exportar/download/{pdf_id}",
     summary="Descargar el PDF generado (expira 1h después de la generación)",
 )
-async def exportar_download(pdf_id: str) -> FileResponse:
+async def exportar_download(pdf_id: UUID) -> FileResponse:
     """
     Descarga el fichero PDF directamente.
     El Content-Type es `application/pdf`.
@@ -196,7 +202,7 @@ async def exportar_download(pdf_id: str) -> FileResponse:
     """
     # ── Verificar que el PDF existe y no ha expirado ──────────────────────────
     # Tabla `exportaciones` (PostgreSQL): estado, expires_at, ruta en disco
-    exportacion = await get_exportacion(pdf_id)
+    exportacion = await get_exportacion(str(pdf_id))
 
     if exportacion is None:
         raise HTTPException(
@@ -225,12 +231,25 @@ async def exportar_download(pdf_id: str) -> FileResponse:
     # ── Servir el fichero ─────────────────────────────────────────────────────
     ruta_pdf = exportacion["ruta_disco"]  # /data/exports/{pdf_id}.pdf
 
+    # Defensa contra path traversal: verificar que la ruta resuelta está
+    # dentro del directorio de exports autorizado.
+    try:
+        ruta_resuelta = Path(ruta_pdf).resolve()
+        if not str(ruta_resuelta).startswith(str(_EXPORTS_DIR)):
+            raise ValueError("Ruta fuera del directorio autorizado")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Ruta de archivo inválida.")
+
+    if not ruta_resuelta.exists():
+        raise HTTPException(status_code=404, detail="El archivo PDF no está disponible.")
+
+    pdf_id_str = str(pdf_id)
     return FileResponse(
         path=ruta_pdf,
         media_type="application/pdf",
-        filename=f"georetail-informe-{pdf_id[:8]}.pdf",
+        filename=f"georetail-informe-{pdf_id_str[:8]}.pdf",
         headers={
             # Forzar descarga (no preview en el navegador)
-            "Content-Disposition": f'attachment; filename="georetail-informe-{pdf_id[:8]}.pdf"',
+            "Content-Disposition": f'attachment; filename="georetail-informe-{pdf_id_str[:8]}.pdf"',
         },
     )

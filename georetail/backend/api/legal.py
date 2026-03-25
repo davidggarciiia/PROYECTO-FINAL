@@ -32,7 +32,6 @@ Fuentes de referencia para los datos:
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -404,34 +403,6 @@ _SECTORES: dict[str, dict] = {
 }
 
 
-# ─── Capa de acceso a datos ───────────────────────────────────────────────────
-
-async def _get_sector_from_db(sector_codigo: str) -> Optional[dict]:
-    """
-    Intenta obtener los datos del sector de las tablas PostgreSQL:
-      - `requisitos_legales_sector`
-      - `restricciones_geograficas_sector`
-
-    [ESTADO: PENDIENTE — tablas aún no creadas en la BD.]
-    Cuando existan, esta función leerá de allí y el dict `_SECTORES`
-    pasará a ser solo el fallback de emergencia.
-
-    Retorna None si la tabla no existe o el sector no está en BD.
-    """
-    # TODO: implementar cuando se cree la tabla `requisitos_legales_sector`
-    # try:
-    #     from db.conexion import get_db
-    #     async with get_db() as db:
-    #         row = await db.fetchrow(
-    #             "SELECT * FROM requisitos_legales_sector WHERE codigo = $1",
-    #             sector_codigo,
-    #         )
-    #         return dict(row) if row else None
-    # except Exception as exc:
-    #     logger.warning("No se pudo leer sector %s de BD: %s", sector_codigo, exc)
-    return None
-
-
 # ─── Endpoint ────────────────────────────────────────────────────────────────
 
 @router.get(
@@ -456,18 +427,12 @@ async def get_legal(sector_codigo: str) -> LegalResponse:
       3. Frontend llama GET /api/legal/shisha_lounge
       4. Se muestra el marco legal completo con el modelo alternativo viable
     """
-    # Intentar BD primero (cuando esté disponible)
-    datos = await _get_sector_from_db(sector_codigo)
-
-    # Fallback al dict estático
-    if datos is None:
-        datos = _SECTORES.get(sector_codigo)
+    datos = _SECTORES.get(sector_codigo)
 
     if datos is None:
-        sectores_validos = ", ".join(f"'{k}'" for k in _SECTORES)
         raise HTTPException(
             status_code=404,
-            detail=f"Sector '{sector_codigo}' no reconocido. Válidos: {sectores_validos}.",
+            detail="Sector no reconocido o no disponible.",
         )
 
     return LegalResponse(

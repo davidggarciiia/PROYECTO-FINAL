@@ -65,7 +65,7 @@ async def _poblar_renta() -> int:
     ok = 0
     try:
         async with httpx.AsyncClient(
-            timeout=30.0, headers=_CKAN_HEADERS, follow_redirects=True
+            timeout=httpx.Timeout(30.0), headers=_CKAN_HEADERS, follow_redirects=True
         ) as c:
             r = await c.get(_RENDA_CSV_URL)
             r.raise_for_status()
@@ -124,7 +124,7 @@ async def _poblar_padro() -> int:
     """Carga datos del padrón: edad media, % extranjeros, densidad."""
     ok = 0
     try:
-        async with httpx.AsyncClient(timeout=30.0, headers=_CKAN_HEADERS) as c:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0), headers=_CKAN_HEADERS) as c:
             sql = """SELECT * FROM "pad_mdbas" LIMIT 2000"""
             r = await c.get(f"{_CKAN}/datastore_search_sql", params={"sql": sql})
             r.raise_for_status()
@@ -136,9 +136,9 @@ async def _poblar_padro() -> int:
                 year = int(row.get("Any",2023))
                 fecha = f"{year}-01-01"
 
-                poblacion    = int(row.get("Total","0") or 0)
-                pct_estran   = float(row.get("Pct_Estrangers","0").replace(",",".") or 0) / 100
-                edad_mediana = float(row.get("Edat_Mediana","42").replace(",",".") or 42)
+                poblacion    = int(row.get("Total") or 0)
+                pct_estran   = float(str(row.get("Pct_Estrangers") or "0").replace(",", ".") or 0) / 100
+                edad_mediana = float(str(row.get("Edat_Mediana") or "42").replace(",", ".") or 42)
 
                 zona_ids = await conn.fetch("""
                     SELECT z.id FROM zonas z

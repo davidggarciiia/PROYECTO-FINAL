@@ -275,36 +275,39 @@ async def _promover_si_mejor(
     Desactiva el anterior.
     """
     async with get_db() as conn:
-        # Buscar AUC del modelo activo actual (del mismo sector)
-        row = await conn.fetchrow(
-            """
-            SELECT version, metricas->>'auc_cv' AS auc_cv
-            FROM modelos_versiones
-            WHERE activo = TRUE AND ($1::text IS NULL OR sector = $1)
-            ORDER BY created_at DESC LIMIT 1
-            """,
-            sector,
-        )
-
-        auc_actual = float(row["auc_cv"]) if row and row["auc_cv"] else 0.0
-
-        if auc_nuevo <= auc_actual:
-            logger.info(
-                "Modelo nuevo (AUC=%.4f) no supera al activo (AUC=%.4f). No se promueve.",
-                auc_nuevo, auc_actual,
+        async with conn.transaction():
+            # Buscar AUC del modelo activo actual (del mismo sector) — con FOR UPDATE
+            # para evitar promociones simultáneas en ejecuciones paralelas.
+            row = await conn.fetchrow(
+                """
+                SELECT version, metricas->>'auc_cv' AS auc_cv
+                FROM modelos_versiones
+                WHERE activo = TRUE AND ($1::text IS NULL OR sector = $1)
+                ORDER BY created_at DESC LIMIT 1
+                FOR UPDATE
+                """,
+                sector,
             )
-            return False
 
-        # Desactivar el modelo anterior
-        await conn.execute(
-            "UPDATE modelos_versiones SET activo=FALSE WHERE activo=TRUE AND ($1::text IS NULL OR sector=$1)",
-            sector,
-        )
-        # Promover el nuevo
-        await conn.execute(
-            "UPDATE modelos_versiones SET activo=TRUE WHERE version=$1",
-            version,
-        )
+            auc_actual = float(row["auc_cv"]) if row and row["auc_cv"] else 0.0
+
+            if auc_nuevo <= auc_actual:
+                logger.info(
+                    "Modelo nuevo (AUC=%.4f) no supera al activo (AUC=%.4f). No se promueve.",
+                    auc_nuevo, auc_actual,
+                )
+                return False
+
+            # Desactivar el modelo anterior
+            await conn.execute(
+                "UPDATE modelos_versiones SET activo=FALSE WHERE activo=TRUE AND ($1::text IS NULL OR sector=$1)",
+                sector,
+            )
+            # Promover el nuevo
+            await conn.execute(
+                "UPDATE modelos_versiones SET activo=TRUE WHERE version=$1",
+                version,
+            )
 
     logger.info(
         "Modelo %s promovido a activo (AUC=%.4f > anterior=%.4f)",

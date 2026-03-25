@@ -103,12 +103,12 @@ def _build_array(vz, comp, precio, trans, geo) -> np.ndarray:
 
 async def _vz(zid):
     async with get_db() as conn:
-        r = await conn.fetchrow("SELECT * FROM variables_zona WHERE zona_id=$1 ORDER BY fecha DESC LIMIT 1", zid)
+        r = await conn.fetchrow("SELECT * FROM variables_zona WHERE zona_id=$1 ORDER BY fecha DESC NULLS LAST LIMIT 1", zid)
     return dict(r) if r else {}
 
 async def _vzs(zids):
     async with get_db() as conn:
-        rows = await conn.fetch("SELECT DISTINCT ON(zona_id) * FROM variables_zona WHERE zona_id=ANY($1) ORDER BY zona_id,fecha DESC", zids)
+        rows = await conn.fetch("SELECT DISTINCT ON(zona_id) * FROM variables_zona WHERE zona_id=ANY($1) ORDER BY zona_id,fecha DESC NULLS LAST", zids)
     return {r["zona_id"]: dict(r) for r in rows}
 
 async def _comp(zid, sector):

@@ -43,10 +43,22 @@ async def analizar_zona(zona_data: dict, perfil_negocio: dict,
 
     try:
         resultado = json.loads(extraer_json(respuesta))
+    except json.JSONDecodeError as e:
+        logger.error("JSON inválido en análisis zona=%s: %s", zona_data.get("zona_id"), e)
+        return {
+            "resumen": "No se pudo generar el análisis automático.",
+            "puntos_fuertes": [],
+            "puntos_debiles": [],
+            "oportunidad": "",
+            "riesgos": "",
+            "recomendacion_final": "Con reservas",
+            "razon_recomendacion": "Análisis no disponible temporalmente.",
+        }
+    try:
         # Traducir todos los campos de texto en una sola llamada LLM
         return await traducir_dict(resultado, _CAMPOS_TEXTO, session_id)
     except Exception as e:
-        logger.error("Error JSON análisis zona=%s: %s", zona_data.get("zona_id"), e)
+        logger.error("Error traduciendo análisis zona=%s: %s", zona_data.get("zona_id"), e)
         return {
             "resumen": "No se pudo generar el análisis automático.",
             "puntos_fuertes": [],
@@ -91,9 +103,13 @@ def _construir_prompt(z: dict, p: dict) -> str:
     else:
         flujo_str = f"no sensor data — model score: {_s('score_flujo_peatonal')}"
 
+    # Truncar campos de texto libre para evitar inyección de prompts y limitar tokens
+    descripcion_safe    = str(p.get("descripcion", ""))[:300]
+    perfil_cliente_safe = str(p.get("perfil_cliente", "not specified"))[:100]
+
     prompt = f"""
-BUSINESS: {p.get("sector", "unknown")} — {p.get("descripcion", "")}
-Target customer: {p.get("perfil_cliente", "not specified")}
+BUSINESS: {p.get("sector", "unknown")} — {descripcion_safe}
+Target customer: {perfil_cliente_safe}
 Price tier: {p.get("precio_objetivo", "medio")}
 
 ZONE: {z.get("nombre", "")} — {z.get("barrio", "")} ({z.get("distrito", "")})

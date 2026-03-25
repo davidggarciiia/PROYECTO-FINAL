@@ -79,7 +79,9 @@ async def procesar_respuesta(
         if campos:
             contexto_perfil = f"\n\nAlready known variables: {json.dumps(campos, ensure_ascii=False)}"
 
-    mensajes = historial + [{"role": "user", "content": respuesta_usuario}]
+    # Truncar la respuesta del usuario para evitar inyección de prompts y limitar tokens
+    respuesta_usuario_safe = respuesta_usuario[:2000]
+    mensajes = historial + [{"role": "user", "content": respuesta_usuario_safe}]
     sistema  = CUESTIONARIO_SISTEMA + contexto_perfil
 
     respuesta = await completar(

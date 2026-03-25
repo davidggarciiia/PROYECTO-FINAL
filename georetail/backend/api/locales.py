@@ -27,11 +27,14 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from schemas.models import LocalListItem, FiltrosDisponibles, ColorZona
+from api.buscar import _score_to_color
 from db.sesiones import get_sesion
 from db.zonas import get_zonas_sesion
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["locales"])
+
+_MAX_ZONAS_SESION = 200
 
 
 # ─── Response ─────────────────────────────────────────────────────────────────
@@ -116,6 +119,13 @@ async def get_locales(
     # universo completo antes de filtrar.
     sector = sesion.get("perfil", {}).get("sector", "desconocido")
     todas_las_zonas = await get_zonas_sesion(session_id=session_id, sector=sector)
+
+    if len(todas_las_zonas) > _MAX_ZONAS_SESION:
+        logger.warning(
+            "Sesión %s tiene %d zonas (límite: %d). Truncando.",
+            session_id, len(todas_las_zonas), _MAX_ZONAS_SESION,
+        )
+        todas_las_zonas = todas_las_zonas[:_MAX_ZONAS_SESION]
 
     if not todas_las_zonas:
         # Si no hay zonas (ej: sesión recién creada sin búsqueda completada)
@@ -220,14 +230,6 @@ async def get_locales(
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
-
-def _score_to_color(score: float) -> ColorZona:
-    if score > 75:
-        return ColorZona.VERDE
-    if score >= 50:
-        return ColorZona.AMARILLO
-    return ColorZona.ROJO
-
 
 def _calcular_filtros_disponibles(zonas: list[dict]) -> FiltrosDisponibles:
     """

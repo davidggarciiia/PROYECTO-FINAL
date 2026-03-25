@@ -19,7 +19,22 @@ def _run(coro):
     try:
         return loop.run_until_complete(coro)
     finally:
+        loop.run_until_complete(_cleanup())
         loop.close()
+
+
+async def _cleanup():
+    """Cierra los pools de BD y Redis al finalizar cada tarea Celery."""
+    try:
+        from db.conexion import close_db_pool
+        await close_db_pool()
+    except Exception:
+        pass
+    try:
+        from db.redis_client import close_redis
+        await close_redis()
+    except Exception:
+        pass
 
 
 @celery_app.task(bind=True, max_retries=2, default_retry_delay=30)

@@ -68,7 +68,7 @@ async def _check_postgres() -> ServiceStatus:
             name="postgres",
             status=EstadoServicio.DOWN,
             latency_ms=None,
-            message=f"{type(exc).__name__}: {str(exc)[:80]}",
+            message="No disponible",
         )
 
 
@@ -93,7 +93,7 @@ async def _check_redis() -> ServiceStatus:
             name="redis",
             status=EstadoServicio.DEGRADED,
             latency_ms=None,
-            message=f"{type(exc).__name__}: {str(exc)[:80]}",
+            message="No disponible",
         )
 
 
@@ -112,7 +112,7 @@ async def _check_celery() -> ServiceStatus:
         # inspect() hace broadcast a todos los workers — si no hay respuesta en timeout → degraded
         inspect = celery_app.control.inspect(timeout=_TIMEOUT_CELERY_S)
         stats = await asyncio.wait_for(
-            asyncio.get_event_loop().run_in_executor(None, inspect.stats),
+            asyncio.get_running_loop().run_in_executor(None, inspect.stats),
             timeout=_TIMEOUT_CELERY_S + 0.5,
         )
 
@@ -147,7 +147,7 @@ async def _check_celery() -> ServiceStatus:
             name="celery",
             status=EstadoServicio.DEGRADED,
             latency_ms=None,
-            message=f"{type(exc).__name__}: {str(exc)[:80]}",
+            message="No disponible",
         )
 
 

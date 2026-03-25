@@ -93,8 +93,8 @@ async def marcar_error(pdf_id: str, mensaje: str) -> None:
     """Marca la exportación como fallida."""
     async with get_db() as conn:
         await conn.execute(
-            "UPDATE exportaciones SET estado = 'error' WHERE id = $1",
-            pdf_id,
+            "UPDATE exportaciones SET estado = 'error', mensaje_error = $2 WHERE id = $1",
+            pdf_id, mensaje[:500],
         )
 
 

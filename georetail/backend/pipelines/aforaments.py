@@ -142,7 +142,7 @@ def _leer_coordenadas() -> dict[str, tuple[float, float]]:
             try:
                 lng = float(row.get("Longitud", 0) or 0)
                 lat = float(row.get("Latitud", 0) or 0)
-                if sid and lng and lat:
+                if sid and lng is not None and lat is not None and (lng != 0.0 or lat != 0.0):
                     coords[sid] = (lng, lat)
             except (ValueError, TypeError):
                 continue
@@ -229,7 +229,7 @@ async def _asignar_zonas(
                 n += 1
 
             except Exception as exc:
-                logger.debug("Error sensor %s: %s", sid, exc)
+                logger.warning("Error procesando sensor %s: %s", sid, exc)
 
     return n
 

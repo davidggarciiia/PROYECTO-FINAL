@@ -114,8 +114,8 @@ class BaseScraper:
                 if html and len(html) > 500:  # respuesta mínima válida
                     return html
             except Exception as e:
-                logger.debug("Intento %d/%d fallido para %s: %s",
-                             attempt + 1, self.cfg.max_retries, url, e)
+                logger.warning("Intento %d/%d fallido para %s: %s",
+                               attempt + 1, self.cfg.max_retries, url, e)
                 if attempt < self.cfg.max_retries - 1:
                     await asyncio.sleep(2 ** attempt)  # backoff exponencial
 
@@ -274,7 +274,11 @@ class BaseScraper:
                 # Eliminar señales de webdriver
                 await ctx.add_init_script("""
                     Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                    Object.defineProperty(navigator, 'plugins', {get: () => {
+                        const p = [{name:'Chrome PDF Plugin'},{name:'Chrome PDF Viewer'},{name:'Native Client'}];
+                        p.refresh = () => {}; p.item = (i) => p[i]; p.namedItem = (n) => p.find(x=>x.name===n)||null;
+                        return p;
+                    }});
                     window.chrome = { runtime: {} };
                 """)
                 page = await ctx.new_page()

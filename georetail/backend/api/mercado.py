@@ -11,7 +11,7 @@ Consume la vista v_mercado_zona (agregado multi-portal de inmuebles_portales).
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -85,8 +85,8 @@ def _row_to_mercado(row: dict) -> MercadoZona:
 @router.get("/mercado/barrio/{nombre}", response_model=list[MercadoZona])
 async def mercado_barrio(
     nombre: str,
-    tipo_operacion: str = Query(default="alquiler-locales"),
-    tipo_inmueble:  str = Query(default="local"),
+    tipo_operacion: Literal["alquiler-locales", "venta-locales"] = Query(default="alquiler-locales"),
+    tipo_inmueble:  Literal["local", "nave", "oficina"] = Query(default="local"),
 ) -> list[MercadoZona]:
     """Estadísticas de precio/m² y rotación para un barrio concreto."""
     async with get_db() as conn:
@@ -110,8 +110,8 @@ async def mercado_barrio(
 @router.get("/mercado/distrito/{nombre}", response_model=list[MercadoZona])
 async def mercado_distrito(
     nombre: str,
-    tipo_operacion: str = Query(default="alquiler-locales"),
-    tipo_inmueble:  str = Query(default="local"),
+    tipo_operacion: Literal["alquiler-locales", "venta-locales"] = Query(default="alquiler-locales"),
+    tipo_inmueble:  Literal["local", "nave", "oficina"] = Query(default="local"),
 ) -> list[MercadoZona]:
     """Estadísticas de todos los barrios de un distrito."""
     async with get_db() as conn:
@@ -135,9 +135,9 @@ async def mercado_distrito(
 
 @router.get("/mercado/resumen", response_model=ResumenMercadoResponse)
 async def mercado_resumen(
-    tipo_operacion: str = Query(default="alquiler-locales"),
-    tipo_inmueble:  str = Query(default="local"),
-    nivel:          str = Query(default="barrio", description='"barrio" | "distrito"'),
+    tipo_operacion: Literal["alquiler-locales", "venta-locales"] = Query(default="alquiler-locales"),
+    tipo_inmueble:  Literal["local", "nave", "oficina"] = Query(default="local"),
+    nivel:          Literal["barrio", "distrito"] = Query(default="barrio"),
 ) -> ResumenMercadoResponse:
     """Todos los barrios con datos, ordenados por precio/m² desc. Útil para mapa de calor."""
     async with get_db() as conn:
@@ -159,7 +159,7 @@ async def mercado_resumen(
 @router.get("/mercado/zona/{zona_id}/precio-referencia", response_model=dict)
 async def precio_referencia_zona(
     zona_id: str,
-    tipo_operacion: str = Query(default="alquiler-locales"),
+    tipo_operacion: Literal["alquiler-locales", "venta-locales"] = Query(default="alquiler-locales"),
 ) -> dict:
     """
     Precio/m² de referencia para una zona de GeoRetail.

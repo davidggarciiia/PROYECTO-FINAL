@@ -65,6 +65,12 @@ async def actualizar_perfil_zona(zona_id: str) -> None:
 
         # Parsear los vectores (pgvector devuelve listas)
         vecs = np.array([list(r["embedding"]) for r in rows], dtype=np.float32)
+        if vecs.shape[1] != 768:
+            logger.error(
+                "Dimensión de embedding inesperada para zona %s: %d (esperado 768)",
+                zona_id, vecs.shape[1],
+            )
+            return
         perfil = vecs.mean(axis=0)
         perfil = perfil / (np.linalg.norm(perfil) + 1e-8)  # normalizar
 
