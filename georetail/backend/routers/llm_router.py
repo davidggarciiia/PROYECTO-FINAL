@@ -164,6 +164,20 @@ def _gemini() -> google_genai.Client:
     return _GEMINI
 
 
+async def close_llm_clients() -> None:
+    """Cierra los clientes HTTP de los proveedores LLM. Llamar en shutdown del servidor."""
+    global _ANT, _OAI, _DEEP, _KIMI
+    for nombre, cliente in [("anthropic", _ANT), ("openai", _OAI),
+                             ("deepseek", _DEEP), ("kimi", _KIMI)]:
+        if cliente is not None:
+            try:
+                await cliente.close()
+            except Exception as e:
+                logger.debug("Error cerrando cliente %s: %s", nombre, e)
+    _ANT = _OAI = _DEEP = _KIMI = None
+    # _GEMINI (google-genai) no expone método close() en la versión actual
+
+
 _PLACEHOLDERS = {"sk-ant-...", "sk-...", "...", "sk-proj-...", "AIza..."}
 
 def _has_key(proveedor: str) -> bool:

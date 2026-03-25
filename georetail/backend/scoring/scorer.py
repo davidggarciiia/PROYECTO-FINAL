@@ -26,7 +26,7 @@ _shap_explainer = None  # cacheado para no recrearlo en cada zona
 
 async def cargar_modelo() -> None:
     """Carga el modelo XGBoost activo desde disco. Llamar en startup."""
-    global _xgb_model, _xgb_version
+    global _xgb_model, _xgb_version, _shap_explainer
     try:
         async with get_db() as conn:
             row = await conn.fetchrow(

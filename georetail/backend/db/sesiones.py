@@ -63,6 +63,7 @@ async def actualizar_sesion(session_id: str, updates: dict) -> None:
     r = get_redis()
     # Actualización atómica con WATCH/MULTI para evitar pérdida de datos
     # en requests concurrentes sobre la misma sesión.
+    s = None  # inicializar antes del bucle para evitar NameError si todos los reintentos fallan
     for _attempt in range(3):
         try:
             async with r.pipeline() as pipe:
@@ -88,6 +89,8 @@ async def actualizar_sesion(session_id: str, updates: dict) -> None:
             logger.warning("Redis actualizar_sesion fail: %s", e)
             break
 
+    if s is None:
+        return
     try:
         async with get_db() as conn:
             await conn.execute(

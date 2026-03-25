@@ -24,6 +24,7 @@ from db.redis_client import init_redis, close_redis
 from nlp.embeddings import cargar_modelo as cargar_embeddings
 from scoring.scorer import cargar_modelo as cargar_xgb
 from pipelines.scheduler import init_scheduler, stop_scheduler
+from routers.llm_router import close_llm_clients
 
 # Endpoints
 from api.buscar       import router as router_buscar
@@ -81,6 +82,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("Apagando GeoRetail...")
     stop_scheduler()
+    await close_llm_clients()
     await close_db_pool()
     await close_redis()
     logger.info("GeoRetail apagado correctamente")
