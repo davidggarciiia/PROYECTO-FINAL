@@ -119,6 +119,11 @@ class NegocioScraped:
     horario:         Optional[dict] = None    # {"lunes": "09:00-21:00", ...}
     abierto_ahora:   Optional[bool] = None
 
+    # Popular Times (histograma de concurrencia por hora)
+    popular_times:   Optional[dict] = None
+    # Formato: {"lunes": [0,0,10,20,40,70,80,60,40,20,10,0,0,0,0,0,0,0,0,0,0,0,0,0], ...}
+    # 24 valores por día (horas 0-23), escala 0-100. None si el negocio no tiene datos.
+
     # Metadatos
     url_maps:        Optional[str]  = None
     timestamp_scraping: float       = field(default_factory=time.time)
@@ -625,6 +630,9 @@ async def _extraer_datos_panel(page, listing_elem) -> Optional[NegocioScraped]:
         except Exception:
             pass
 
+        # ── Popular Times ──
+        popular_times = await _extraer_popular_times(page)
+
         return NegocioScraped(
             nombre=nombre,
             google_place_id=place_id,
@@ -639,11 +647,252 @@ async def _extraer_datos_panel(page, listing_elem) -> Optional[NegocioScraped]:
             web=web,
             horario=horario if horario else None,
             abierto_ahora=abierto_ahora,
+            popular_times=popular_times,
             url_maps=current_url,
         )
 
     except Exception as e:
         logger.debug("Error extrayendo datos de panel: %s", e)
+        return None
+
+
+# ── Popular Times — extracción ────────────────────────────────────────────────
+
+# Mapa de nombres de días en castellano/catalán → clave normalizada
+_DIAS_MAP = {
+    # Castellano
+    "lunes": "lunes", "martes": "martes", "miércoles": "miércoles",
+    "miercoles": "miércoles", "jueves": "jueves", "viernes": "viernes",
+    "sábado": "sábado", "sabado": "sábado", "domingo": "domingo",
+    # Catalán
+    "dilluns": "lunes", "dimarts": "martes", "dimecres": "miércoles",
+    "dijous": "jueves", "divendres": "viernes", "dissabte": "sábado",
+    "diumenge": "domingo",
+    # Inglés (por si el locale cambia)
+    "monday": "lunes", "tuesday": "martes", "wednesday": "miércoles",
+    "thursday": "jueves", "friday": "viernes", "saturday": "sábado",
+    "sunday": "domingo",
+}
+
+# Palabras clave del aria-label de Google Maps para mapear ocupación cualitativa
+_OCUPACION_ESCALA = {
+    "no muy concurrido": 15,
+    "poco concurrido": 25,
+    "concurrido": 55,
+    "muy concurrido": 75,
+    "extremadamente concurrido": 95,
+    "normalmente, no muy concurrido": 15,
+    "normalmente, poco concurrido": 25,
+    "normalmente, bastante concurrido": 65,
+    "normalmente, concurrido": 55,
+    "normalmente, muy concurrido": 75,
+    "normalmente, extremadamente concurrido": 95,
+    # Inglés
+    "not too busy": 15,
+    "not usually too busy": 15,
+    "a little busy": 25,
+    "usually a little busy": 25,
+    "busy": 55,
+    "usually busy": 55,
+    "pretty busy": 65,
+    "very busy": 75,
+    "usually very busy": 75,
+    "as busy as it gets": 95,
+}
+
+
+def _valor_ocupacion(texto: str) -> int:
+    """
+    Convierte descripción cualitativa de ocupación a valor numérico 0-100.
+    Primero busca coincidencia exacta (lowercase), luego parcial.
+    """
+    t = texto.lower().strip()
+    if t in _OCUPACION_ESCALA:
+        return _OCUPACION_ESCALA[t]
+    # Búsqueda parcial por orden de especificidad (más largo primero)
+    for key in sorted(_OCUPACION_ESCALA, key=len, reverse=True):
+        if key in t:
+            return _OCUPACION_ESCALA[key]
+    # Si contiene un porcentaje numérico (raro, pero Google a veces lo incluye)
+    m = re.search(r'(\d{1,3})\s*%', texto)
+    if m:
+        return min(100, int(m.group(1)))
+    return 0
+
+
+async def _extraer_popular_times(page) -> Optional[dict]:
+    """
+    Extrae el histograma de Popular Times de la ficha abierta en Google Maps.
+
+    Devuelve dict {dia: [24 valores 0-100]} o None si el negocio no tiene datos.
+
+    Estrategia (de más a menos fiable):
+      1. Leer atributos aria-label de las barras del histograma
+         Selector: div con clase 'g2BVhd eoFzo' o similar que contiene
+         botones con aria-label tipo "Lunes; Normalmente, no muy concurrido a las 9"
+      2. Leer el texto estructurado de la sección de Popular Times
+      3. Fallback: None (el negocio no tiene datos de afluencia)
+    """
+    try:
+        # ── Intento 1: aria-label de las barras individuales ──────────────────
+        # Google Maps renderiza las barras de cada hora con un atributo aria-label
+        # que describe el nivel de ocupación en lenguaje natural.
+        # Ejemplo: aria-label="Lunes: normalmente, no muy concurrido a las 9"
+        # El contenedor de la sección Popular Times tiene clase 'ecGq2b' o similar.
+
+        # Buscar todos los botones/divs con aria-label que contengan información horaria
+        bar_selectors = [
+            'div[aria-label*="concurrido"]',       # Castellano
+            'div[aria-label*="busy"]',              # Inglés
+            'div[aria-label*="concorregut"]',       # Catalán
+            'button[aria-label*="concurrido"]',
+            'button[aria-label*="busy"]',
+        ]
+
+        barras = []
+        for sel in bar_selectors:
+            try:
+                found = await page.query_selector_all(sel)
+                if found:
+                    barras.extend(found)
+                    break
+            except Exception:
+                pass
+
+        if barras:
+            # Parsear cada barra: "Lunes: normalmente, no muy concurrido a las 9"
+            # o "Monday: usually not too busy at 9 AM"
+            datos_raw: dict[str, dict[int, int]] = {}  # dia -> {hora: valor}
+
+            for barra in barras:
+                try:
+                    aria = await barra.get_attribute("aria-label")
+                    if not aria:
+                        continue
+
+                    # Extraer día
+                    dia_raw = aria.split(":")[0].strip().lower() if ":" in aria else ""
+                    dia = _DIAS_MAP.get(dia_raw)
+                    if not dia:
+                        continue
+
+                    # Extraer hora: "a las 9", "a las 14", "at 9", "at 2 PM"
+                    hora = None
+                    m_hora = re.search(r'a las\s+(\d{1,2})', aria, re.IGNORECASE)
+                    if m_hora:
+                        hora = int(m_hora.group(1))
+                    else:
+                        m_hora = re.search(r'at\s+(\d{1,2})\s*(AM|PM)?', aria, re.IGNORECASE)
+                        if m_hora:
+                            hora = int(m_hora.group(1))
+                            if m_hora.group(2) and m_hora.group(2).upper() == "PM" and hora != 12:
+                                hora += 12
+                            elif m_hora.group(2) and m_hora.group(2).upper() == "AM" and hora == 12:
+                                hora = 0
+
+                    if hora is None or not (0 <= hora <= 23):
+                        continue
+
+                    # Extraer valor de ocupación desde la descripción textual
+                    valor = _valor_ocupacion(aria)
+
+                    datos_raw.setdefault(dia, {})[hora] = valor
+
+                except Exception:
+                    continue
+
+            if datos_raw:
+                # Construir array de 24 horas por día (horas sin dato = 0)
+                popular_times: dict[str, list[int]] = {}
+                for dia, horas_dict in datos_raw.items():
+                    vec = [horas_dict.get(h, 0) for h in range(24)]
+                    # Solo incluir días que tengan al menos 1 hora con datos
+                    if any(v > 0 for v in vec):
+                        popular_times[dia] = vec
+
+                if popular_times:
+                    logger.debug(
+                        "Popular Times extraído via aria-label: %d días",
+                        len(popular_times),
+                    )
+                    return popular_times
+
+        # ── Intento 2: buscar sección "Horas punta" por texto del DOM ─────────
+        # Google Maps muestra "Cuándo suelen estar aquí las personas" o "Horas punta"
+        # como título de la sección. Bajo él están los días como tabs y las barras.
+        try:
+            # Buscar contenedor de la sección por heading conocido
+            headings = [
+                'span:text("Horas punta")',
+                'span:text("Cuándo suelen estar aquí")',
+                'span:text("Popular times")',
+                'h2:has-text("Horas")',
+            ]
+            contenedor = None
+            for h_sel in headings:
+                try:
+                    el = await page.query_selector(h_sel)
+                    if el:
+                        # Subir al contenedor padre
+                        contenedor = await el.evaluate("el => el.closest('[jsaction]')")
+                        break
+                except Exception:
+                    pass
+
+            if contenedor:
+                # Intentar leer los botones de día como tabs
+                tabs = await page.query_selector_all('[aria-selected][role="tab"]')
+                if tabs:
+                    popular_times = {}
+                    for tab in tabs:
+                        try:
+                            tab_text = (await tab.inner_text()).strip().lower()
+                            dia = _DIAS_MAP.get(tab_text)
+                            if not dia:
+                                continue
+
+                            # Hacer click en el tab para activar ese día
+                            await tab.click()
+                            await asyncio.sleep(0.3)
+
+                            # Leer barras activas
+                            barras_dia = await page.query_selector_all(
+                                'div[aria-label*="concurrido"], div[aria-label*="busy"]'
+                            )
+                            horas_dict: dict[int, int] = {}
+                            for barra in barras_dia:
+                                aria = await barra.get_attribute("aria-label") or ""
+                                m_h = re.search(r'a las\s+(\d{1,2})', aria, re.IGNORECASE)
+                                if not m_h:
+                                    m_h = re.search(r'at\s+(\d{1,2})', aria, re.IGNORECASE)
+                                if m_h:
+                                    h = int(m_h.group(1))
+                                    if 0 <= h <= 23:
+                                        horas_dict[h] = _valor_ocupacion(aria)
+
+                            if horas_dict:
+                                popular_times[dia] = [horas_dict.get(h, 0) for h in range(24)]
+
+                        except Exception:
+                            continue
+
+                    if popular_times:
+                        logger.debug(
+                            "Popular Times extraído via tabs: %d días",
+                            len(popular_times),
+                        )
+                        return popular_times
+
+        except Exception as e:
+            logger.debug("Intento 2 Popular Times fallido: %s", e)
+
+        # ── Fallback: no hay datos de Popular Times ────────────────────────────
+        # Es normal: negocios nuevos, negocios con pocas visitas, o tiendas pequeñas
+        # no tienen Popular Times en Google Maps.
+        return None
+
+    except Exception as e:
+        logger.debug("Error extrayendo Popular Times: %s", e)
         return None
 
 
@@ -984,6 +1233,17 @@ class GoogleMapsScraper:
 
         logger.info("Google Maps: extracción completada, %d negocios", len(resultados))
         return resultados
+
+    async def _extraer_popular_times(self, page) -> Optional[dict]:
+        """
+        Extrae el histograma de Popular Times de la ficha abierta en Google Maps.
+        Delega a la función modular _extraer_popular_times del módulo.
+
+        Devuelve dict {dia: [24 valores 0-100]} o None si no hay datos.
+        No todos los negocios tienen Popular Times (negocios pequeños o sin suficiente
+        historial de visitas no lo muestran).
+        """
+        return await _extraer_popular_times(page)
 
     async def _extraer_tarjeta(
         self,

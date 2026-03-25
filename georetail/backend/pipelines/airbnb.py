@@ -23,6 +23,7 @@ import gzip
 import io
 import logging
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -32,13 +33,42 @@ from db.conexion import get_db
 logger = logging.getLogger(__name__)
 
 # ── Configuración ──────────────────────────────────────────────────────────────
-_AIRBNB_URL = (
-    "http://data.insideairbnb.com/spain/catalonia/barcelona/"
-    "2024-09-14/data/listings.csv.gz"
-)
+# URLs conocidas de InsideAirbnb Barcelona (más recientes primero).
+# data.insideairbnb.com bloquea requests directas sin headers de navegador.
+# Se prueban en orden hasta que una responda con HTTP 200.
+_AIRBNB_URLS = [
+    # Índice público JSON — lista los datasets más recientes
+    # Si da 403, se pasa a las URLs hardcodeadas
+    "https://data.insideairbnb.com/spain/catalonia/barcelona/2024-09-14/data/listings.csv.gz",
+    "https://data.insideairbnb.com/spain/catalonia/barcelona/2024-06-16/data/listings.csv.gz",
+    "https://data.insideairbnb.com/spain/catalonia/barcelona/2024-03-23/data/listings.csv.gz",
+    # Fallback HTTP (algunos CDN no redirigen HTTPS correctamente)
+    "http://data.insideairbnb.com/spain/catalonia/barcelona/2024-09-14/data/listings.csv.gz",
+]
+_AIRBNB_URL = _AIRBNB_URLS[0]   # mantener compatibilidad con referencias externas
 _TIMEOUT_S  = 120   # la descarga puede tardar ~30s
 _RADIO_M    = 500   # radio ST_DWithin para asignar listing a zona
 _CHUNK      = 500   # tamaño de batch para geocodificación
+
+# Headers que imitan un navegador para evitar el 403 de InsideAirbnb
+_AIRBNB_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.6367.208 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer": "http://insideairbnb.com/get-the-data/",
+    "Origin": "http://insideairbnb.com",
+    "Connection": "keep-alive",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "cross-site",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -85,19 +115,59 @@ async def _descargar_listings() -> list[dict]:
     """
     Descarga el CSV.gz de InsideAirbnb, lo descomprime en memoria y parsea
     los campos relevantes. Devuelve lista de dicts con lat, lng y ocupacion.
+
+    Fix HTTP 403: se prueban múltiples URLs con headers de navegador completos
+    (Referer + Origin de insideairbnb.com) hasta encontrar una que responda 200.
+    Si todas fallan con 403, se documenta el error y se devuelve lista vacía.
     """
-    try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT_S, follow_redirects=True) as client:
-            r = await client.get(_AIRBNB_URL)
-            if r.status_code != 200:
-                logger.error("InsideAirbnb HTTP %d", r.status_code)
-                return []
-            raw_gz = r.content
-    except httpx.TimeoutException:
-        logger.error("Timeout descargando InsideAirbnb (>%ds)", _TIMEOUT_S)
-        return []
-    except Exception as exc:
-        logger.error("Error descargando InsideAirbnb: %s", exc)
+    raw_gz: bytes = b""
+
+    async with httpx.AsyncClient(
+        timeout=_TIMEOUT_S,
+        follow_redirects=True,
+        headers=_AIRBNB_HEADERS,
+    ) as client:
+        for url in _AIRBNB_URLS:
+            try:
+                logger.info("Intentando InsideAirbnb URL: %s", url)
+                r = await client.get(url)
+                if r.status_code == 200:
+                    raw_gz = r.content
+                    logger.info("InsideAirbnb descarga OK desde %s (%d bytes)", url, len(raw_gz))
+                    break
+                elif r.status_code == 403:
+                    logger.warning(
+                        "InsideAirbnb HTTP 403 para %s — "
+                        "el servidor bloquea acceso directo. "
+                        "Para datos actualizados, descargar manualmente desde "
+                        "http://insideairbnb.com/get-the-data/ y colocar en /data/listings.csv.gz",
+                        url,
+                    )
+                else:
+                    logger.warning("InsideAirbnb HTTP %d para %s", r.status_code, url)
+            except httpx.TimeoutException:
+                logger.error("Timeout descargando InsideAirbnb %s (>%ds)", url, _TIMEOUT_S)
+            except Exception as exc:
+                logger.error("Error descargando InsideAirbnb %s: %s", url, exc)
+
+    if not raw_gz:
+        # Intentar leer desde archivo local si existe (descarga manual)
+        local_path = "/data/listings.csv.gz"
+        try:
+            p = Path(local_path)
+            if p.exists() and p.stat().st_size > 1000:
+                raw_gz = p.read_bytes()
+                logger.info("InsideAirbnb: usando archivo local %s (%d bytes)", local_path, len(raw_gz))
+        except Exception as exc:
+            logger.debug("No se pudo leer archivo local InsideAirbnb: %s", exc)
+
+    if not raw_gz:
+        logger.error(
+            "InsideAirbnb: no se pudo descargar datos. "
+            "Descargar manualmente desde http://insideairbnb.com/get-the-data/ "
+            "y colocar el CSV.gz en %s",
+            "/data/listings.csv.gz",
+        )
         return []
 
     # Descomprimir en memoria

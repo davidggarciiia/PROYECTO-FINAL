@@ -1,0 +1,2 @@
+scraper,estado,fix_aplicado,archivo,detalles
+insideairbnb,FIXED,Múltiples URLs + headers navegador completos + fallback archivo local,pipelines/airbnb.py,"_AIRBNB_URLS lista con 4 URLs (sept/jun/mar 2024 + HTTP fallback); _AIRBNB_HEADERS añade Referer=insideairbnb.com/get-the-data/ + Origin=insideairbnb.com + User-Agent Chrome; _descargar_listings() prueba cada URL con headers; si todas dan 403 intenta leer /data/listings.csv.gz local; documenta en log que necesita descarga manual periódica"

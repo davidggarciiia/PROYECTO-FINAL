@@ -67,6 +67,12 @@ _MEDIAS = {
     "licencias_nuevas_1a": 4.0,        # ~4 nuevas licencias por zona/año (media BCN)
     "eventos_culturales_500m": 3.0,    # ~3 venues culturales/ocio en radio 500m
     "booking_hoteles_500m": 2.0,       # ~2 hoteles Booking en radio 500m (media BCN)
+    # v4 (pendiente de incluir en FEATURE_NAMES — no rompe modelos existentes)
+    # flujo_popular_times_score: media del pico de concurrencia (Popular Times Google Maps)
+    # de los negocios de la zona, normalizado 0-100. Calculado por pipelines/google_maps.py.
+    # Se almacena en variables_zona.flujo_popular_times_score.
+    # Fuente: GoogleMapsScraper._extraer_popular_times() — histograma de horas punta.
+    "flujo_popular_times_score": 48.0, # ~48 pts media BCN (estimación conservadora)
 }
 
 

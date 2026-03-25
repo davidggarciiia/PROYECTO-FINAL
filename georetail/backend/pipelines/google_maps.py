@@ -84,6 +84,9 @@ async def ejecutar() -> dict:
         # 5. Actualizar variables_zona con google_review_count_medio
         await _actualizar_review_count_medio()
 
+        # 6. Calcular flujo_popular_times_score por zona a partir de popular_times scraped
+        await _actualizar_popular_times_score()
+
         await _fin(eid, negocios_actualizados, "ok")
         logger.info(
             "Google Maps OK — %d negocios actualizados, %d zonas",
@@ -220,11 +223,14 @@ async def _ejecutar_scraping(busquedas: list[dict]) -> int:
 async def _actualizar_negocios(negocios: list, zona_id: str) -> int:
     """
     Para cada negocio scraped, intenta hacer match en negocios_activos
-    por nombre aproximado y zona_id, y actualiza review_count + google_place_id.
+    por nombre aproximado y zona_id, y actualiza review_count + google_place_id
+    + popular_times (si disponible).
     Match: nombre ILIKE '%nombre_scraped%' AND zona_id = zona_id
     """
     if not negocios:
         return 0
+
+    import json as _json
 
     n = 0
     async with get_db() as conn:
@@ -232,11 +238,15 @@ async def _actualizar_negocios(negocios: list, zona_id: str) -> int:
             if not neg.nombre:
                 continue
             try:
+                # Serializar popular_times a JSONB si está disponible
+                pt_json = _json.dumps(neg.popular_times) if neg.popular_times else None
+
                 result = await conn.execute(
                     """
                     UPDATE negocios_activos
                     SET review_count    = $1,
-                        google_place_id = COALESCE($2, google_place_id)
+                        google_place_id = COALESCE($2, google_place_id),
+                        popular_times   = COALESCE($5::jsonb, popular_times)
                     WHERE zona_id = $3
                       AND LOWER(nombre) ILIKE LOWER($4)
                       AND activo = TRUE
@@ -245,6 +255,7 @@ async def _actualizar_negocios(negocios: list, zona_id: str) -> int:
                     neg.google_place_id,
                     zona_id,
                     f"%{neg.nombre[:50]}%",
+                    pt_json,
                 )
                 # asyncpg devuelve "UPDATE N" como string
                 rows_affected = int(result.split()[-1]) if result else 0
@@ -256,7 +267,8 @@ async def _actualizar_negocios(negocios: list, zona_id: str) -> int:
                         """
                         UPDATE negocios_activos
                         SET review_count    = $1,
-                            google_place_id = COALESCE($2, google_place_id)
+                            google_place_id = COALESCE($2, google_place_id),
+                            popular_times   = COALESCE($5::jsonb, popular_times)
                         WHERE ST_DWithin(
                             geometria::geography,
                             ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography,
@@ -266,6 +278,7 @@ async def _actualizar_negocios(negocios: list, zona_id: str) -> int:
                         """,
                         neg.review_count, neg.google_place_id,
                         neg.lng, neg.lat,
+                        pt_json,
                     )
                     rows2 = int(result2.split()[-1]) if result2 else 0
                     n += rows2
@@ -278,6 +291,90 @@ async def _actualizar_negocios(negocios: list, zona_id: str) -> int:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Actualización variables_zona
 # ═══════════════════════════════════════════════════════════════════════════════
+
+async def _actualizar_popular_times_score() -> None:
+    """
+    Calcula flujo_popular_times_score por zona a partir de los popular_times
+    scraped de los negocios activos en esa zona.
+
+    Algoritmo:
+      1. Para cada zona, recoger los popular_times de todos los negocios que
+         los tienen (columna JSONB popular_times en negocios_activos).
+      2. Para cada negocio, calcular su pico de concurrencia:
+         peak_score = max de los 24 valores de todos los días disponibles.
+      3. flujo_popular_times_score = media de los peak_scores de la zona,
+         normalizada a escala 0-100.
+      4. UPSERT en variables_zona.flujo_popular_times_score con
+         fuente='popular_times_google'.
+
+    NOTA: Esta columna es pendiente de incluir en el modelo XGBoost v4.
+    Por ahora se almacena en BD como feature pre-calculada pero no se incluye
+    en FEATURE_NAMES (ver scoring/features.py — _MEDIAS tiene la entrada
+    flujo_popular_times_score documentada pero NO en FEATURE_NAMES aún).
+    """
+    import json as _json
+
+    hoy = date.today()
+    async with get_db() as conn:
+        # Leer negocios con popular_times disponible
+        rows = await conn.fetch(
+            """
+            SELECT zona_id, popular_times
+            FROM negocios_activos
+            WHERE activo = TRUE
+              AND popular_times IS NOT NULL
+            """
+        )
+
+    if not rows:
+        logger.debug("No hay negocios con popular_times — omitiendo flujo_popular_times_score")
+        return
+
+    # Agrupar por zona y calcular peak_score por negocio
+    zona_peaks: dict = {}
+    for row in rows:
+        zid = str(row["zona_id"])
+        try:
+            pt = row["popular_times"]
+            if isinstance(pt, str):
+                pt = _json.loads(pt)
+            if not isinstance(pt, dict):
+                continue
+            # Calcular pico: máximo de todos los valores de todos los días
+            all_vals = [v for horas in pt.values() if isinstance(horas, list) for v in horas]
+            if all_vals:
+                peak = max(all_vals)
+                zona_peaks.setdefault(zid, []).append(peak)
+        except Exception:
+            continue
+
+    if not zona_peaks:
+        return
+
+    # Guardar flujo_popular_times_score en variables_zona
+    async with get_db() as conn:
+        for zona_id, peaks in zona_peaks.items():
+            score = round(sum(peaks) / len(peaks), 1)
+            try:
+                await conn.execute(
+                    """
+                    INSERT INTO variables_zona
+                        (zona_id, fecha, flujo_popular_times_score, fuente)
+                    VALUES ($1, $2, $3, 'popular_times_google')
+                    ON CONFLICT (zona_id, fecha) DO UPDATE
+                    SET flujo_popular_times_score = $3,
+                        fuente = 'popular_times_google'
+                    """,
+                    zona_id, hoy, score,
+                )
+            except Exception as exc:
+                logger.debug("Error guardando flujo_popular_times_score zona=%s: %s", zona_id, exc)
+
+    logger.info(
+        "flujo_popular_times_score calculado para %d zonas",
+        len(zona_peaks),
+    )
+
 
 async def _actualizar_review_count_medio() -> None:
     """
