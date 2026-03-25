@@ -222,10 +222,10 @@ async def entrenar_modelo(
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def _generar_version(sector: Optional[str]) -> str:
-    """Genera un identificador único para la versión del modelo."""
+    """Genera un identificador único para la versión del modelo (v3 = 29 features)."""
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
     sufijo = sector or "global"
-    return f"{sufijo}_{ts}"
+    return f"{sufijo}_v3_{ts}"
 
 
 def _calcular_importancia(modelo: xgb.XGBClassifier) -> dict[str, float]:

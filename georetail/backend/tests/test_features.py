@@ -2,27 +2,34 @@
 tests/test_features.py — Tests para scoring/features.py (función pura _build_array).
 
 _build_array es la única función sin I/O del módulo; construye el
-vector de 21 features para XGBoost a partir de dicts de datos de zona.
+vector de 29 features para XGBoost (v3) a partir de dicts de datos de zona.
 
 Cubre:
-  - Shape del array resultante (1 fila × 21 features)
+  - Shape del array resultante (1 fila × 29 features)
   - Dtype float32
   - Orden de features coincide con FEATURE_NAMES
   - Imputación con _MEDIAS cuando el dato es None/ausente
   - Cálculo correcto de fracciones de flujo por franja horaria
   - Flujo total cero no lanza ZeroDivisionError
   - Todos los valores son finitos (no NaN / inf)
+  - Features v3 (índices 23-28): airbnb_density_500m, airbnb_occupancy_est,
+    google_review_count_medio, licencias_nuevas_1a, eventos_culturales_500m,
+    booking_hoteles_500m
 """
 import pytest
 import numpy as np
 
 from scoring.features import _build_array, FEATURE_NAMES, _MEDIAS
 
+# Número total de features en v3
+N_FEATURES_V3 = 29
+
 
 # ─── Fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture
 def vz_completo():
+    """Variables de zona completas incluyendo v2 y v3."""
     return {
         "flujo_peatonal_total":   1_200.0,
         "flujo_peatonal_manana":    360.0,
@@ -39,6 +46,8 @@ def vz_completo():
         "nivel_ruido_db":           65.0,
         "score_equipamientos":      70.0,
         "m2_zonas_verdes_cercanas": 1_500.0,
+        # v2
+        "ratio_locales_comerciales": 0.25,
     }
 
 
@@ -56,49 +65,98 @@ def trans_completo():
     return {"num_lineas": 7, "num_paradas": 5}
 
 
+@pytest.fixture
+def geo_completo():
+    """Features geográficas de nivel zona (v2)."""
+    return {"dist_playa_m": 1200.0}
+
+
+@pytest.fixture
+def tur_completo():
+    """Features de turismo y dinamismo comercial (v3)."""
+    return {
+        "airbnb_density_500m":       35.0,
+        "airbnb_occupancy_est":       0.70,
+        "google_review_count_medio": 200.0,
+        "licencias_nuevas_1a":         5.0,
+        "eventos_culturales_500m":     4.0,
+        "booking_hoteles_500m":        3.0,
+    }
+
+
 # ─── Tests de estructura del array ───────────────────────────────────────────
 
 class TestEstructuraArray:
-    def test_shape_es_1_por_21_features(self, vz_completo, comp_completo, trans_completo):
-        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo)
-        assert arr.shape == (1, len(FEATURE_NAMES))
+    def test_shape_es_1_por_29_features(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
+        assert arr.shape == (1, N_FEATURES_V3)
 
-    def test_shape_es_1_por_21_con_dicts_vacios(self):
-        arr = _build_array({}, {}, None, {})
-        assert arr.shape == (1, len(FEATURE_NAMES))
+    def test_shape_es_1_por_29_con_dicts_vacios(self):
+        arr = _build_array({}, {}, None, {}, {}, {})
+        assert arr.shape == (1, N_FEATURES_V3)
 
-    def test_dtype_es_float32(self, vz_completo, comp_completo, trans_completo):
-        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo)
+    def test_dtype_es_float32(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
         assert arr.dtype == np.float32
 
-    def test_feature_names_tiene_21_elementos(self):
-        assert len(FEATURE_NAMES) == 21
+    def test_feature_names_tiene_29_elementos(self):
+        assert len(FEATURE_NAMES) == N_FEATURES_V3
 
     def test_no_hay_duplicados_en_feature_names(self):
         assert len(FEATURE_NAMES) == len(set(FEATURE_NAMES))
+
+    def test_feature_names_contiene_v3_features(self):
+        v3_features = [
+            "airbnb_density_500m",
+            "airbnb_occupancy_est",
+            "google_review_count_medio",
+            "licencias_nuevas_1a",
+            "eventos_culturales_500m",
+            "booking_hoteles_500m",
+        ]
+        for feat in v3_features:
+            assert feat in FEATURE_NAMES, f"Feature v3 {feat!r} no está en FEATURE_NAMES"
+
+    def test_feature_names_contiene_v2_features(self):
+        assert "dist_playa_m" in FEATURE_NAMES
+        assert "ratio_locales_comerciales" in FEATURE_NAMES
+
+    def test_v3_features_estan_al_final(self):
+        """Las 6 features v3 deben ocupar los índices 23-28 (tras v1 y v2)."""
+        v3_start = 23
+        v3_features = FEATURE_NAMES[v3_start:]
+        assert len(v3_features) == 6
+        assert v3_features[0] == "airbnb_density_500m"
+        assert v3_features[-1] == "booking_hoteles_500m"
 
 
 # ─── Tests de imputación con medias ──────────────────────────────────────────
 
 class TestImputacion:
     def test_datos_vacios_usa_todas_las_medias(self):
-        arr = _build_array({}, {}, None, {})
+        arr = _build_array({}, {}, None, {}, {}, {})
         vec = arr[0]
         for i, feat in enumerate(FEATURE_NAMES):
             assert vec[i] == pytest.approx(_MEDIAS[feat], rel=1e-5), (
                 f"Feature {feat}: esperado {_MEDIAS[feat]}, obtenido {vec[i]}"
             )
 
-    def test_precio_none_usa_media(self, vz_completo, comp_completo, trans_completo):
-        arr_sin = _build_array(vz_completo, comp_completo, None,  trans_completo)
-        arr_med = _build_array(vz_completo, comp_completo, 18.0, trans_completo)
+    def test_precio_none_usa_media(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, None, trans_completo, geo_completo, tur_completo)
         idx = FEATURE_NAMES.index("precio_m2_alquiler")
-        # Sin precio → media; con precio 18.0 → media (coincide)
-        assert arr_sin[0][idx] == pytest.approx(_MEDIAS["precio_m2_alquiler"], rel=1e-5)
+        assert arr[0][idx] == pytest.approx(_MEDIAS["precio_m2_alquiler"], rel=1e-5)
 
-    def test_renta_none_usa_media(self, comp_completo, trans_completo):
+    def test_renta_none_usa_media(
+        self, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
         vz = {"flujo_peatonal_total": 1000, "renta_media_hogar": None}
-        arr = _build_array(vz, comp_completo, 18.0, trans_completo)
+        arr = _build_array(vz, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
         idx = FEATURE_NAMES.index("renta_media_hogar")
         assert arr[0][idx] == pytest.approx(_MEDIAS["renta_media_hogar"], rel=1e-5)
 
@@ -106,76 +164,197 @@ class TestImputacion:
         for feat in FEATURE_NAMES:
             assert feat in _MEDIAS, f"Feature {feat!r} no tiene media de imputación"
 
+    def test_v3_airbnb_density_none_usa_media(
+        self, vz_completo, comp_completo, trans_completo, geo_completo
+    ):
+        """Sin datos de turismo, airbnb_density_500m debe imputarse con la media."""
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, {})
+        idx = FEATURE_NAMES.index("airbnb_density_500m")
+        assert arr[0][idx] == pytest.approx(_MEDIAS["airbnb_density_500m"], rel=1e-5)
+
+    def test_v3_google_reviews_none_usa_media(
+        self, vz_completo, comp_completo, trans_completo, geo_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, {})
+        idx = FEATURE_NAMES.index("google_review_count_medio")
+        assert arr[0][idx] == pytest.approx(_MEDIAS["google_review_count_medio"], rel=1e-5)
+
+    def test_v3_dist_playa_none_usa_media(
+        self, vz_completo, comp_completo, trans_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, {}, tur_completo)
+        idx = FEATURE_NAMES.index("dist_playa_m")
+        assert arr[0][idx] == pytest.approx(_MEDIAS["dist_playa_m"], rel=1e-5)
+
 
 # ─── Tests de cálculo de fracciones de flujo ──────────────────────────────────
 
 class TestFraccionesFlujo:
-    def test_fraccion_manana_correcta(self, vz_completo, comp_completo, trans_completo):
+    def test_fraccion_manana_correcta(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
         # 360 / 1200 = 0.30
-        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo)
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
         idx = FEATURE_NAMES.index("flujo_manana_pct")
         assert arr[0][idx] == pytest.approx(0.30, rel=1e-5)
 
-    def test_fraccion_tarde_correcta(self, vz_completo, comp_completo, trans_completo):
+    def test_fraccion_tarde_correcta(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
         # 600 / 1200 = 0.50
-        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo)
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
         idx = FEATURE_NAMES.index("flujo_tarde_pct")
         assert arr[0][idx] == pytest.approx(0.50, rel=1e-5)
 
-    def test_fraccion_noche_correcta(self, vz_completo, comp_completo, trans_completo):
+    def test_fraccion_noche_correcta(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
         # 240 / 1200 = 0.20
-        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo)
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
         idx = FEATURE_NAMES.index("flujo_noche_pct")
         assert arr[0][idx] == pytest.approx(0.20, rel=1e-5)
 
-    def test_fracciones_suman_1(self, vz_completo, comp_completo, trans_completo):
-        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo)
+    def test_fracciones_suman_1(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
         m = arr[0][FEATURE_NAMES.index("flujo_manana_pct")]
         t = arr[0][FEATURE_NAMES.index("flujo_tarde_pct")]
         n = arr[0][FEATURE_NAMES.index("flujo_noche_pct")]
         assert m + t + n == pytest.approx(1.0, rel=1e-5)
 
-    def test_flujo_total_cero_no_crashea(self, comp_completo, trans_completo):
+    def test_flujo_total_cero_no_crashea(
+        self, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
         vz = {"flujo_peatonal_total": 0, "flujo_peatonal_manana": 0,
               "flujo_peatonal_tarde": 0, "flujo_peatonal_noche": 0}
-        arr = _build_array(vz, comp_completo, 18.0, trans_completo)
+        arr = _build_array(vz, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
         # Las fracciones deben ser la media de imputación (no NaN)
         idx_m = FEATURE_NAMES.index("flujo_manana_pct")
         assert not np.isnan(arr[0][idx_m])
 
-    def test_flujo_none_no_crashea(self, comp_completo, trans_completo):
+    def test_flujo_none_no_crashea(
+        self, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
         vz = {"flujo_peatonal_total": None}
-        arr = _build_array(vz, comp_completo, 18.0, trans_completo)
-        assert arr.shape == (1, 21)
+        arr = _build_array(vz, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
+        assert arr.shape == (1, N_FEATURES_V3)
 
 
 # ─── Tests de valores del array ───────────────────────────────────────────────
 
 class TestValoresArray:
-    def test_todos_los_valores_son_finitos(self, vz_completo, comp_completo, trans_completo):
-        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo)
+    def test_todos_los_valores_son_finitos(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
         assert np.all(np.isfinite(arr)), "El array contiene NaN o inf"
 
     def test_todos_los_valores_son_finitos_con_datos_vacios(self):
-        arr = _build_array({}, {}, None, {})
+        arr = _build_array({}, {}, None, {}, {}, {})
         assert np.all(np.isfinite(arr))
 
-    def test_flujo_total_correcto(self, vz_completo, comp_completo, trans_completo):
-        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo)
+    def test_flujo_total_correcto(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
         idx = FEATURE_NAMES.index("flujo_peatonal_total")
         assert arr[0][idx] == pytest.approx(1_200.0, rel=1e-5)
 
-    def test_num_competidores_correcto(self, vz_completo, comp_completo, trans_completo):
-        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo)
+    def test_num_competidores_correcto(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
         idx = FEATURE_NAMES.index("num_competidores_300m")
         assert arr[0][idx] == pytest.approx(6.0, rel=1e-5)
 
-    def test_num_lineas_transporte_correcto(self, vz_completo, comp_completo, trans_completo):
-        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo)
+    def test_num_lineas_transporte_correcto(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
         idx = FEATURE_NAMES.index("num_lineas_transporte")
         assert arr[0][idx] == pytest.approx(7.0, rel=1e-5)
 
-    def test_precio_m2_correcto(self, vz_completo, comp_completo, trans_completo):
-        arr = _build_array(vz_completo, comp_completo, 25.0, trans_completo)
+    def test_precio_m2_correcto(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 25.0, trans_completo, geo_completo, tur_completo)
         idx = FEATURE_NAMES.index("precio_m2_alquiler")
         assert arr[0][idx] == pytest.approx(25.0, rel=1e-5)
+
+    def test_v3_airbnb_density_correcto(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
+        idx = FEATURE_NAMES.index("airbnb_density_500m")
+        assert arr[0][idx] == pytest.approx(35.0, rel=1e-5)
+
+    def test_v3_airbnb_occupancy_correcto(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
+        idx = FEATURE_NAMES.index("airbnb_occupancy_est")
+        assert arr[0][idx] == pytest.approx(0.70, rel=1e-5)
+
+    def test_v3_google_reviews_correcto(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
+        idx = FEATURE_NAMES.index("google_review_count_medio")
+        assert arr[0][idx] == pytest.approx(200.0, rel=1e-5)
+
+    def test_v3_licencias_nuevas_correcto(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
+        idx = FEATURE_NAMES.index("licencias_nuevas_1a")
+        assert arr[0][idx] == pytest.approx(5.0, rel=1e-5)
+
+    def test_v3_eventos_culturales_correcto(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
+        idx = FEATURE_NAMES.index("eventos_culturales_500m")
+        assert arr[0][idx] == pytest.approx(4.0, rel=1e-5)
+
+    def test_v3_booking_hoteles_correcto(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
+        idx = FEATURE_NAMES.index("booking_hoteles_500m")
+        assert arr[0][idx] == pytest.approx(3.0, rel=1e-5)
+
+    def test_v2_dist_playa_correcto(
+        self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
+    ):
+        arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
+        idx = FEATURE_NAMES.index("dist_playa_m")
+        assert arr[0][idx] == pytest.approx(1200.0, rel=1e-5)
+
+
+# ─── Tests de posición de features ────────────────────────────────────────────
+
+class TestPosicionFeatures:
+    """Verifica que los índices de features son correctos y no cambian entre versiones."""
+
+    def test_flujo_peatonal_total_es_indice_0(self):
+        assert FEATURE_NAMES[0] == "flujo_peatonal_total"
+
+    def test_m2_zonas_verdes_es_indice_20(self):
+        assert FEATURE_NAMES[20] == "m2_zonas_verdes_cercanas"
+
+    def test_dist_playa_m_es_indice_21(self):
+        """v2: dist_playa_m debe estar en índice 21."""
+        assert FEATURE_NAMES[21] == "dist_playa_m"
+
+    def test_ratio_locales_es_indice_22(self):
+        """v2: ratio_locales_comerciales debe estar en índice 22."""
+        assert FEATURE_NAMES[22] == "ratio_locales_comerciales"
+
+    def test_airbnb_density_es_indice_23(self):
+        """v3: airbnb_density_500m debe estar en índice 23."""
+        assert FEATURE_NAMES[23] == "airbnb_density_500m"
+
+    def test_booking_hoteles_es_indice_28(self):
+        """v3: booking_hoteles_500m debe estar en el último índice (28)."""
+        assert FEATURE_NAMES[28] == "booking_hoteles_500m"
