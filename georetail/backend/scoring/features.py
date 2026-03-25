@@ -21,7 +21,12 @@ from __future__ import annotations
 import logging
 from typing import Optional
 import numpy as np
-from db.conexion import get_db
+
+# Importación lazy para evitar dependencias transitivas (asyncpg, pydantic_settings)
+# cuando el módulo se importa desde train_synthetic.py o tests sin BD.
+def _get_db():  # pragma: no cover
+    from db.conexion import get_db  # noqa: PLC0415
+    return get_db
 
 logger = logging.getLogger(__name__)
 
@@ -140,37 +145,37 @@ def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
 
 
 async def _vz(zid):
-    async with get_db() as conn:
+    async with _get_db()() as conn:
         r = await conn.fetchrow("SELECT * FROM variables_zona WHERE zona_id=$1 ORDER BY fecha DESC NULLS LAST LIMIT 1", zid)
     return dict(r) if r else {}
 
 async def _vzs(zids):
-    async with get_db() as conn:
+    async with _get_db()() as conn:
         rows = await conn.fetch("SELECT DISTINCT ON(zona_id) * FROM variables_zona WHERE zona_id=ANY($1) ORDER BY zona_id,fecha DESC NULLS LAST", zids)
     return {r["zona_id"]: dict(r) for r in rows}
 
 async def _comp(zid, sector):
-    async with get_db() as conn:
+    async with _get_db()() as conn:
         r = await conn.fetchrow("SELECT num_competidores,rating_medio,score_saturacion FROM competencia_por_local WHERE zona_id=$1 AND sector_codigo=$2 AND radio_m=300 ORDER BY fecha_calculo DESC LIMIT 1", zid, sector)
     return dict(r) if r else {}
 
 async def _comps(zids, sector):
-    async with get_db() as conn:
+    async with _get_db()() as conn:
         rows = await conn.fetch("SELECT DISTINCT ON(zona_id) zona_id,num_competidores,rating_medio,score_saturacion FROM competencia_por_local WHERE zona_id=ANY($1) AND sector_codigo=$2 AND radio_m=300 ORDER BY zona_id,fecha_calculo DESC", zids, sector)
     return {r["zona_id"]: dict(r) for r in rows}
 
 async def _precio(zid):
-    async with get_db() as conn:
+    async with _get_db()() as conn:
         v = await conn.fetchval("SELECT precio_m2 FROM precios_alquiler_zona WHERE zona_id=$1 ORDER BY fecha DESC LIMIT 1", zid)
     return float(v) if v else None
 
 async def _precios(zids):
-    async with get_db() as conn:
+    async with _get_db()() as conn:
         rows = await conn.fetch("SELECT DISTINCT ON(zona_id) zona_id,precio_m2 FROM precios_alquiler_zona WHERE zona_id=ANY($1) ORDER BY zona_id,fecha DESC", zids)
     return {r["zona_id"]: float(r["precio_m2"]) for r in rows}
 
 async def _trans(zid):
-    async with get_db() as conn:
+    async with _get_db()() as conn:
         r = await conn.fetchrow("""
             SELECT COUNT(DISTINCT pl.linea_id)::int AS num_lineas, COUNT(DISTINCT pt.id)::int AS num_paradas
             FROM paradas_transporte pt JOIN paradas_lineas pl ON pl.parada_id=pt.id
@@ -203,7 +208,7 @@ _LITORAL_BCN_WKT = (
 
 async def _geo(zid: str) -> dict:
     """Distancia al litoral BCN y demás features geográficos de nivel zona."""
-    async with get_db() as conn:
+    async with _get_db()() as conn:
         r = await conn.fetchrow(
             """
             SELECT
@@ -221,7 +226,7 @@ async def _geo(zid: str) -> dict:
 
 async def _geos(zids: list[str]) -> dict:
     """Batch de features geográficos para múltiples zonas."""
-    async with get_db() as conn:
+    async with _get_db()() as conn:
         rows = await conn.fetch(
             """
             SELECT
@@ -256,7 +261,7 @@ async def _turismo(zona_id: str) -> dict:
     Calculado en tiempo real:
       - google_review_count_medio → AVG(review_count) de negocios_activos en 300m
     """
-    async with get_db() as conn:
+    async with _get_db()() as conn:
         vz_row = await conn.fetchrow(
             """
             SELECT
@@ -297,7 +302,7 @@ async def _turismo(zona_id: str) -> dict:
 
 async def _turismo_batch(zona_ids: list[str]) -> dict:
     """Batch de features de turismo y dinamismo comercial para múltiples zonas (v3)."""
-    async with get_db() as conn:
+    async with _get_db()() as conn:
         vz_rows = await conn.fetch(
             """
             SELECT DISTINCT ON (zona_id)

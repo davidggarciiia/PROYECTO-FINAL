@@ -3,10 +3,17 @@ from __future__ import annotations
 import json
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import AsyncGenerator, TYPE_CHECKING
 
-import asyncpg
-from asyncpg import Connection, Pool
+try:
+    import asyncpg
+    from asyncpg import Connection, Pool
+    _ASYNCPG_AVAILABLE = True
+except ImportError:  # pragma: no cover — entornos sin asyncpg (e.g. train_synthetic)
+    asyncpg = None  # type: ignore[assignment]
+    Connection = object  # type: ignore[assignment,misc]
+    Pool = object  # type: ignore[assignment,misc]
+    _ASYNCPG_AVAILABLE = False
 
 from config import get_settings
 

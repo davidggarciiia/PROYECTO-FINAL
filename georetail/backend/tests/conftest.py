@@ -68,11 +68,19 @@ sys.modules.setdefault("config", _fake_config)
 
 
 # ─── Stub de db.conexion ──────────────────────────────────────────────────────
-# get_db es un context manager async; los tests de funciones puras nunca lo llaman.
+# get_db es un context manager async; cuando motor.py llama a conn.fetchrow/fetch
+# necesitamos que sean awaitable (AsyncMock), no un MagicMock síncrono.
+
+def _make_async_conn():
+    conn = MagicMock()
+    conn.fetchrow = AsyncMock(return_value=None)
+    conn.fetch    = AsyncMock(return_value=[])
+    conn.execute  = AsyncMock(return_value=None)
+    return conn
 
 @asynccontextmanager
 async def _fake_get_db():
-    yield MagicMock()
+    yield _make_async_conn()
 
 _fake_conexion = MagicMock()
 _fake_conexion.get_db = _fake_get_db
