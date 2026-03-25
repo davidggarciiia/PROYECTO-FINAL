@@ -1,45 +1,29 @@
 """
 pipelines/mercado_inmobiliario.py — Pipeline unificado de datos de mercado inmobiliario.
 
-FUENTES Y VOLUMEN ESTIMADO (locales en alquiler, Barcelona ciudad):
+FLUJO COMPLETO:
+  1. HabitacliaScraper.scrape()        → lista de dicts (precio, m2, barrio, url...)
+  2. _persistir_anuncios()             → INSERT en inmuebles_portales (staging)
+  3. _sincronizar_locales_desde_portales() → Lee inmuebles_portales donde fuente='habitaclia'
+                                             Asigna zona_id por fuzzy match de barrio
+                                             INSERT/UPDATE en locales (lo que ve el frontend)
+  4. limpiar_seed_si_hay_real()        → Elimina locales del seed en zonas ya cubiertas
 
-  ┌─────────────────┬──────────┬──────────────────┬──────────────────────┐
-  │ Portal          │ ~Anuncios│ Anti-bot         │ Método               │
-  ├─────────────────┼──────────┼──────────────────┼──────────────────────┤
-  │ Wallapop        │  200-400 │ Ninguno          │ API JSON directa ✅  │
-  │ Pisos.com       │ 1.000+   │ Ninguno          │ HTML puro, bs4 ✅    │
-  │ Habitaclia      │ 1.500+   │ Cloudflare básico│ curl_cffi ✅         │
-  │ Fotocasa        │ 2.000+   │ DataDome         │ curl_cffi + Playwright│
-  │ Milanuncios     │  300-500 │ Mínimo           │ curl_cffi ✅         │
-  │ Idealista       │ 3.000+   │ DataDome pesado  │ ❌ Sin proxy de pago │
-  └─────────────────┴──────────┴──────────────────┴──────────────────────┘
-
-  TOTAL ALCANZABLE SIN PAGAR: ~3.000-4.500 locales únicos en Barcelona.
-
-Estrategia de ejecución:
-  - Wallapop primero (API JSON, instantáneo, ~200 locales)
-  - Pisos.com segundo (sin anti-bot, fácil, ~1.000+ locales)
-  - Habitaclia tercero (Cloudflare básico, ~1.500 locales)
-  - Fotocasa cuarto (DataDome, puede fallar)
-  - Milanuncios quinto (complemento)
-
-Función pública: ejecutar()
+Función pública principal:  ejecutar(modo, ...)     → pipeline completo
+Función de Habitaclia:       ejecutar_habitaclia()   → solo Habitaclia + sincronización
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
 from config import get_settings
 from db.conexion import get_db
 from pipelines.scraping import (
-    FotocasaScraper,
     HabitacliaScraper,
-    MilanunciosScraper,
-    PisosScraper,
-    WallapopScraper,
     ScrapingConfig,
     desde_dict_scraper,
 )
@@ -48,7 +32,79 @@ from pipelines.scraping.models import InmueblePortal
 logger = logging.getLogger(__name__)
 
 
-# ── Punto de entrada público ──────────────────────────────────────────────────
+# ── Punto de entrada: solo Habitaclia (el que funciona) ───────────────────────
+
+async def ejecutar_habitaclia(max_paginas: int = 107) -> dict:
+    """
+    Lanza el scraping de Habitaclia y sincroniza los resultados en la tabla locales.
+
+    Args:
+        max_paginas: páginas del listado de Habitaclia (107 = cobertura total BCN).
+                     Cada página tiene ~15 URLs → ~1.600 locales en total.
+                     Para prueba rápida usar max_paginas=5 (~75 locales).
+
+    Returns:
+        dict con estadísticas del proceso.
+    """
+    cfg = get_settings()
+    scraping_cfg = _build_scraping_config(cfg)
+
+    logger.info("Pipeline Habitaclia — max_paginas=%d", max_paginas)
+    stats: dict = {
+        "scrapeados": 0,
+        "guardados_portales": 0,
+        "sincronizados_locales": 0,
+        "seed_eliminados": 0,
+        "errores": 0,
+    }
+
+    # ── PASO 1: Scraping ──────────────────────────────────────────────────────
+    try:
+        scraper = HabitacliaScraper(config=scraping_cfg)
+        anuncios_raw = await scraper.scrape(ciudad="barcelona", max_paginas=max_paginas)
+        stats["scrapeados"] = len(anuncios_raw)
+        logger.info("Habitaclia: %d anuncios scrapeados", len(anuncios_raw))
+    except Exception as exc:
+        logger.error("Error en HabitacliaScraper: %s", exc, exc_info=True)
+        stats["errores"] += 1
+        return stats
+
+    if not anuncios_raw:
+        logger.warning("Habitaclia: sin resultados — ¿está bloqueado?")
+        return stats
+
+    # ── PASO 2: Persistir en inmuebles_portales (staging) ────────────────────
+    ids_conocidos = await _cargar_ids_conocidos()
+    nuevos = await _persistir_anuncios(
+        anuncios_raw=anuncios_raw,
+        ids_conocidos=ids_conocidos,
+        tipo_operacion="alquiler-locales",
+    )
+    stats["guardados_portales"] = nuevos
+    logger.info("Habitaclia: %d nuevos guardados en inmuebles_portales", nuevos)
+
+    # ── PASO 3: Sincronizar → tabla locales (lo que ve el frontend) ───────────
+    sincronizados = await _sincronizar_locales_desde_portales(fuente="habitaclia")
+    stats["sincronizados_locales"] = sincronizados
+    logger.info("Habitaclia: %d locales sincronizados en tabla locales", sincronizados)
+
+    # ── PASO 4: Limpiar seed donde ya hay datos reales ────────────────────────
+    eliminados = await _limpiar_seed()
+    stats["seed_eliminados"] = eliminados
+    logger.info("Habitaclia: %d locales de seed eliminados (sustituidos por reales)", eliminados)
+
+    # ── PASO 5: Actualizar medianas de precio por zona ────────────────────────
+    if sincronizados > 0:
+        try:
+            await _actualizar_precios_zona()
+        except Exception as exc:
+            logger.error("Error actualizando precios_alquiler_zona: %s", exc)
+
+    logger.info("Pipeline Habitaclia completado: %s", stats)
+    return stats
+
+
+# ── Punto de entrada genérico (mantiene compatibilidad con scheduler) ─────────
 
 async def ejecutar(
     modo: str = "locales_alquiler",
@@ -57,218 +113,257 @@ async def ejecutar(
     portales: Optional[list[str]] = None,
 ) -> dict:
     """
-    Ejecuta el pipeline de mercado inmobiliario.
-
-    Args:
-        modo:       "locales_alquiler" | "locales_venta" | "viviendas"
-        zonas:      ignorado (los portales usan radio geográfico o ciudad)
-        max_paginas: límite de páginas por portal.
-                     None = valores por defecto razonables por portal.
-        portales:   lista de portales a usar. None = todos los aplicables.
-                    Valores: "wallapop" | "pisos" | "habitaclia" | "fotocasa" | "milanuncios"
-
-    Returns:
-        dict: { total_nuevos, total_actualizados, errores, por_fuente }
+    Pipeline genérico. Actualmente Habitaclia es la fuente activa.
+    Idealista desactivado (bloquea). Fotocasa/Pisos inestables.
     """
-    cfg = get_settings()
-    scraping_cfg = _build_scraping_config(cfg)
+    max_pag = max_paginas or 107
+    if modo == "locales_alquiler":
+        return await ejecutar_habitaclia(max_paginas=max_pag)
+    # Para otros modos, devolver vacío (añadir fuentes según se activen)
+    logger.info("Modo '%s' sin fuentes activas actualmente", modo)
+    return {"scrapeados": 0, "guardados_portales": 0, "sincronizados_locales": 0}
+
+
+# ── Sincronización inmuebles_portales → locales ───────────────────────────────
+
+async def _sincronizar_locales_desde_portales(fuente: str = "habitaclia") -> int:
+    """
+    Lee inmuebles_portales donde fuente='{fuente}' y los escribe en la tabla locales,
+    que es de donde el frontend lee precio, m² y dirección.
+
+    Estrategia de asignación de zona_id:
+      - Habitaclia devuelve el nombre del barrio en texto libre (ej: "Sant Gervasi - Galvany")
+      - Hacemos fuzzy match contra la tabla barrios con ILIKE y palabras clave
+      - Si encontramos el barrio, tomamos el centroide de la primera zona de ese barrio
+        como coordenadas del local (aproximación razonable — no tenemos lat/lng exacto)
+      - Si no encontramos barrio, saltamos el anuncio (no podemos asignarlo al mapa)
+
+    Coordenadas: Habitaclia NO devuelve lat/lng exactos (solo barrio en texto).
+    Usamos el centroide de la zona asignada como aproximación.
+    El frontend usa las coordenadas de la zona para el mapa, no las del local,
+    así que esto no afecta a la visualización.
+    """
+    # Cargar mapa barrio_texto → (zona_id, lat_centroide, lng_centroide)
+    mapa_barrios = await _cargar_mapa_barrios()
+    logger.info("Mapa barrios cargado: %d entradas", len(mapa_barrios))
+
+    # Leer todos los inmuebles de Habitaclia desde el staging
+    async with get_db() as conn:
+        rows = await conn.fetch("""
+            SELECT
+                portal_id, url, titulo, precio, precio_m2,
+                superficie_util AS m2,
+                barrio, distrito,
+                escaparate,
+                fecha_scraping
+            FROM inmuebles_portales
+            WHERE fuente = $1
+              AND tipo_operacion = 'alquiler-locales'
+              AND precio IS NOT NULL
+              AND precio BETWEEN 100 AND 100000
+            ORDER BY fecha_scraping DESC
+        """, fuente)
+
+    logger.info("Habitaclia: %d anuncios en staging para sincronizar", len(rows))
+
+    sincronizados = 0
+    sin_zona = 0
+
+    async with get_db() as conn:
+        for row in rows:
+            barrio_texto = row["barrio"] or row["distrito"] or ""
+            zona_info = _resolver_zona(barrio_texto, mapa_barrios)
+
+            if not zona_info:
+                sin_zona += 1
+                logger.debug("Sin zona para barrio '%s'", barrio_texto)
+                continue
+
+            zona_id, lat, lng = zona_info
+
+            # ID del local: usar portal_id directamente (ya tiene prefijo habitaclia_)
+            local_id = row["portal_id"]
+            if len(local_id) > 50:
+                local_id = local_id[:50]
+
+            # Inferir planta desde título/descripción (Habitaclia suele mencionarlo)
+            planta = _inferir_planta(row["titulo"] or "")
+
+            # Metros lineales de escaparate — Habitaclia a veces lo indica
+            escaparate_ml = 1.0 if row["escaparate"] else None
+
+            try:
+                await conn.execute("""
+                    INSERT INTO locales (
+                        id, zona_id, direccion, lat, lng, geometria,
+                        m2, planta, escaparate_ml, alquiler_mensual,
+                        disponible, fuente, url, titulo, updated_at
+                    ) VALUES (
+                        $1, $2, $3, $4, $5,
+                        ST_SetSRID(ST_MakePoint($5, $4), 4326),
+                        $6, $7, $8, $9,
+                        TRUE, 'habitaclia', $10, $11, NOW()
+                    )
+                    ON CONFLICT (id) DO UPDATE SET
+                        alquiler_mensual = EXCLUDED.alquiler_mensual,
+                        m2               = EXCLUDED.m2,
+                        disponible       = TRUE,
+                        url              = EXCLUDED.url,
+                        updated_at       = NOW()
+                """,
+                    local_id,
+                    zona_id,
+                    barrio_texto,   # dirección = barrio (lo mejor que tenemos)
+                    lat,
+                    lng,
+                    row["m2"],
+                    planta,
+                    escaparate_ml,
+                    row["precio"],
+                    row["url"] or "",
+                    row["titulo"] or "",
+                )
+                sincronizados += 1
+            except Exception as exc:
+                logger.debug("Error insertando local %s: %s", local_id, exc)
 
     logger.info(
-        "Pipeline mercado_inmobiliario — modo=%s portales=%s",
-        modo, portales or "todos",
+        "Sincronización: %d locales escritos en tabla locales (%d sin zona asignada)",
+        sincronizados, sin_zona,
     )
+    return sincronizados
 
-    ids_conocidos = await _cargar_ids_conocidos()
-    logger.info("%d anuncios ya en BD", len(ids_conocidos))
 
-    stats: dict = {
-        "total_nuevos": 0,
-        "total_actualizados": 0,
-        "errores": 0,
-        "por_fuente": {},
+async def _cargar_mapa_barrios() -> dict[str, tuple[str, float, float]]:
+    """
+    Construye un mapa barrio_nombre_lower → (zona_id, lat, lng).
+
+    Para cada barrio cargamos el centroide de su primera zona como coordenada
+    representativa. Esto nos permite asignar lat/lng a los locales de Habitaclia
+    que solo tienen nombre de barrio.
+    """
+    async with get_db() as conn:
+        rows = await conn.fetch("""
+            SELECT DISTINCT ON (b.nombre)
+                b.nombre                            AS barrio_nombre,
+                z.id                                AS zona_id,
+                ST_Y(ST_Centroid(z.geometria))      AS lat,
+                ST_X(ST_Centroid(z.geometria))      AS lng
+            FROM barrios b
+            JOIN zonas z ON z.barrio_id = b.id
+            ORDER BY b.nombre, z.id
+        """)
+
+    mapa: dict[str, tuple[str, float, float]] = {}
+    for row in rows:
+        key = row["barrio_nombre"].lower().strip()
+        mapa[key] = (row["zona_id"], row["lat"], row["lng"])
+
+    return mapa
+
+
+def _resolver_zona(
+    barrio_texto: str,
+    mapa_barrios: dict[str, tuple[str, float, float]],
+) -> Optional[tuple[str, float, float]]:
+    """
+    Resuelve el texto libre de barrio de Habitaclia a una (zona_id, lat, lng).
+
+    Estrategia en 3 capas:
+      1. Match exacto con el nombre del barrio
+      2. Match parcial: alguna palabra clave del barrio está en el texto
+      3. Match por distrito: si el texto contiene el nombre del distrito
+
+    Ejemplos de texto de Habitaclia:
+      "Sant Gervasi - Galvany"   → "sant gervasi"
+      "La Nova Esquerra de l'Eixample" → "esquerra eixample"
+      "El Raval"                 → "el raval"
+    """
+    if not barrio_texto:
+        return None
+
+    texto = barrio_texto.lower().strip()
+    # Normalizar: quitar apóstrofes, guiones, artículos
+    texto_norm = re.sub(r"['\-]", " ", texto)
+    texto_norm = re.sub(r"\b(el|la|els|les|de|del|l|l'|d')\b", "", texto_norm)
+    texto_norm = re.sub(r"\s+", " ", texto_norm).strip()
+
+    # 1. Match exacto
+    if texto in mapa_barrios:
+        return mapa_barrios[texto]
+
+    # 2. Match parcial — buscar palabras significativas del texto en las claves
+    palabras = [p for p in texto_norm.split() if len(p) >= 4]
+    mejor_match = None
+    mejor_score = 0
+
+    for key, val in mapa_barrios.items():
+        key_norm = re.sub(r"['\-]", " ", key)
+        key_norm = re.sub(r"\b(el|la|els|les|de|del|l)\b", "", key_norm)
+        key_norm = re.sub(r"\s+", " ", key_norm).strip()
+
+        coincidencias = sum(1 for p in palabras if p in key_norm)
+        if coincidencias > mejor_score:
+            mejor_score = coincidencias
+            mejor_match = val
+
+    if mejor_score >= 1 and mejor_match:
+        return mejor_match
+
+    # 3. Fallback por distrito — si el texto menciona el distrito, usar primera zona
+    _DISTRITO_FALLBACK = {
+        "eixample":         "esquerra eixample",
+        "gracia":           "vila de gràcia",
+        "gràcia":           "vila de gràcia",
+        "sants":            "sants",
+        "ciutat vella":     "el raval",
+        "sant marti":       "el poblenou",
+        "sant martí":       "el poblenou",
+        "sant andreu":      "sant andreu",
+        "nou barris":       "nou barris nord",
+        "horta":            "el guinardó",
+        "les corts":        "les corts",
+        "sarria":           "sant gervasi",
+        "sarrià":           "sant gervasi",
+        "montjuic":         "sants",
+        "montjuïc":         "sants",
+        "poblenou":         "el poblenou",
+        "raval":            "el raval",
+        "gothic":           "el gòtic",
+        "gotic":            "el gòtic",
+        "born":             "el born",
+        "barceloneta":      "la barceloneta",
+        "sant gervasi":     "sant gervasi",
+        "sant pere":        "el born",
+        "poble sec":        "sants",
+        "hostafrancs":      "hostafrancs",
+        "clot":             "el clot",
+        "sagrera":          "la sagrera",
+        "navas":            "sant andreu",
     }
 
-    tareas = _build_tareas(modo, max_paginas, portales, scraping_cfg)
+    for keyword, barrio_fallback in _DISTRITO_FALLBACK.items():
+        if keyword in texto:
+            if barrio_fallback in mapa_barrios:
+                return mapa_barrios[barrio_fallback]
 
-    # Máximo 2 portales en paralelo para no saturar nuestra IP
-    # (Wallapop es API, los demás son scraping HTTP)
-    sem = asyncio.Semaphore(2)
-
-    async def _ejecutar_con_sem(nombre, coro):
-        async with sem:
-            logger.info("Iniciando scraping de: %s", nombre)
-            return nombre, await coro
-
-    resultados = await asyncio.gather(
-        *[_ejecutar_con_sem(n, c) for n, c in tareas],
-        return_exceptions=True,
-    )
-
-    for resultado in resultados:
-        if isinstance(resultado, Exception):
-            logger.error("Error en tarea de scraping: %s", resultado)
-            stats["errores"] += 1
-            continue
-
-        nombre_portal, anuncios_raw = resultado
-        if not anuncios_raw:
-            logger.info("%s: sin resultados", nombre_portal)
-            stats["por_fuente"][nombre_portal] = 0
-            continue
-
-        nuevos = await _persistir_anuncios(
-            anuncios_raw=anuncios_raw,
-            ids_conocidos=ids_conocidos,
-            tipo_operacion=_modo_a_tipo_operacion(modo),
-        )
-        stats["por_fuente"][nombre_portal] = nuevos
-        stats["total_nuevos"] += nuevos
-        logger.info("%s: %d nuevos anuncios guardados", nombre_portal, nuevos)
-
-    if stats["total_nuevos"] > 0 and modo == "locales_alquiler":
-        try:
-            actualizados = await _actualizar_precios_zona()
-            stats["total_actualizados"] = actualizados
-            logger.info("precios_alquiler_zona: %d zonas actualizadas", actualizados)
-        except Exception as exc:
-            logger.error("Error actualizando precios_alquiler_zona: %s", exc)
-
-    logger.info(
-        "Pipeline completado — nuevos=%d actualizados=%d errores=%d por_fuente=%s",
-        stats["total_nuevos"], stats["total_actualizados"],
-        stats["errores"], stats["por_fuente"],
-    )
-    return stats
+    return None
 
 
-# ── Constructor de tareas ─────────────────────────────────────────────────────
-
-def _build_tareas(
-    modo: str,
-    max_paginas: Optional[int],
-    portales: Optional[list[str]],
-    cfg: ScrapingConfig,
-) -> list[tuple[str, asyncio.coroutine]]:
-    """
-    Construye la lista de tareas de scraping para el modo dado.
-
-    Orden de prioridad para locales_alquiler:
-      1. wallapop   — API JSON, sin bloqueos (~200-400 locales)
-      2. pisos      — HTML puro, sin anti-bot (~1.000+ locales)
-      3. habitaclia — curl_cffi funciona (~1.500 locales)
-      4. fotocasa   — DataDome, puede fallar a veces (~2.000 si funciona)
-      5. milanuncios — complemento (~300-500 locales)
-
-    max_paginas por defecto (equilibrio velocidad/cobertura):
-      - wallapop:   5 páginas  → ~200 locales  (API, rápido)
-      - pisos:     30 páginas  → ~600 locales  (sin anti-bot, seguro)
-      - habitaclia: 30 páginas → ~900 locales  (Cloudflare básico)
-      - fotocasa:   10 páginas → ~200 locales  (DataDome, precaución)
-      - milanuncios: 8 páginas → ~200 locales  (complemento)
-    """
-    # Páginas por defecto si no se especifican
-    pag_wallapop    = max_paginas or 5
-    pag_pisos       = max_paginas or 30
-    pag_habitaclia  = max_paginas or 30
-    pag_fotocasa    = max_paginas or 10
-    pag_milanuncios = max_paginas or 8
-
-    mapa: dict[str, list[tuple]] = {
-        "locales_alquiler": [
-            ("wallapop",    _scrape_wallapop(pag_wallapop)),
-            ("pisos",       _scrape_generico(PisosScraper(cfg),       "barcelona", pag_pisos)),
-            ("habitaclia",  _scrape_generico(HabitacliaScraper(cfg),  "barcelona", pag_habitaclia)),
-            ("fotocasa",    _scrape_generico(FotocasaScraper(cfg),    "barcelona", pag_fotocasa)),
-            ("milanuncios", _scrape_generico(MilanunciosScraper(cfg), "barcelona", pag_milanuncios)),
-            # Idealista: DESACTIVADO — DataDome pesado, bloquea sin proxy de pago
-            # Para activar: añadir SCRAPING_SERVICE=scrapingbee o zenrows en .env
-            # ("idealista", _scrape_generico(IdealistaScraper(cfg), "barcelona", 10)),
-        ],
-        "locales_venta": [
-            ("wallapop",  _scrape_wallapop_venta(pag_wallapop)),
-            ("pisos",     _scrape_generico(PisosScraper(cfg),   "barcelona", pag_pisos)),
-            ("fotocasa",  _scrape_generico(FotocasaScraper(cfg), "barcelona", pag_fotocasa)),
-        ],
-        "viviendas": [
-            ("habitaclia",  _scrape_generico(HabitacliaScraper(cfg),  "barcelona", pag_habitaclia)),
-            ("fotocasa",    _scrape_generico(FotocasaScraper(cfg),    "barcelona", pag_fotocasa)),
-            ("milanuncios", _scrape_generico(MilanunciosScraper(cfg), "barcelona", pag_milanuncios)),
-        ],
-    }
-
-    tareas_modo = mapa.get(modo, [])
-
-    if portales:
-        tareas_modo = [(n, c) for n, c in tareas_modo if n in portales]
-
-    return tareas_modo
+def _inferir_planta(titulo: str) -> str:
+    """Infiere la planta desde el título del anuncio de Habitaclia."""
+    t = titulo.lower()
+    if any(k in t for k in ("sótano", "sotano", "semi", "subterráneo")):
+        return "-1"
+    if any(k in t for k in ("planta 1", "primer pis", "1a planta", "primera")):
+        return "1"
+    return "PB"  # Default: planta baja (lo más común en locales comerciales)
 
 
-async def _scrape_wallapop(max_paginas: int) -> list[dict]:
-    """Scrape de Wallapop — locales en alquiler (API JSON)."""
-    try:
-        scraper = WallapopScraper(delay_entre_paginas=1.0)
-        return await scraper.scrape(max_paginas=max_paginas)
-    except Exception as exc:
-        logger.error("Error en WallapopScraper: %s", exc, exc_info=True)
-        return []
-
-
-async def _scrape_wallapop_venta(max_paginas: int) -> list[dict]:
-    """Scrape de Wallapop — locales en venta (API JSON)."""
-    try:
-        import httpx
-        from pipelines.scraping.wallapop_scraper import (
-            _API_BASE, _BCN_LAT, _BCN_LON, _BCN_RADIUS_M,
-            _CATEGORY_LOCALES, _HEADERS, _STEP,
-            _extraer_items, _extraer_next_start, _parsear_item,
-        )
-        resultados: list[dict] = []
-        offset = 0
-        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, http2=True) as client:
-            for pagina in range(1, max_paginas + 1):
-                params = {
-                    "category_ids":     _CATEGORY_LOCALES,
-                    "transaction_type": "sell",
-                    "latitude":         _BCN_LAT, "longitude": _BCN_LON,
-                    "distance":         _BCN_RADIUS_M,
-                    "start": offset, "step": _STEP,
-                    "order_by": "most_recent", "source": "search_box",
-                }
-                r = await client.get(_API_BASE, params=params, headers=_HEADERS)
-                if r.status_code != 200:
-                    break
-                data = r.json()
-                for item in _extraer_items(data):
-                    parsed = _parsear_item(item)
-                    if parsed:
-                        parsed["tipo_operacion"] = "venta-locales"
-                        resultados.append(parsed)
-                next_start = _extraer_next_start(data)
-                if next_start is None:
-                    break
-                offset = next_start
-                await asyncio.sleep(1.0)
-        return resultados
-    except Exception as exc:
-        logger.error("Error WallapopScraper venta: %s", exc, exc_info=True)
-        return []
-
-
-async def _scrape_generico(scraper, ciudad: str, max_paginas: int) -> list[dict]:
-    """Wrapper genérico para scrapers HTML."""
-    try:
-        return await scraper.scrape(ciudad=ciudad, max_paginas=max_paginas)
-    except Exception as exc:
-        logger.error(
-            "Error en scraper %s: %s", type(scraper).__name__, exc, exc_info=True
-        )
-        return []
-
-
-# ── Persistencia ──────────────────────────────────────────────────────────────
+# ── Helpers de BD ─────────────────────────────────────────────────────────────
 
 async def _cargar_ids_conocidos() -> set[str]:
+    """Carga los portal_id ya en inmuebles_portales para deduplicación."""
     async with get_db() as conn:
         rows = await conn.fetch("SELECT portal_id FROM inmuebles_portales")
     return {r["portal_id"] for r in rows}
@@ -279,6 +374,7 @@ async def _persistir_anuncios(
     ids_conocidos: set[str],
     tipo_operacion: str,
 ) -> int:
+    """Persiste los anuncios crudos en inmuebles_portales."""
     nuevos = 0
     for raw in anuncios_raw:
         if "tipo_operacion" not in raw:
@@ -293,7 +389,7 @@ async def _persistir_anuncios(
             ids_conocidos.add(inm.portal_id)
             nuevos += 1
         except Exception as exc:
-            logger.warning("Error guardando anuncio %s: %s", inm.portal_id, exc)
+            logger.debug("Error guardando %s: %s", inm.portal_id, exc)
     return nuevos
 
 
@@ -318,11 +414,9 @@ async def _upsert_inmueble(inm: InmueblePortal) -> None:
                 $26,$27,$28,$29,$30,$31
             )
             ON CONFLICT (portal_id) DO UPDATE SET
-                precio          = EXCLUDED.precio,
-                precio_m2       = EXCLUDED.precio_m2,
-                precio_anterior = EXCLUDED.precio_anterior,
-                dias_publicado  = EXCLUDED.dias_publicado,
-                fecha_scraping  = EXCLUDED.fecha_scraping
+                precio         = EXCLUDED.precio,
+                precio_m2      = EXCLUDED.precio_m2,
+                fecha_scraping = EXCLUDED.fecha_scraping
         """,
             inm.portal_id, inm.fuente, inm.url, inm.tipo_operacion, inm.tipo_inmueble,
             inm.precio, inm.precio_m2, inm.precio_anterior,
@@ -337,26 +431,40 @@ async def _upsert_inmueble(inm: InmueblePortal) -> None:
         )
 
 
+async def _limpiar_seed() -> int:
+    """Elimina locales del seed donde ya hay datos reales de Habitaclia."""
+    async with get_db() as conn:
+        try:
+            result = await conn.fetchval("SELECT limpiar_seed_si_hay_real()")
+            return int(result or 0)
+        except Exception as exc:
+            # La función puede no existir si no se aplicó la migración 005
+            logger.debug("limpiar_seed_si_hay_real no disponible: %s", exc)
+            return 0
+
+
 async def _actualizar_precios_zona() -> int:
+    """Recalcula medianas de precio/m² por barrio en precios_alquiler_zona."""
     async with get_db() as conn:
         resultado = await conn.execute("""
             INSERT INTO precios_alquiler_zona (zona_id, precio_m2, tipo, fecha, fuente, n_muestras)
             SELECT
-                b.id                                                              AS zona_id,
+                l.zona_id,
                 PERCENTILE_CONT(0.5) WITHIN GROUP
-                    (ORDER BY ip.precio_m2)::numeric(10,2)                        AS precio_m2,
-                'alquiler'                                                        AS tipo,
-                NOW()                                                             AS fecha,
-                'scraping_portales'                                               AS fuente,
-                COUNT(*)::int                                                     AS n_muestras
-            FROM inmuebles_portales ip
-            JOIN barrios b ON LOWER(b.nombre) = LOWER(ip.barrio)
-            WHERE ip.tipo_operacion = 'alquiler-locales'
-              AND ip.precio_m2 IS NOT NULL
-              AND ip.precio_m2 BETWEEN 5 AND 200
-              AND ip.fecha_scraping > NOW() - INTERVAL '60 days'
-            GROUP BY b.id
-            HAVING COUNT(*) >= 3
+                    (ORDER BY l.alquiler_mensual / NULLIF(l.m2, 0))::numeric(10,2) AS precio_m2,
+                'alquiler'          AS tipo,
+                NOW()               AS fecha,
+                'habitaclia'        AS fuente,
+                COUNT(*)::int       AS n_muestras
+            FROM locales l
+            WHERE l.fuente      = 'habitaclia'
+              AND l.disponible  = TRUE
+              AND l.alquiler_mensual IS NOT NULL
+              AND l.m2 IS NOT NULL
+              AND l.m2 > 0
+              AND l.zona_id IS NOT NULL
+            GROUP BY l.zona_id
+            HAVING COUNT(*) >= 2
             ON CONFLICT (zona_id, tipo, (DATE_TRUNC('day', fecha))) DO UPDATE SET
                 precio_m2  = EXCLUDED.precio_m2,
                 fecha      = EXCLUDED.fecha,
@@ -368,16 +476,6 @@ async def _actualizar_precios_zona() -> int:
         return 0
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _modo_a_tipo_operacion(modo: str) -> str:
-    return {
-        "locales_alquiler": "alquiler-locales",
-        "locales_venta":    "venta-locales",
-        "viviendas":        "alquiler-viviendas",
-    }.get(modo, "alquiler-locales")
-
-
 def _build_scraping_config(cfg) -> ScrapingConfig:
     return ScrapingConfig(
         service=getattr(cfg, "SCRAPING_SERVICE", "none"),
@@ -385,7 +483,7 @@ def _build_scraping_config(cfg) -> ScrapingConfig:
         zenrows_key=getattr(cfg, "ZENROWS_API_KEY", ""),
         proxies_raw=getattr(cfg, "SCRAPING_PROXIES", ""),
         delay_min=float(getattr(cfg, "SCRAPING_DELAY_MIN", 1.5)),
-        delay_max=float(getattr(cfg, "SCRAPING_DELAY_MAX", 4.5)),
-        timeout=int(getattr(cfg, "SCRAPING_TIMEOUT", 20)),
+        delay_max=float(getattr(cfg, "SCRAPING_DELAY_MAX", 4.0)),
+        timeout=int(getattr(cfg, "SCRAPING_TIMEOUT", 25)),
         max_retries=int(getattr(cfg, "SCRAPING_MAX_RETRIES", 3)),
     )

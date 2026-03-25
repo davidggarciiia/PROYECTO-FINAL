@@ -9,8 +9,17 @@ Endpoints:
 Uso típico (primera puesta en marcha):
   1. POST /api/admin/pipelines/transporte
   2. POST /api/admin/pipelines/aforaments
-  3. POST /api/admin/pipelines/resenas
-  4. POST /api/admin/pipelines/scores
+  3. POST /api/admin/pipelines/habitaclia    ← NUEVO: carga locales reales
+  4. POST /api/admin/pipelines/resenas
+  5. POST /api/admin/pipelines/scores
+
+Para Habitaclia rápido (prueba, ~75 locales, ~5 min):
+  POST /api/admin/pipelines/habitaclia
+  Body: {"max_paginas": 5}
+
+Para Habitaclia completo (~1.600 locales, ~25 min):
+  POST /api/admin/pipelines/habitaclia
+  Body: {"max_paginas": 107}
 """
 from __future__ import annotations
 
@@ -37,6 +46,17 @@ _PIPELINES: dict[str, str] = {
     "parametros_financieros": "pipelines.parametros_financieros",
     "registre_mercantil":     "pipelines.registre_mercantil",
     "mercado_inmobiliario":   "pipelines.mercado_inmobiliario",
+    "habitaclia":             "pipelines.mercado_inmobiliario",  # entrada directa
+}
+
+# Función a llamar por pipeline (por defecto "ejecutar")
+_PIPELINE_FUNCION: dict[str, str] = {
+    "habitaclia": "ejecutar_habitaclia",  # función especializada, más rápida
+}
+
+# Kwargs por defecto para cada pipeline
+_PIPELINE_KWARGS: dict[str, dict] = {
+    "habitaclia": {"max_paginas": 107},
 }
 
 # Orden recomendado para poblar la BD desde cero
@@ -45,6 +65,7 @@ _ORDEN_RECOMENDADO = [
     "aforaments",
     "demografia",
     "precios",
+    "habitaclia",   # ← cargar locales reales antes de scores
     "resenas",
     "scores",
 ]
@@ -53,6 +74,7 @@ _ORDEN_RECOMENDADO = [
 class PipelineInfo(BaseModel):
     nombre: str
     modulo: str
+    descripcion: Optional[str] = None
 
 
 class PipelineListResponse(BaseModel):
@@ -70,9 +92,27 @@ class EjecucionResponse(BaseModel):
     mensaje_error: Optional[str]
 
 
+class PipelineRunRequest(BaseModel):
+    """Body opcional para parametrizar el pipeline."""
+    max_paginas: Optional[int] = None
+    modo: Optional[str] = None
+    portales: Optional[list[str]] = None
+
+
 class PipelineRunResponse(BaseModel):
     pipeline: str
     resultado: dict[str, Any]
+
+
+_DESCRIPCIONES = {
+    "habitaclia":  "Scraping Habitaclia (~1.600 locales BCN) + sincronización en tabla locales. ~25 min completo.",
+    "scores":      "Recalcular scores XGBoost para todas las zonas.",
+    "aforaments":  "Importar datos de flujo peatonal desde sensores CKAN.",
+    "transporte":  "Importar líneas y paradas TMB.",
+    "resenas":     "Scrapear reseñas Google/Foursquare y generar embeddings NLP.",
+    "demografia":  "Importar datos demográficos del padró BCN.",
+    "precios":     "Importar precios de alquiler desde Idealista y Open Data BCN.",
+}
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -83,9 +123,15 @@ class PipelineRunResponse(BaseModel):
     summary="Lista de pipelines disponibles",
 )
 async def listar_pipelines() -> PipelineListResponse:
-    """Devuelve todos los pipelines disponibles y el orden recomendado de ejecución."""
     return PipelineListResponse(
-        pipelines=[PipelineInfo(nombre=n, modulo=m) for n, m in _PIPELINES.items()],
+        pipelines=[
+            PipelineInfo(
+                nombre=n,
+                modulo=m,
+                descripcion=_DESCRIPCIONES.get(n),
+            )
+            for n, m in _PIPELINES.items()
+        ],
         orden_recomendado=_ORDEN_RECOMENDADO,
     )
 
@@ -96,21 +142,17 @@ async def listar_pipelines() -> PipelineListResponse:
     summary="Última ejecución de un pipeline",
 )
 async def estado_pipeline(nombre: str) -> Optional[EjecucionResponse]:
-    """Devuelve la última ejecución registrada del pipeline indicado."""
     if nombre not in _PIPELINES:
         raise HTTPException(status_code=404, detail=f"Pipeline '{nombre}' no existe")
 
     async with get_db() as conn:
-        row = await conn.fetchrow(
-            """
+        row = await conn.fetchrow("""
             SELECT id, pipeline, estado, fecha_inicio, fecha_fin, registros, mensaje_error
             FROM pipeline_ejecuciones
             WHERE pipeline = $1
             ORDER BY fecha_inicio DESC
             LIMIT 1
-            """,
-            nombre,
-        )
+        """, nombre)
 
     if not row:
         return None
@@ -131,12 +173,16 @@ async def estado_pipeline(nombre: str) -> Optional[EjecucionResponse]:
     response_model=PipelineRunResponse,
     summary="Lanzar un pipeline manualmente",
 )
-async def lanzar_pipeline(nombre: str) -> PipelineRunResponse:
+async def lanzar_pipeline(
+    nombre: str,
+    body: Optional[PipelineRunRequest] = None,
+) -> PipelineRunResponse:
     """
     Ejecuta el pipeline de forma síncrona y devuelve el resultado.
 
-    El endpoint bloquea hasta que el pipeline termina.
-    Para pipelines largos (resenas, mercado_inmobiliario) puede tardar varios minutos.
+    Para Habitaclia puedes pasar max_paginas en el body:
+      {"max_paginas": 5}   → prueba rápida (~75 locales, ~5 min)
+      {"max_paginas": 107} → cobertura completa (~1.600 locales, ~25 min)
     """
     if nombre not in _PIPELINES:
         raise HTTPException(status_code=404, detail=f"Pipeline '{nombre}' no existe")
@@ -147,14 +193,32 @@ async def lanzar_pipeline(nombre: str) -> PipelineRunResponse:
     except ImportError as exc:
         raise HTTPException(status_code=500, detail=f"No se pudo importar {modulo_path}: {exc}")
 
-    if not hasattr(modulo, "ejecutar"):
-        raise HTTPException(status_code=500, detail=f"{modulo_path} no tiene función ejecutar()")
+    # Determinar función a llamar
+    nombre_funcion = _PIPELINE_FUNCION.get(nombre, "ejecutar")
+    if not hasattr(modulo, nombre_funcion):
+        raise HTTPException(
+            status_code=500,
+            detail=f"{modulo_path} no tiene función {nombre_funcion}()",
+        )
 
-    logger.info("Admin: lanzando pipeline '%s'", nombre)
+    funcion = getattr(modulo, nombre_funcion)
+
+    # Construir kwargs: defaults del pipeline + overrides del body
+    kwargs = dict(_PIPELINE_KWARGS.get(nombre, {}))
+    if body:
+        if body.max_paginas is not None:
+            kwargs["max_paginas"] = body.max_paginas
+        if body.modo is not None:
+            kwargs["modo"] = body.modo
+        if body.portales is not None:
+            kwargs["portales"] = body.portales
+
+    logger.info("Admin: lanzando pipeline '%s' con kwargs=%s", nombre, kwargs)
+
     try:
-        resultado = await modulo.ejecutar()
+        resultado = await funcion(**kwargs)
     except Exception as exc:
-        logger.error("Pipeline '%s' terminó con error: %s", nombre, exc)
+        logger.error("Pipeline '%s' terminó con error: %s", nombre, exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Pipeline '{nombre}' falló: {exc}")
 
     logger.info("Admin: pipeline '%s' completado — %s", nombre, resultado)
