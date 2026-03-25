@@ -1,5 +1,7 @@
 // Tipos TypeScript sincronizados con schemas/models.py del backend
 
+export type Theme = "dark" | "light";
+
 export type ColorZona = "verde" | "amarillo" | "rojo";
 
 export interface ZonaPreview {

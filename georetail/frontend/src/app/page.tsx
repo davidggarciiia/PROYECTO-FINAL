@@ -6,7 +6,7 @@ import SearchBox from "@/components/SearchBox";
 import ZoneList from "@/components/ZoneList";
 import DetailPanel from "@/components/DetailPanel";
 import styles from "./page.module.css";
-import type { ZonaPreview, LocalDetalleResponse } from "@/lib/types";
+import type { ZonaPreview, LocalDetalleResponse, Theme } from "@/lib/types";
 import { api } from "@/lib/api";
 
 const MapView = dynamic(() => import("@/components/MapView"), {
@@ -20,6 +20,26 @@ const EXAMPLES = [
   "Tienda de ropa vintage",
   "Centro de estética y bienestar",
 ];
+
+function useTheme(): [Theme, (t: Theme) => void] {
+  const [theme, setThemeState] = useState<Theme>("dark");
+
+  useEffect(() => {
+    const stored = localStorage.getItem("georetail-theme") as Theme | null;
+    if (stored === "light" || stored === "dark") {
+      setThemeState(stored);
+      document.documentElement.setAttribute("data-theme", stored);
+    }
+  }, []);
+
+  const setTheme = useCallback((t: Theme) => {
+    setThemeState(t);
+    document.documentElement.setAttribute("data-theme", t);
+    localStorage.setItem("georetail-theme", t);
+  }, []);
+
+  return [theme, setTheme];
+}
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
@@ -35,6 +55,7 @@ function useIsMobile() {
 
 export default function HomePage() {
   const isMobile = useIsMobile();
+  const [theme, setTheme] = useTheme();
 
   const [sessionId, setSessionId]           = useState("");
   const [zonas, setZonas]                   = useState<ZonaPreview[]>([]);
@@ -82,6 +103,8 @@ export default function HomePage() {
           zonas={zonas}
           selectedId={selectedZona?.zona_id}
           onZonaClick={handleZonaClick}
+          theme={theme}
+          onThemeChange={setTheme}
         />
 
         {/* ── Floating overlay: search + zone list ── */}

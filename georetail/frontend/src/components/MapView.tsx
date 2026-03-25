@@ -3,7 +3,7 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import { MapContainer, TileLayer, Marker, Tooltip, useMap, ZoomControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import type { ZonaPreview } from "@/lib/types";
+import type { ZonaPreview, Theme } from "@/lib/types";
 import styles from "./MapView.module.css";
 
 const BCN_CENTER: [number, number] = [41.3851, 2.1734];
@@ -259,9 +259,11 @@ interface Props {
   zonas: ZonaPreview[];
   selectedId?: string;
   onZonaClick: (zona: ZonaPreview) => void;
+  theme: Theme;
+  onThemeChange: (t: Theme) => void;
 }
 
-export default function MapView({ zonas, selectedId, onZonaClick }: Props) {
+export default function MapView({ zonas, selectedId, onZonaClick, theme, onThemeChange }: Props) {
   const [styleId, setStyleId] = useState<MapStyleId>("vibrant");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -351,14 +353,16 @@ export default function MapView({ zonas, selectedId, onZonaClick }: Props) {
         })}
       </MapContainer>
 
-      {/* ── Map style picker ── */}
+      {/* ── Combined Estilos picker ── */}
       <div className={styles.stylePickerWrap} onClick={e => e.stopPropagation()}>
         <button
           className={`${styles.styleBtn} ${pickerOpen ? styles.styleBtnActive : ""}`}
           onClick={() => setPickerOpen(v => !v)}
+          aria-expanded={pickerOpen}
+          aria-label="Configurar estilos"
         >
           <span className={styles.styleBtnEmoji}>{currentStyle.emoji}</span>
-          <span className={styles.styleBtnLabel}>{currentStyle.label}</span>
+          <span className={styles.styleBtnLabel}>Estilos</span>
           <svg className={`${styles.chevron} ${pickerOpen ? styles.chevronOpen : ""}`} width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
@@ -366,6 +370,30 @@ export default function MapView({ zonas, selectedId, onZonaClick }: Props) {
 
         {pickerOpen && (
           <div className={styles.stylePicker}>
+
+            {/* ── Sección 1: Tema ── */}
+            <div className={styles.stylePickerTitle}>Tema</div>
+            <div className={styles.themeToggleRow}>
+              <button
+                className={`${styles.themeOption} ${theme === "dark" ? styles.themeOptionActive : ""}`}
+                onClick={() => onThemeChange("dark")}
+              >
+                <span className={styles.themeOptionIcon}>🌙</span>
+                <span>Oscuro</span>
+              </button>
+              <button
+                className={`${styles.themeOption} ${theme === "light" ? styles.themeOptionActive : ""}`}
+                onClick={() => onThemeChange("light")}
+              >
+                <span className={styles.themeOptionIcon}>☀️</span>
+                <span>Claro</span>
+              </button>
+            </div>
+
+            {/* ── Divisor ── */}
+            <div className={styles.pickerDivider} />
+
+            {/* ── Sección 2: Estilo de mapa ── */}
             <div className={styles.stylePickerTitle}>Estilo de mapa</div>
             <div className={styles.styleGrid}>
               {MAP_STYLES.map(style => (
@@ -386,6 +414,7 @@ export default function MapView({ zonas, selectedId, onZonaClick }: Props) {
                 </button>
               ))}
             </div>
+
           </div>
         )}
       </div>

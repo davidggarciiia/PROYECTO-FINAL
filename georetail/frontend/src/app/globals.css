@@ -59,6 +59,31 @@
   --font: var(--font-inter, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
 }
 
+/* ── Light mode variables ─────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg:           #F8FAFC;
+  --surface:      #FFFFFF;
+  --surface-2:    #F1F5F9;
+  --surface-3:    #E2E8F0;
+  --border:       rgba(0,0,0,0.08);
+  --border-hover: rgba(0,0,0,0.16);
+  --text:         #0F172A;
+  --text-muted:   #64748B;
+  --text-subtle:  #94A3B8;
+  --accent:       #6366F1;
+  --accent-light: #4F46E5;
+  --accent-glow:  rgba(99,102,241,0.15);
+  --green-dim:    rgba(16,185,129,0.10);
+  --green-border: rgba(16,185,129,0.30);
+  --yellow-dim:   rgba(245,158,11,0.10);
+  --yellow-border:rgba(245,158,11,0.30);
+  --red-dim:      rgba(239,68,68,0.10);
+  --red-border:   rgba(239,68,68,0.30);
+  --shadow-sm:    0 1px 3px rgba(0,0,0,0.10);
+  --shadow:       0 4px 16px rgba(0,0,0,0.10);
+  --shadow-lg:    0 12px 40px rgba(0,0,0,0.12);
+}
+
 html, body {
   height: 100%;
   background: var(--bg);
@@ -74,6 +99,23 @@ html, body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+/* ── Leaflet light mode overrides ── */
+[data-theme="light"] .leaflet-tooltip {
+  background: rgba(255,255,255,0.97) !important;
+  border: 1px solid rgba(0,0,0,0.10) !important;
+  color: #0F172A !important;
+}
+[data-theme="light"] .leaflet-tooltip-top::before {
+  border-top-color: rgba(0,0,0,0.10) !important;
+}
+[data-theme="light"] .leaflet-container {
+  background: #F8FAFC !important;
+}
+[data-theme="light"] .leaflet-control-attribution {
+  background: rgba(248,250,252,0.90) !important;
+  color: #64748B !important;
+}
 
 /* ── Leaflet dark theme ── */
 .leaflet-container { background: #0D1117 !important; font-family: var(--font) !important; }
