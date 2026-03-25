@@ -21,8 +21,6 @@ const EXAMPLES = [
   "Centro de estética y bienestar",
 ];
 
-type MobileView = "search" | "map" | "detail";
-
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -44,21 +42,21 @@ export default function HomePage() {
   const [detalle, setDetalle]               = useState<LocalDetalleResponse | null>(null);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
   const [searchQuery, setSearchQuery]       = useState("");
-  const [mobileView, setMobileView]         = useState<MobileView>("search");
+  const [showDetail, setShowDetail]         = useState(false);
 
   const handleResults = useCallback((newZonas: ZonaPreview[], sid: string) => {
     setZonas(newZonas);
     setSessionId(sid);
     setSelectedZona(null);
     setDetalle(null);
-    setMobileView("map");
+    setShowDetail(false);
   }, []);
 
   const handleZonaClick = useCallback(async (zona: ZonaPreview) => {
     setSelectedZona(zona);
     setDetalle(null);
     setLoadingDetalle(true);
-    setMobileView("detail");
+    setShowDetail(true);
     try {
       const data = await api.localDetalle(zona.zona_id, sessionId);
       setDetalle(data);
@@ -72,99 +70,13 @@ export default function HomePage() {
   const handleClosePanel = useCallback(() => {
     setSelectedZona(null);
     setDetalle(null);
-    setMobileView("map");
+    setShowDetail(false);
   }, []);
-
-  const handleBackToSearch = useCallback(() => {
-    setMobileView("search");
-  }, []);
-
-  const topBarTitle =
-    mobileView === "detail"
-      ? (selectedZona?.nombre ?? "Detalle")
-      : zonas.length > 0
-        ? `${zonas.length} ubicaciones`
-        : "Barcelona";
 
   return (
-    <div className={styles.app} data-view={mobileView}>
+    <div className={styles.app}>
 
-      {/* ── Mobile top bar (map + detail views only) ── */}
-      {isMobile && (mobileView === "map" || mobileView === "detail") && (
-        <div className={styles.mobileTopBar}>
-          <button
-            className={styles.mobileBackBtn}
-            onClick={mobileView === "detail" ? handleClosePanel : handleBackToSearch}
-            title="Volver"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-          <span className={styles.mobileTopBarTitle}>{topBarTitle}</span>
-          <span className={styles.mobileTopBarBadge}>BCN</span>
-        </div>
-      )}
-
-      {/* ── Sidebar (search + list) ── */}
-      <aside className={styles.sidebar}>
-        <div className={styles.logoBar}>
-          <div className={styles.logoMark}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M8 1C5.24 1 3 3.24 3 6c0 3.5 5 9 5 9s5-5.5 5-9c0-2.76-2.24-5-5-5z" fill="white" opacity="0.9"/>
-              <circle cx="8" cy="6" r="2" fill="white" opacity="0.5"/>
-            </svg>
-          </div>
-          <span className={styles.logoText}>GeoRetail</span>
-          <span className={styles.logoBadge}>BCN</span>
-        </div>
-
-        <SearchBox
-          onResults={handleResults}
-          sessionId={sessionId}
-          externalQuery={searchQuery}
-          onQueryUsed={() => setSearchQuery("")}
-        />
-
-        {/* Zone list — desktop only inside sidebar */}
-        {zonas.length > 0 && !isMobile && (
-          <>
-            <div className={styles.resultsHeader}>
-              <span className={styles.resultsCount}>{zonas.length} ubicaciones</span>
-              <span className={styles.resultsHint}>Haz clic para ver detalle</span>
-            </div>
-            <ZoneList
-              zonas={zonas}
-              selectedId={selectedZona?.zona_id}
-              onSelect={handleZonaClick}
-            />
-          </>
-        )}
-
-        {zonas.length === 0 && (
-          <div className={styles.emptyState}>
-            <div className={styles.emptyIllustration}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                <circle cx="12" cy="9" r="2.5" stroke="currentColor" strokeWidth="1.5"/>
-              </svg>
-            </div>
-            <p className={styles.emptyTitle}>Encuentra tu ubicación ideal</p>
-            <p className={styles.emptyDesc}>
-              Describe tu negocio y recibirás un análisis de viabilidad para cada zona de Barcelona
-            </p>
-            <div className={styles.exampleChips}>
-              {EXAMPLES.map(ex => (
-                <button key={ex} className={styles.chip} onClick={() => setSearchQuery(ex)}>
-                  {ex}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </aside>
-
-      {/* ── Map ── */}
+      {/* ── Full-screen map ── */}
       <main className={styles.mapContainer}>
         <MapView
           zonas={zonas}
@@ -172,8 +84,32 @@ export default function HomePage() {
           onZonaClick={handleZonaClick}
         />
 
+        {/* ── Floating overlay: search + zone list ── */}
+        <div className={styles.floatingOverlay}>
+
+          {/* Search ball */}
+          <SearchBox
+            onResults={handleResults}
+            sessionId={sessionId}
+            externalQuery={searchQuery}
+            onQueryUsed={() => setSearchQuery("")}
+            examples={EXAMPLES}
+            hasResults={zonas.length > 0}
+          />
+
+          {/* Zone list — desktop floating panel */}
+          {zonas.length > 0 && !isMobile && (
+            <ZoneList
+              zonas={zonas}
+              selectedId={selectedZona?.zona_id}
+              onSelect={handleZonaClick}
+              asFloatingPanel
+            />
+          )}
+        </div>
+
         {/* Desktop: detail panel overlays map from the right */}
-        {!isMobile && selectedZona && (
+        {!isMobile && showDetail && selectedZona && (
           <DetailPanel
             zona={selectedZona}
             detalle={detalle}
@@ -184,8 +120,8 @@ export default function HomePage() {
         )}
       </main>
 
-      {/* ── Mobile: bottom sheet zone list over map ── */}
-      {isMobile && mobileView === "map" && zonas.length > 0 && (
+      {/* ── Mobile: bottom sheet zone list ── */}
+      {isMobile && zonas.length > 0 && !showDetail && (
         <ZoneList
           zonas={zonas}
           selectedId={selectedZona?.zona_id}
@@ -195,7 +131,7 @@ export default function HomePage() {
       )}
 
       {/* ── Mobile: fullscreen detail panel ── */}
-      {isMobile && mobileView === "detail" && selectedZona && (
+      {isMobile && showDetail && selectedZona && (
         <DetailPanel
           zona={selectedZona}
           detalle={detalle}

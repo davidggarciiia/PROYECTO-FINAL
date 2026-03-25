@@ -8,7 +8,9 @@ interface Props {
   zonas: ZonaPreview[];
   selectedId?: string;
   onSelect: (zona: ZonaPreview) => void;
-  /** When true, renders as a bottom sheet (mobile map view) */
+  /** Renders as a floating collapsible panel (desktop) */
+  asFloatingPanel?: boolean;
+  /** Renders as a bottom sheet (mobile map view) */
   asBottomSheet?: boolean;
 }
 
@@ -35,7 +37,7 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-function ZoneCards({ zonas, selectedId, onSelect }: Omit<Props, "asBottomSheet">) {
+function ZoneCards({ zonas, selectedId, onSelect }: Omit<Props, "asBottomSheet" | "asFloatingPanel">) {
   return (
     <div className={styles.list}>
       {zonas.map((zona, idx) => {
@@ -79,37 +81,60 @@ function ZoneCards({ zonas, selectedId, onSelect }: Omit<Props, "asBottomSheet">
   );
 }
 
-export default function ZoneList({ zonas, selectedId, onSelect, asBottomSheet }: Props) {
+export default function ZoneList({ zonas, selectedId, onSelect, asFloatingPanel, asBottomSheet }: Props) {
   const [expanded, setExpanded] = useState(true);
 
-  // Desktop: plain scrollable list (unchanged)
-  if (!asBottomSheet) {
-    return <ZoneCards zonas={zonas} selectedId={selectedId} onSelect={onSelect} />;
+  // ── Desktop floating panel ──
+  if (asFloatingPanel) {
+    return (
+      <div className={`${styles.floatingPanel} ${expanded ? styles.floatingExpanded : styles.floatingCollapsed}`}>
+        <div className={styles.floatingHeader} onClick={() => setExpanded(e => !e)}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={styles.floatingHeaderIcon}>
+            <circle cx="6" cy="3" r="1.5" fill="currentColor"/>
+            <rect x="3" y="6" width="8" height="1.5" rx="0.75" fill="currentColor"/>
+            <rect x="3" y="9.5" width="5" height="1.5" rx="0.75" fill="currentColor"/>
+          </svg>
+          <span className={styles.floatingTitle}>{zonas.length} ubicaciones</span>
+          <svg
+            className={`${styles.chevron} ${expanded ? styles.chevronUp : ""}`}
+            width="14" height="14" viewBox="0 0 14 14" fill="none"
+          >
+            <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+
+        <div className={styles.floatingBody}>
+          <ZoneCards zonas={zonas} selectedId={selectedId} onSelect={onSelect} />
+        </div>
+      </div>
+    );
   }
 
-  // Mobile: bottom sheet
-  return (
-    <div
-      className={`${styles.bottomSheet} ${
-        expanded ? styles.bottomSheetExpanded : styles.bottomSheetCollapsed
-      }`}
-    >
-      {/* Handle + header — tap to toggle */}
-      <div className={styles.sheetHeader} onClick={() => setExpanded(e => !e)}>
-        <div className={styles.sheetHandle} />
-        <span className={styles.sheetTitle}>{zonas.length} ubicaciones</span>
-        <svg
-          className={`${styles.sheetToggleIcon} ${expanded ? styles.sheetToggleExpanded : ""}`}
-          width="16" height="16" viewBox="0 0 16 16" fill="none"
-        >
-          <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
+  // ── Mobile bottom sheet ──
+  if (asBottomSheet) {
+    return (
+      <div
+        className={`${styles.bottomSheet} ${
+          expanded ? styles.bottomSheetExpanded : styles.bottomSheetCollapsed
+        }`}
+      >
+        <div className={styles.sheetHeader} onClick={() => setExpanded(e => !e)}>
+          <div className={styles.sheetHandle} />
+          <span className={styles.sheetTitle}>{zonas.length} ubicaciones</span>
+          <svg
+            className={`${styles.sheetToggleIcon} ${expanded ? styles.sheetToggleExpanded : ""}`}
+            width="16" height="16" viewBox="0 0 16 16" fill="none"
+          >
+            <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+        {expanded && (
+          <ZoneCards zonas={zonas} selectedId={selectedId} onSelect={onSelect} />
+        )}
       </div>
+    );
+  }
 
-      {/* Cards — only rendered / scrollable when expanded */}
-      {expanded && (
-        <ZoneCards zonas={zonas} selectedId={selectedId} onSelect={onSelect} />
-      )}
-    </div>
-  );
+  // ── Default: plain list ──
+  return <ZoneCards zonas={zonas} selectedId={selectedId} onSelect={onSelect} />;
 }

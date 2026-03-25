@@ -1,45 +1,110 @@
-.container {
+/* ══════════════════════════════════════════════════════
+   SearchBox  —  Floating ball + expanding panel (in-flow)
+   ══════════════════════════════════════════════════════ */
+
+.wrapper {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  border-bottom: 1px solid var(--border);
+  align-items: flex-start;
+  width: 300px;
+}
+
+/* ── Ball ── */
+.ball {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 4px 20px rgba(99, 102, 241, 0.55),
+    0 0 0 0 rgba(99, 102, 241, 0.35);
+  animation: ballPulse 3s ease-in-out infinite;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.2s ease;
   flex-shrink: 0;
 }
 
-
-.successHint {
-  display: flex; align-items: center; gap: 6px;
-  padding: 8px 14px;
-  font-size: 12px; color: var(--green);
-  background: var(--green-dim);
-  border-bottom: 1px solid var(--green-border);
+.ball:hover {
+  transform: scale(1.1);
+  box-shadow:
+    0 6px 28px rgba(99, 102, 241, 0.7),
+    0 0 0 8px rgba(99, 102, 241, 0.12);
+  animation: none;
 }
 
+.ball:active {
+  transform: scale(0.95);
+}
+
+.wrapperOpen .ball {
+  animation: none;
+  background: linear-gradient(135deg, #4F46E5, #7C3AED);
+}
+
+@keyframes ballPulse {
+  0%, 100% {
+    box-shadow:
+      0 4px 20px rgba(99, 102, 241, 0.55),
+      0 0 0 0 rgba(99, 102, 241, 0.35);
+  }
+  55% {
+    box-shadow:
+      0 4px 20px rgba(99, 102, 241, 0.55),
+      0 0 0 16px rgba(99, 102, 241, 0);
+  }
+}
+
+/* ── Expanding panel — conditionally rendered, entrance animation ── */
+.panel {
+  width: 300px;
+  margin-top: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  position: relative;
+  z-index: 1001;
+  animation: panelOpen 0.24s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+@keyframes panelOpen {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ── Form ── */
 .form {
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 12px 14px;
-}
-
-.inputWrapper { position: relative; }
-
-.searchIcon {
-  position: absolute; top: 12px; left: 12px;
-  color: var(--text-subtle); pointer-events: none; z-index: 1;
-}
-.loadingIcon {
-  position: absolute; top: 12px; left: 12px;
-  width: 14px; height: 14px; z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
 }
 
 .textarea {
-  padding: 11px 14px 11px 34px;
-  font-size: 13px; resize: none; line-height: 1.5;
+  padding: 10px 12px;
+  font-size: 13px;
+  resize: none;
+  line-height: 1.5;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
   border: 1px solid var(--border);
-  color: var(--text); outline: none;
+  color: var(--text);
+  outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
-  min-height: 72px; width: 100%;
+  min-height: 72px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .textarea:focus {
   border-color: var(--accent);
@@ -49,15 +114,59 @@
 .textarea:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .sendBtn {
-  width: 100%; padding: 10px;
-  font-size: 13px; font-weight: 600; letter-spacing: 0.01em;
+  width: 100%;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
+/* ── Error ── */
 .error {
-  display: flex; align-items: flex-start; gap: 7px;
-  padding: 10px 14px;
-  font-size: 12px; color: var(--red);
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0 12px 12px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--red);
   background: var(--red-dim);
-  border-top: 1px solid var(--red-border);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--red-border);
   line-height: 1.5;
+}
+
+/* ── Examples ── */
+.examples {
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--border);
+}
+.examplesLabel {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 6px;
+}
+.exampleChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.chip {
+  padding: 4px 10px;
+  border-radius: 100px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-glow);
 }

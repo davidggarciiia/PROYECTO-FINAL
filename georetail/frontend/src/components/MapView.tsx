@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useMemo, useState, useCallback } from "react";
-import { MapContainer, TileLayer, Marker, Tooltip, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Tooltip, useMap, ZoomControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import type { ZonaPreview } from "@/lib/types";
 import styles from "./MapView.module.css";
@@ -289,8 +289,9 @@ export default function MapView({ zonas, selectedId, onZonaClick }: Props) {
         center={BCN_CENTER}
         zoom={13}
         style={{ width: "100%", height: "100%" }}
-        zoomControl={true}
+        zoomControl={false}
       >
+        <ZoomControl position="bottomright" />
         <TileLayer
           key={styleId}
           url={currentStyle.url}
@@ -408,21 +409,6 @@ export default function MapView({ zonas, selectedId, onZonaClick }: Props) {
         </div>
       )}
 
-      {/* ...existing empty overlay... */}
-      {zonas.length === 0 && (
-        <div className={styles.overlay}>
-          <div className={styles.overlayCard}>
-            <div className={styles.overlayIcon}>
-              <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                <path d="M16 3C10.48 3 6 7.48 6 13c0 8.4 10 17 10 17s10-8.6 10-17c0-5.52-4.48-10-10-10z" stroke="#6366F1" strokeWidth="1.5" fill="rgba(99,102,241,0.1)"/>
-                <circle cx="16" cy="13" r="3.5" stroke="#6366F1" strokeWidth="1.5"/>
-              </svg>
-            </div>
-            <p className={styles.overlayTitle}>Barcelona te espera</p>
-            <p className={styles.overlayDesc}>Describe tu negocio para ver las mejores ubicaciones</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
