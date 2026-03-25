@@ -33,6 +33,7 @@ from .habitaclia_scraper import HabitacliaScraper
 from .milanuncios_scraper import MilanunciosScraper
 from .pisos_scraper import PisosScraper
 from .google_maps_scraper import GoogleMapsScraper, NegocioScraped
+from .booking_scraper import BookingScraper, HotelBooking
 
 __all__ = [
     "BaseScraper",
@@ -45,4 +46,6 @@ __all__ = [
     "PisosScraper",
     "GoogleMapsScraper",
     "NegocioScraped",
+    "BookingScraper",
+    "HotelBooking",
 ]
