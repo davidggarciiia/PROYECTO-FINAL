@@ -22,8 +22,10 @@ async def validar_negocio(descripcion: str, session_id: str) -> dict:
       - variables_conocidas:    dict — datos ya extraídos de la descripción
       - preguntas_necesarias:   list[str] — variables que aún faltan
     """
+    # Delimitadores XML para aislar la entrada del usuario y evitar inyección de prompts
+    descripcion_safe = descripcion[:1000]  # truncar por seguridad
     respuesta = await completar(
-        mensajes=[{"role": "user", "content": f"Business description: {descripcion}"}],
+        mensajes=[{"role": "user", "content": f"<business_description>\n{descripcion_safe}\n</business_description>"}],
         sistema=VALIDACION_SISTEMA,
         endpoint="validacion",
         session_id=session_id,

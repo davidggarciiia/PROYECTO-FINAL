@@ -126,7 +126,20 @@ async def refinamiento(body: RefinamientoRequest) -> RefinamientoResponse:
     # ── Preparar argumentos para el agente de refinamiento ───────────────────
     zonas_actuales = sesion.get("zonas_actuales", [])
     zona_ids = [z["zona_id"] for z in zonas_actuales]
-    scores = {z["zona_id"]: z for z in zonas_actuales}
+    # Pasar solo los campos necesarios al LLM — evita enviar datos internos
+    # (SHAP values, embeddings, etc.) que no aportan al análisis de refinamiento.
+    scores = {
+        z["zona_id"]: {
+            "zona_id": z["zona_id"],
+            "nombre": z.get("nombre"),
+            "barrio": z.get("barrio"),
+            "distrito": z.get("distrito"),
+            "score_global": z.get("score_global"),
+            "alquiler_estimado": z.get("alquiler_estimado") or z.get("alquiler_mensual"),
+            "m2_disponibles": z.get("m2_disponibles") or z.get("m2"),
+        }
+        for z in zonas_actuales
+    }
 
     # ── Procesar con LLM ──────────────────────────────────────────────────────
     # `procesar_refinamiento` en `agente/refinamiento.py`:
@@ -187,7 +200,7 @@ async def refinamiento(body: RefinamientoRequest) -> RefinamientoResponse:
 
     return RefinamientoResponse(
         session_id=body.session_id,
-        respuesta_ia=resultado.get("mensaje", ""),
+        respuesta_ia=resultado.get("mensaje") or "Filtro aplicado correctamente.",
         zonas_actualizadas=zonas_actualizadas,
         accion=accion,
     )

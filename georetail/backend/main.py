@@ -39,7 +39,10 @@ from api.mercado      import router as router_mercado
 from api.admin        import router as router_admin
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
 
 @asynccontextmanager
@@ -83,13 +86,16 @@ async def lifespan(app: FastAPI):
     logger.info("GeoRetail apagado correctamente")
 
 
+_is_production = settings.ENVIRONMENT == "production"
+
 app = FastAPI(
     title       = "GeoRetail API",
     description = "API de recomendación de ubicaciones comerciales en Barcelona",
     version     = "1.0.0",
     lifespan    = lifespan,
-    docs_url    = "/docs",
-    redoc_url   = "/redoc",
+    # Deshabilitar Swagger/ReDoc en producción para no exponer el contrato de la API
+    docs_url    = None if _is_production else "/docs",
+    redoc_url   = None if _is_production else "/redoc",
 )
 
 app.add_middleware(

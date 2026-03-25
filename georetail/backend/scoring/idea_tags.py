@@ -299,16 +299,19 @@ def aplicar_idea_tags(pesos_sector: dict, tags: list[str]) -> dict:
             campo = _DIM_MAP.get(dim_key)
             if not campo:
                 continue
-            valor_actual = pesos.get(campo) or _DEFAULT_PESOS.get(campo, 0.05)
+            _v = pesos.get(campo)
+            valor_actual = _v if _v is not None else _DEFAULT_PESOS.get(campo, 0.05)
             pesos[campo] = valor_actual * multiplicador
 
     # Renormalizar para que la suma de pesos siga siendo 1.0
     campos_peso = list(_DIM_MAP.values())
-    total = sum(pesos.get(c) or _DEFAULT_PESOS.get(c, 0.05) for c in campos_peso)
+    def _get_peso(c):
+        v = pesos.get(c)
+        return v if v is not None else _DEFAULT_PESOS.get(c, 0.05)
+    total = sum(_get_peso(c) for c in campos_peso)
     if total > 0:
         for campo in campos_peso:
-            valor = pesos.get(campo) or _DEFAULT_PESOS.get(campo, 0.05)
-            pesos[campo] = round(valor / total, 4)
+            pesos[campo] = round(_get_peso(campo) / total, 4)
 
     return pesos
 

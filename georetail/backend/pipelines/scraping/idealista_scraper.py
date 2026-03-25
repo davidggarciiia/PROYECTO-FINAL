@@ -253,7 +253,7 @@ def _normalize_idealista_item(item: dict) -> Optional[dict]:
         )
         lat = item.get("latitude") or item.get("ubication", {}).get("latitude")
         lng = item.get("longitude") or item.get("ubication", {}).get("longitude")
-        m2 = item.get("size") or item.get("floor")
+        m2 = item.get("size")
         prop_id = item.get("itemId") or item.get("propertyCode") or item.get("id")
         address = item.get("address") or item.get("detail", {}).get("address", "")
         district = item.get("district") or ""

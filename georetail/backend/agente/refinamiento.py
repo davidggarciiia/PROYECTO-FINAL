@@ -73,8 +73,10 @@ async def procesar_refinamiento(
         for zid in zona_ids
     }
 
+    # Escapar llaves en la instrucción del usuario para no romper el .format()
+    instruccion_safe = instruccion[:300].replace("{", "{{").replace("}", "}}")
     prompt = _PROMPT_REFINAMIENTO.format(
-        instruccion = instruccion,
+        instruccion = instruccion_safe,
         zona_ids    = json.dumps(contexto, ensure_ascii=False),
     )
 
@@ -87,6 +89,11 @@ async def procesar_refinamiento(
         )
         texto = respuesta.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         resultado = json.loads(texto)
+
+        # Validar zona_ids devueltas por el LLM — solo pueden ser IDs de la entrada
+        ids_validos = set(zona_ids)
+        ids_llm = resultado.get("zona_ids", zona_ids)
+        resultado["zona_ids"] = [zid for zid in ids_llm if zid in ids_validos] or zona_ids
 
         # Traducir "mensaje" al español antes de devolver al frontend
         mensaje_en = resultado.get("mensaje", "")

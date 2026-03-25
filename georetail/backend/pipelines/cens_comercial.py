@@ -77,14 +77,7 @@ async def ejecutar() -> dict:
     """Ejecuta el pipeline completo y devuelve métricas."""
     eid = await _init("cens_comercial")
     try:
-        # 0. Limpiar ejecuciones anteriores de este pipeline (idempotencia)
-        async with get_db() as conn:
-            result = await conn.execute(
-                "DELETE FROM negocios_historico WHERE fuente='cens_comercial_bcn'"
-            )
-            logger.info("Registros previos eliminados: %s", result)
-
-        # 1. Cargar IDs supervivientes desde 2022 y 2024
+        # 1. Cargar IDs supervivientes desde 2022 y 2024 (fuera de la transacción — solo lectura CSV)
         ids_supervivientes = _cargar_ids_supervivientes()
         logger.info(
             "IDs supervivientes (en 2022 o 2024): %d", len(ids_supervivientes)
@@ -108,8 +101,9 @@ async def ejecutar() -> dict:
             len(geocodificados),
         )
 
-        # 4. Insertar en negocios_historico
-        insertados, sin_zona = await _insertar_batch(geocodificados)
+        # 4. DELETE + INSERT en una sola transacción para atomicidad
+        # (evita quedar sin datos si el INSERT falla a medias)
+        insertados, sin_zona = await _insertar_atomico(geocodificados)
 
         await _fin(eid, insertados, "ok")
         logger.info(
@@ -301,9 +295,11 @@ async def _geocodificar_batch(negocios: list[dict]) -> list[dict]:
 # 4. Inserción en negocios_historico
 # ═══════════════════════════════════════════════════════════════════════════════
 
-async def _insertar_batch(negocios: list[dict]) -> tuple[int, int]:
+async def _insertar_atomico(negocios: list[dict]) -> tuple[int, int]:
     """
-    Inserta los negocios geocodificados en negocios_historico en lotes.
+    Borra los registros previos e inserta los nuevos en una sola transacción.
+    Si el INSERT falla a medias, el DELETE también se revierte, preservando
+    los datos anteriores (sin ventana de datos vacíos).
     Devuelve (insertados, sin_zona).
     """
     registros_con_zona = [n for n in negocios if n["zona_id"]]
@@ -320,20 +316,26 @@ async def _insertar_batch(negocios: list[dict]) -> tuple[int, int]:
     """
 
     async with get_db() as conn:
-        # executemany envía todos los registros en una sola operación de red
-        await conn.executemany(
-            _SQL,
-            [
-                (
-                    r["nombre"],
-                    r["sector"],
-                    r["zona_id"],
-                    r["fecha_apertura"],
-                    r["activo_3_anos"],
-                )
-                for r in registros_con_zona
-            ],
-        )
+        async with conn.transaction():
+            # DELETE + INSERT en la misma transacción → atómico
+            result = await conn.execute(
+                "DELETE FROM negocios_historico WHERE fuente='cens_comercial_bcn'"
+            )
+            logger.info("Registros previos eliminados: %s", result)
+
+            await conn.executemany(
+                _SQL,
+                [
+                    (
+                        r["nombre"],
+                        r["sector"],
+                        r["zona_id"],
+                        r["fecha_apertura"],
+                        r["activo_3_anos"],
+                    )
+                    for r in registros_con_zona
+                ],
+            )
 
     return len(registros_con_zona), sin_zona
 

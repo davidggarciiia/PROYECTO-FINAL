@@ -40,9 +40,9 @@ async def clasificar_batch(resenas: list[dict]) -> list[dict]:
             resultados.extend(r)
         except Exception as e:
             logger.error("Error clasificando lote %d: %s", i//_BATCH, e)
-            # Fallback: marcar como neutro para no bloquear el pipeline
+            # Fallback: añadir placeholder con flag — no se marcará como procesada en BD
             for rev in lote:
-                resultados.append({"id": rev["id"], "categoria": "servicio", "sentimiento": "neutro"})
+                resultados.append({"id": rev["id"], "categoria": "servicio", "sentimiento": "neutro", "_fallback": True})
 
     return resultados
 
@@ -51,7 +51,8 @@ async def _clasificar_lote(lote: list[dict]) -> list[dict]:
     prompt = "Classify these reviews:\n"
     for r in lote:
         texto_corto = r["texto"][:300]  # truncar para ahorrar tokens
-        prompt += f'\n[{{"id":"{r["id"]}","texto":"{texto_corto}"}}]'
+        # json.dumps para escapar comillas y caracteres especiales en el texto
+        prompt += f'\n[{{"id":{json.dumps(str(r["id"]))},"texto":{json.dumps(texto_corto)}}}]'
 
     respuesta = await completar(
         mensajes=[{"role":"user","content":prompt}],
@@ -104,6 +105,9 @@ async def procesar_resenas_pendientes(limite: int = 200) -> int:
             rid = r["id"]
             c = clasi_map.get(rid, {})
             emb = emb_map.get(rid)
+            if c.get("_fallback"):
+                # Clasificación falló para esta reseña — dejar procesada=FALSE para reintentar
+                continue
             await conn.execute("""
                 UPDATE resenas SET
                     categoria=$1, sentimiento=$2, embedding=$3, procesada=TRUE

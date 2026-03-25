@@ -280,6 +280,7 @@ def _scores_fallback(zona: dict) -> dict:
     score = zona.get("score_global", 50.0)
     return {
         "score_global": score,
+        "datos_reales": False,  # indica que son valores de fallback, no del modelo XGBoost
         "probabilidad_supervivencia_3a": 0.5,
         "scores_dimension": {
             "flujo_peatonal": 50.0,

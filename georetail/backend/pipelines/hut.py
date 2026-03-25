@@ -104,7 +104,7 @@ def _leer_csv_hut() -> list[tuple[float, float]]:
                 lat_raw = str(row.get("LATITUD_Y", "") or "").strip().strip('"').replace(",", ".")
                 lng = float(lng_raw)
                 lat = float(lat_raw)
-                if lng and lat:
+                if lng is not None and lat is not None and (lng != 0.0 or lat != 0.0):
                     coords.append((lng, lat))
             except (ValueError, TypeError):
                 continue
@@ -129,38 +129,28 @@ async def _calcular_densidad_zonas(
     if not hut_coords:
         return {}
 
+    # Separar listas de coordenadas para unnest
+    lngs = [c[0] for c in hut_coords]
+    lats = [c[1] for c in hut_coords]
+
     async with get_db() as conn:
-        # Crear tabla temporal de puntos HUT
-        await conn.execute("DROP TABLE IF EXISTS _tmp_hut_points")
-        await conn.execute(
-            "CREATE TEMP TABLE _tmp_hut_points (lng float, lat float)"
-        )
-
-        # Insertar en lotes de 1000
-        _CHUNK = 1000
-        for i in range(0, len(hut_coords), _CHUNK):
-            batch = hut_coords[i : i + _CHUNK]
-            await conn.executemany(
-                "INSERT INTO _tmp_hut_points VALUES ($1, $2)",
-                batch,
-            )
-
-        # Contar HUTs por zona con ST_DWithin
+        # Usar unnest en lugar de tabla temporal para evitar race conditions
+        # en el pool de conexiones (TEMP TABLE es por-sesión pero el pool
+        # puede reutilizar la misma sesión desde otra tarea concurrente).
         rows = await conn.fetch(
             f"""
+            WITH hut_points AS (
+                SELECT ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography AS geom
+                FROM unnest($1::float[], $2::float[]) AS t(lng, lat)
+            )
             SELECT z.id AS zona_id, COUNT(h.*) AS hut_count
             FROM zonas z
-            CROSS JOIN _tmp_hut_points h
-            WHERE ST_DWithin(
-                z.geometria::geography,
-                ST_SetSRID(ST_MakePoint(h.lng, h.lat), 4326)::geography,
-                {_RADIO_M}
-            )
+            CROSS JOIN hut_points h
+            WHERE ST_DWithin(z.geometria::geography, h.geom, {_RADIO_M})
             GROUP BY z.id
-            """
+            """,
+            lngs, lats,
         )
-
-        await conn.execute("DROP TABLE IF EXISTS _tmp_hut_points")
 
     return {row["zona_id"]: int(row["hut_count"]) for row in rows}
 

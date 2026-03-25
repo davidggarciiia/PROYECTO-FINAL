@@ -63,6 +63,23 @@ router = APIRouter(tags=["financiero"])
 
 _UMBRAL_ALQUILER_VENTAS = 0.15
 
+# Campos permitidos en overrides con sus rangos válidos [min, max]
+_OVERRIDES_PERMITIDOS: dict[str, tuple[float, float]] = {
+    "ticket_medio":              (0.01, 10_000.0),
+    "clientes_dia_conservador":  (0.0, 10_000.0),
+    "clientes_dia_optimista":    (0.0, 10_000.0),
+    "dias_apertura_mes":         (1.0, 31.0),
+    "alquiler_mensual":          (0.0, 100_000.0),
+    "salarios_mensual":          (0.0, 200_000.0),
+    "otros_fijos_mensual":       (0.0, 50_000.0),
+    "coste_mercancia_pct":       (0.0, 0.95),
+    "reforma_local":             (0.0, 2_000_000.0),
+    "equipamiento":              (0.0, 2_000_000.0),
+    "deposito_fianza":           (0.0, 200_000.0),
+    "otros_iniciales":           (0.0, 200_000.0),
+}
+_MAX_OVERRIDES = 12
+
 
 # ─── Request ──────────────────────────────────────────────────────────────────
 
@@ -209,6 +226,19 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
       4. Usuario puede ajustar → frontend relama con overrides={campo: nuevo_valor}.
       5. Usuario pulsa 'Auto' en un slider → frontend relama sin ese override.
     """
+    # ── Validar overrides ────────────────────────────────────────────────────
+    if len(body.overrides) > _MAX_OVERRIDES:
+        raise HTTPException(status_code=400, detail=f"Demasiados overrides (máx {_MAX_OVERRIDES}).")
+    for campo, valor in body.overrides.items():
+        if campo not in _OVERRIDES_PERMITIDOS:
+            raise HTTPException(status_code=400, detail=f"Override no permitido: {campo!r}.")
+        vmin, vmax = _OVERRIDES_PERMITIDOS[campo]
+        if not (vmin <= valor <= vmax):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Override {campo!r} fuera de rango [{vmin}, {vmax}].",
+            )
+
     # ── Validar sesión ────────────────────────────────────────────────────────
     sesion = await get_sesion(body.session_id)
     if sesion is None:

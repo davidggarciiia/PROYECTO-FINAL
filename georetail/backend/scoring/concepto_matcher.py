@@ -1489,11 +1489,15 @@ class ConceptoMatcher:
 
 # Instancia global (singleton lazy) — se inicializa en el primer uso
 _matcher: ConceptoMatcher | None = None
+import threading as _threading
+_matcher_lock = _threading.Lock()
 
 
 def get_matcher() -> ConceptoMatcher:
-    """Devuelve la instancia global del ConceptoMatcher (lazy init)."""
+    """Devuelve la instancia global del ConceptoMatcher (lazy init, thread-safe)."""
     global _matcher
     if _matcher is None:
-        _matcher = ConceptoMatcher()
+        with _matcher_lock:
+            if _matcher is None:  # double-checked locking
+                _matcher = ConceptoMatcher()
     return _matcher

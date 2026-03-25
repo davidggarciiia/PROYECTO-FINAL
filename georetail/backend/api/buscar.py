@@ -17,12 +17,13 @@ Flujo interno:
 
 from __future__ import annotations
 
+import hashlib
 import logging
-from typing import Optional
+from typing import Literal, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from schemas.models import ZonaResumen, ColorZona, EstadoBusqueda
 from agente.validador import validar_negocio
@@ -44,7 +45,7 @@ class BuscarRequest(BaseModel):
         description="Descripción del negocio en lenguaje natural",
         examples=["Quiero abrir una cafetería de especialidad en un barrio de diseño"],
     )
-    ciudad: str = Field(
+    ciudad: Literal["Barcelona"] = Field(
         default="Barcelona",
         description="Ciudad donde buscar. Por ahora solo Barcelona.",
     )
@@ -262,5 +263,4 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
 
 def _hash_ip(ip: str) -> str:
     """Hash SHA-256 de la IP para analytics anónimos."""
-    import hashlib
     return hashlib.sha256(ip.encode()).hexdigest()[:16]
