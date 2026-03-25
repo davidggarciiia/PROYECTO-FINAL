@@ -1,16 +1,30 @@
 """
-pipelines/aforaments.py — Ingesta de flujo peatonal desde CSVs locales.
+pipelines/aforaments.py — Ingesta de flujo de TRÁFICO RODADO desde CSVs locales.
+
+ADVERTENCIA: Este pipeline mide tráfico de VEHÍCULOS y BICICLETAS (IMD vial),
+NO peatones a pie. Los sensores de aforament de Barcelona (loop inductivos en
+calzada) cuentan unidades de tráfico rodado, no personas paseando.
+
+Para flujo peatonal real (personas a pie), usar pipelines/vianants.py
+que consume el dataset "Aforament de persones vianants per trams" de Open Data BCN.
+
+El campo variables_zona.flujo_peatonal_total es sobreescrito por vianants.py
+cuando hay datos disponibles (fuente='vianants_bcn' prevalece sobre
+fuente='aforadors_csv_2025').
 
 Fuentes:
   - CSV local: /data/csv/aforaments/2025_aforament_detall_valor.csv
     Columnas: Any, Id_aforament, Mes, Codi_tipus_dia, Desc_tipus_dia, Valor_IMD
     Codi_tipus_dia: 1=dilluns, 2=laborables, 3=divendres, 4=dissabte, 5=diumenge
+    NOTA: Valor_IMD = Intensitat Mitja Diària de VEHICLES (no personas)
 
   - CSV local: /data/csv/aforaments/2025_aforament_descripcio.csv
     Columnas: Id_aforament, Desc_aforament, ..., Longitud, Latitud, ...
     (antes se obtenía de la API CKAN — ahora se lee directamente del CSV local)
 
 Tabla destino: variables_zona (columnas flujo_peatonal_*)
+  - Se usa como proxy de dinamismo urbano, NO como conteo directo de clientes.
+  - Las zonas con datos de vianants.py tienen mayor precisión comercial.
 
 ESTRATEGIA DE ASIGNACIÓN (v2):
   ST_DWithin radio 200m + ponderación por distancia inversa al cuadrado.
