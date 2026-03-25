@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import type { ZonaPreview, LocalDetalleResponse, FinancieroResponse } from "@/lib/types";
 import { api } from "@/lib/api";
 import FinancialPanel from "./FinancialPanel";
@@ -48,10 +48,43 @@ function Skeleton({ h = 16, w = "100%" }: { h?: number; w?: string }) {
   return <div className="skeleton" style={{ height: h, width: w, borderRadius: 6, marginBottom: 8 }} />;
 }
 
+const MIN_W = 340;
+const MAX_W = 740;
+const DEFAULT_W = 440;
+
 export default function DetailPanel({ zona, detalle, loading, sessionId, onClose }: Props) {
   const [tab, setTab] = useState<Tab>("analisis");
   const [financiero, setFinanciero] = useState<FinancieroResponse | null>(null);
   const [loadingFin, setLoadingFin] = useState(false);
+
+  const panelRef   = useRef<HTMLDivElement>(null);
+  const dragState  = useRef({ active: false, startX: 0, startW: DEFAULT_W });
+
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startW = panelRef.current?.offsetWidth ?? DEFAULT_W;
+    dragState.current = { active: true, startX: e.clientX, startW };
+    document.body.style.cursor     = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMove = (ev: MouseEvent) => {
+      if (!dragState.current.active || !panelRef.current) return;
+      const delta  = dragState.current.startX - ev.clientX;
+      const newW   = Math.min(MAX_W, Math.max(MIN_W, dragState.current.startW + delta));
+      panelRef.current.style.width = `${newW}px`;
+    };
+
+    const onUp = () => {
+      dragState.current.active       = false;
+      document.body.style.cursor     = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup",   onUp);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup",   onUp);
+  }, []);
 
   const loadFinanciero = useCallback(async () => {
     if (financiero || loadingFin) return;
@@ -82,7 +115,11 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
   const m2       = z?.m2             ?? zona.m2;
 
   return (
-    <div className={`${styles.panel} slideInRight`}>
+    <div ref={panelRef} className={`${styles.panel} slideInRight`} style={{ width: DEFAULT_W }}>
+      {/* ── Resize handle (desktop only) ── */}
+      <div className={styles.resizeHandle} onMouseDown={onResizeStart}>
+        <div className={styles.resizeGrip} />
+      </div>
       {/* ── Mobile back bar (only visible on small screens) ── */}
       <div className={styles.mobileBackBar}>
         <button className={styles.mobileBackBtn} onClick={onClose} aria-label="Volver al mapa">
@@ -244,11 +281,40 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
                       Flujo peatonal
                     </h3>
                     <div className={styles.flujoGrid}>
-                      {[
-                        { label: "Mañana", val: z.flujo_peatonal_dia.manana, icon: "🌅" },
-                        { label: "Tarde",  val: z.flujo_peatonal_dia.tarde,  icon: "☀️" },
-                        { label: "Noche",  val: z.flujo_peatonal_dia.noche,  icon: "🌙" },
-                      ].map(({ label, val, icon }) => (
+                      {([
+                        {
+                          label: "Mañana",
+                          val: z.flujo_peatonal_dia.manana,
+                          icon: (
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="10" cy="10" r="3.5" fill="currentColor" fillOpacity="0.15"/>
+                              <path d="M10 3v1.5M10 15.5V17M3 10h1.5M15.5 10H17M5.1 5.1l1.1 1.1M13.8 13.8l1.1 1.1M5.1 14.9l1.1-1.1M13.8 6.2l1.1-1.1"/>
+                              <path d="M4 17h12" strokeWidth="1.2"/>
+                            </svg>
+                          ),
+                        },
+                        {
+                          label: "Tarde",
+                          val: z.flujo_peatonal_dia.tarde,
+                          icon: (
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="10" cy="10" r="4.5" fill="currentColor" fillOpacity="0.15"/>
+                              <path d="M10 2.5V4M10 16v1.5M2.5 10H4M16 10h1.5M4.6 4.6l1.1 1.1M14.3 14.3l1.1 1.1M4.6 15.4l1.1-1.1M14.3 5.7l1.1-1.1"/>
+                            </svg>
+                          ),
+                        },
+                        {
+                          label: "Noche",
+                          val: z.flujo_peatonal_dia.noche,
+                          icon: (
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M15 13.5A7 7 0 0 1 6.5 5a7.5 7.5 0 1 0 8.5 8.5z" fill="currentColor" fillOpacity="0.15"/>
+                              <circle cx="15" cy="5" r="1" fill="currentColor" stroke="none" opacity="0.6"/>
+                              <circle cx="17" cy="9" r="0.6" fill="currentColor" stroke="none" opacity="0.4"/>
+                            </svg>
+                          ),
+                        },
+                      ] as { label: string; val: number | undefined; icon: React.ReactNode }[]).map(({ label, val, icon }) => (
                         <div key={label} className={styles.flujoItem}>
                           <span className={styles.flujoIcon}>{icon}</span>
                           <span className={styles.flujoVal}>{(val ?? 0).toLocaleString()}</span>

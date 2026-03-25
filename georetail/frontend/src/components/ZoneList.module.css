@@ -84,6 +84,48 @@
 
 .scoreRing { flex-shrink: 0; }
 
+/* ── Sort row ── */
+.sortRow {
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sortBtn {
+  padding: 4px 11px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  letter-spacing: 0.02em;
+}
+.sortBtn:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+  background: var(--surface-3);
+}
+.sortBtnActive {
+  background: rgba(99,102,241,0.12);
+  border-color: rgba(99,102,241,0.4);
+  color: var(--accent);
+}
+.sortArrow {
+  display: inline-block;
+  margin-left: 3px;
+  vertical-align: middle;
+  transition: transform 0.2s ease;
+  transform: rotate(0deg);
+}
+.sortArrowUp {
+  transform: rotate(180deg);
+}
+
 
 /* ══════════════════════════════════════════════════════
    DESKTOP  —  Floating collapsible panel
@@ -100,7 +142,7 @@
   z-index: 1000;
 }
 
-.floatingExpanded  { max-height: 560px; }
+.floatingExpanded  { max-height: 600px; }
 .floatingCollapsed { max-height: 44px; }
 
 .floatingHeader {

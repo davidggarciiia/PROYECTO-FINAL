@@ -1,8 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { ZonaPreview } from "@/lib/types";
 import styles from "./ZoneList.module.css";
+
+type SortBy  = "score" | "precio" | "m2";
+type SortDir = "asc" | "desc";
+
+const DEFAULT_DIR: Record<SortBy, SortDir> = {
+  score:  "desc",
+  precio: "asc",
+  m2:     "desc",
+};
 
 interface Props {
   zonas: ZonaPreview[];
@@ -37,47 +46,100 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
+const SORT_OPTIONS: { key: SortBy; label: string }[] = [
+  { key: "score",  label: "Score" },
+  { key: "precio", label: "Precio" },
+  { key: "m2",     label: "Tamaño" },
+];
+
 function ZoneCards({ zonas, selectedId, onSelect }: Omit<Props, "asBottomSheet" | "asFloatingPanel">) {
+  const [sortBy,  setSortBy]  = useState<SortBy>("score");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const handleSort = (key: SortBy) => {
+    if (key === sortBy) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(key);
+      setSortDir(DEFAULT_DIR[key]);
+    }
+  };
+
+  const sorted = useMemo(() => {
+    return [...zonas].sort((a, b) => {
+      let aVal: number, bVal: number;
+      if (sortBy === "score")       { aVal = a.score_global ?? -1;        bVal = b.score_global ?? -1; }
+      else if (sortBy === "precio") { aVal = a.alquiler_mensual ?? 1e9;   bVal = b.alquiler_mensual ?? 1e9; }
+      else                          { aVal = a.m2 ?? -1;                  bVal = b.m2 ?? -1; }
+      const diff = aVal - bVal;
+      return sortDir === "asc" ? diff : -diff;
+    });
+  }, [zonas, sortBy, sortDir]);
+
   return (
-    <div className={styles.list}>
-      {zonas.map((zona, idx) => {
-        const score = zona.score_global ?? 0;
-        const isSelected = selectedId === zona.zona_id;
-        return (
-          <button
-            key={zona.zona_id}
-            className={`${styles.card} ${isSelected ? styles.cardSelected : ""}`}
-            onClick={() => onSelect(zona)}
-          >
-            <div className={styles.rank}>#{idx + 1}</div>
-            <div className={styles.info}>
-              <div className={styles.name}>{zona.nombre}</div>
-              <div className={styles.sub}>{zona.barrio} · {zona.distrito}</div>
-              <div className={styles.meta}>
-                {zona.alquiler_mensual && (
-                  <span className={styles.metaItem}>
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                      <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1"/>
-                      <path d="M5 2.5v5M3 4h3.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
-                    </svg>
-                    {zona.alquiler_mensual.toLocaleString("es-ES")} €/mes
-                  </span>
-                )}
-                {zona.m2 && (
-                  <span className={styles.metaItem}>
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                      <rect x="1" y="1" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1"/>
-                    </svg>
-                    {zona.m2} m²
-                  </span>
-                )}
+    <>
+      <div className={styles.sortRow}>
+        {SORT_OPTIONS.map(opt => {
+          const isActive = sortBy === opt.key;
+          return (
+            <button
+              key={opt.key}
+              className={`${styles.sortBtn} ${isActive ? styles.sortBtnActive : ""}`}
+              onClick={() => handleSort(opt.key)}
+            >
+              {opt.label}
+              {isActive && (
+                <svg
+                  className={`${styles.sortArrow} ${sortDir === "asc" ? styles.sortArrowUp : ""}`}
+                  width="8" height="8" viewBox="0 0 8 8" fill="none"
+                >
+                  <path d="M1.5 3l2.5 2.5L6.5 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <div className={styles.list}>
+        {sorted.map((zona, idx) => {
+          const score = zona.score_global ?? 0;
+          const isSelected = selectedId === zona.zona_id;
+          return (
+            <button
+              key={zona.zona_id}
+              className={`${styles.card} ${isSelected ? styles.cardSelected : ""}`}
+              onClick={() => onSelect(zona)}
+            >
+              <div className={styles.rank}>#{idx + 1}</div>
+              <div className={styles.info}>
+                <div className={styles.name}>{zona.nombre}</div>
+                <div className={styles.sub}>{zona.barrio} · {zona.distrito}</div>
+                <div className={styles.meta}>
+                  {zona.alquiler_mensual && (
+                    <span className={styles.metaItem}>
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                        <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1"/>
+                        <path d="M5 2.5v5M3 4h3.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+                      </svg>
+                      {zona.alquiler_mensual.toLocaleString("es-ES")} €/mes
+                    </span>
+                  )}
+                  {zona.m2 && (
+                    <span className={styles.metaItem}>
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                        <rect x="1" y="1" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1"/>
+                      </svg>
+                      {zona.m2} m²
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-            <ScoreRing score={score} />
-          </button>
-        );
-      })}
-    </div>
+              <ScoreRing score={score} />
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 }
 

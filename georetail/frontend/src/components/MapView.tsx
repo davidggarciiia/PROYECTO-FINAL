@@ -261,9 +261,10 @@ interface Props {
   onZonaClick: (zona: ZonaPreview) => void;
   theme: Theme;
   onThemeChange: (t: Theme) => void;
+  panelOpen?: boolean;
 }
 
-export default function MapView({ zonas, selectedId, onZonaClick, theme, onThemeChange }: Props) {
+export default function MapView({ zonas, selectedId, onZonaClick, theme, onThemeChange, panelOpen }: Props) {
   const [styleId, setStyleId] = useState<MapStyleId>("vibrant");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -354,7 +355,7 @@ export default function MapView({ zonas, selectedId, onZonaClick, theme, onTheme
       </MapContainer>
 
       {/* ── Combined Estilos picker ── */}
-      <div className={styles.stylePickerWrap} onClick={e => e.stopPropagation()}>
+      <div className={`${styles.stylePickerWrap} ${panelOpen ? styles.stylePickerWrapShifted : ""}`} onClick={e => e.stopPropagation()}>
         <button
           className={`${styles.styleBtn} ${pickerOpen ? styles.styleBtnActive : ""}`}
           onClick={() => setPickerOpen(v => !v)}
