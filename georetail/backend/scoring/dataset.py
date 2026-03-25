@@ -12,7 +12,7 @@ Variable objetivo (label):
   - 1 → el negocio sobrevivió ≥ 3 años (o sigue activo)
   - 0 → cerró antes de 3 años
 
-El dataset resultante tiene 21 features (ver FEATURE_NAMES en features.py)
+El dataset resultante tiene 29 features (ver FEATURE_NAMES en features.py)
 y una columna `label` binaria.
 
 Uso:
@@ -54,7 +54,7 @@ async def construir_dataset(
                      Por defecto: hoy - 3 años (para poder calcular la supervivencia).
 
     Returns:
-        X     → np.ndarray (n_samples, 21) con las features normalizadas
+        X     → np.ndarray (n_samples, 29) con las features normalizadas
         y     → np.ndarray (n_samples,)    con los labels (0/1)
         meta  → pd.DataFrame con columnas auxiliares (negocio_id, zona_id, sector,
                 fecha_apertura, fecha_cierre, label) para análisis posterior.
@@ -240,6 +240,12 @@ async def _construir_features_historicas(
                 vz.score_turismo, vz.incidencias_por_1000hab,
                 vz.nivel_ruido_db, vz.score_equipamientos, vz.m2_zonas_verdes_cercanas,
                 vz.ratio_locales_comerciales,
+                -- v3: turismo y dinamismo comercial
+                vz.airbnb_listings_500m,
+                vz.airbnb_occupancy_est,
+                vz.licencias_nuevas_1a,
+                vz.eventos_culturales_500m,
+                vz.booking_hoteles_500m,
                 ST_Distance(
                     ST_Centroid(z.geometria)::geography,
                     ST_GeomFromText(
@@ -286,6 +292,21 @@ async def _construir_features_historicas(
             ORDER BY i.idx, paz.fecha DESC
         """
 
+        # v3: media de reseñas Google de negocios activos en 300m por zona
+        # (no depende de fecha histórica — es un proxy del dinamismo actual de la zona)
+        google_reviews_query = """
+            SELECT
+                z.id AS zona_id,
+                AVG(na.review_count)::float AS avg_reviews
+            FROM zonas z
+            JOIN negocios_activos na
+                ON na.activo = TRUE
+               AND ST_DWithin(na.geometria::geography, z.geometria::geography, 300)
+               AND na.review_count > 0
+            WHERE z.id = ANY($1)
+            GROUP BY z.id
+        """
+
         # Transporte no depende de fecha (la red es relativamente estable)
         zona_ids_unicos = list(set(zona_ids))
         trans_rows = await conn.fetch(trans_query, zona_ids_unicos)
@@ -301,6 +322,12 @@ async def _construir_features_historicas(
         precio_rows = await conn.fetch(precio_per_negocio_query, zona_ids, fechas)
         precio_by_idx: dict[int, Optional[float]] = {
             r["idx"]: float(r["precio_m2"]) for r in precio_rows
+        }
+
+        # v3: google reviews por zona (batch, no por índice)
+        google_rows = await conn.fetch(google_reviews_query, zona_ids_unicos)
+        google_reviews_dict: dict[str, Optional[float]] = {
+            r["zona_id"]: r["avg_reviews"] for r in google_rows
         }
 
     # ── Construir vector de features por negocio ──────────────────────────────
@@ -344,6 +371,13 @@ async def _construir_features_historicas(
             # v2: granularidad geográfica de nivel zona
             "dist_playa_m":              vz.get("dist_playa_m"),
             "ratio_locales_comerciales": vz.get("ratio_locales_comerciales"),
+            # v3: turismo y dinamismo comercial
+            "airbnb_density_500m":       vz.get("airbnb_listings_500m"),
+            "airbnb_occupancy_est":      vz.get("airbnb_occupancy_est"),
+            "google_review_count_medio": google_reviews_dict.get(zona_id),
+            "licencias_nuevas_1a":       vz.get("licencias_nuevas_1a"),
+            "eventos_culturales_500m":   vz.get("eventos_culturales_500m"),
+            "booking_hoteles_500m":      vz.get("booking_hoteles_500m"),
         }
 
         # Imputar con medias del dataset de entrenamiento donde haya None
