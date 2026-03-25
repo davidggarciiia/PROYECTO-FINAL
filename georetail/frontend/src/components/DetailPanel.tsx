@@ -25,7 +25,7 @@ function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
   const glow  = score >= 75 ? "rgba(16,185,129,0.4)" : score >= 50 ? "rgba(245,158,11,0.4)" : "rgba(239,68,68,0.4)";
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5"/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" style={{ stroke: "var(--surface-3)" }} strokeWidth="5"/>
       <circle
         cx={size/2} cy={size/2} r={r} fill="none"
         stroke={color} strokeWidth="5"
@@ -37,7 +37,7 @@ function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
       <text x={size/2} y={size/2 - 3} textAnchor="middle" fontSize="16" fontWeight="800" fill={color}>
         {Math.round(score)}
       </text>
-      <text x={size/2} y={size/2 + 12} textAnchor="middle" fontSize="9" fill="rgba(255,255,255,0.4)" fontWeight="500">
+      <text x={size/2} y={size/2 + 12} textAnchor="middle" fontSize="9" style={{ fill: "var(--text-muted)" }} fontWeight="500">
         / 100
       </text>
     </svg>

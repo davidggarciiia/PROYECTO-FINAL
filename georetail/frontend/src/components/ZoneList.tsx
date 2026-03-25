@@ -15,22 +15,22 @@ interface Props {
 }
 
 function ScoreRing({ score }: { score: number }) {
-  const r = 14;
+  const r = 18;
   const circ = 2 * Math.PI * r;
   const fill = circ * (score / 100);
   const color = score >= 75 ? "var(--green)" : score >= 50 ? "var(--yellow)" : "var(--red)";
   return (
-    <svg width="36" height="36" viewBox="0 0 36 36" className={styles.scoreRing}>
-      <circle cx="18" cy="18" r={r} fill="none" stroke="var(--surface-3)" strokeWidth="3" />
+    <svg width="46" height="46" viewBox="0 0 46 46" className={styles.scoreRing}>
+      <circle cx="23" cy="23" r={r} fill="none" stroke="var(--surface-3)" strokeWidth="3.5" />
       <circle
-        cx="18" cy="18" r={r} fill="none"
-        stroke={color} strokeWidth="3"
+        cx="23" cy="23" r={r} fill="none"
+        stroke={color} strokeWidth="3.5"
         strokeDasharray={`${fill} ${circ - fill}`}
         strokeLinecap="round"
-        transform="rotate(-90 18 18)"
+        transform="rotate(-90 23 23)"
         style={{ transition: "stroke-dasharray 0.5s ease" }}
       />
-      <text x="18" y="22" textAnchor="middle" fontSize="9" fontWeight="700" fill={color}>
+      <text x="23" y="27" textAnchor="middle" fontSize="12" fontWeight="800" fill={color}>
         {Math.round(score)}
       </text>
     </svg>
