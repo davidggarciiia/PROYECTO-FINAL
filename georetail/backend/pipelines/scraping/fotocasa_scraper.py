@@ -54,8 +54,27 @@ _SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Headers reales de Chrome ──────────────────────────────────────────────────
 def _headers_chrome(ua: str, pagina: int = 1) -> dict:
-    """Headers que imitan un Chrome real navegando Fotocasa."""
-    referer = _SEARCH_URL_ALQUILER if pagina > 1 else _BASE_URL
+    """
+    Headers que imitan un Chrome real navegando Fotocasa.
+
+    Fix Cloudflare:
+    - pagina=0 (warmup): Referer = Google search (parece tráfico orgánico)
+    - pagina=1 (primera búsqueda): Referer = fotocasa.es/ (viene de la home)
+    - pagina>1 (paginación): Referer = página anterior de búsqueda
+    - Añadir sec-ch-ua para coincidir con impersonate="chrome124"
+    """
+    if pagina == 0:
+        # Primera visita (warmup) — viene de Google
+        referer = "https://www.google.es/search?q=fotocasa+locales+alquiler+barcelona"
+        sec_fetch_site = "cross-site"
+    elif pagina == 1:
+        # Primera página de búsqueda — viene de la homepage de Fotocasa
+        referer = _BASE_URL + "/es/"
+        sec_fetch_site = "same-origin"
+    else:
+        referer = _SEARCH_URL_ALQUILER
+        sec_fetch_site = "same-origin"
+
     return {
         "User-Agent": ua,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -65,8 +84,11 @@ def _headers_chrome(ua: str, pagina: int = 1) -> dict:
         "DNT": "1",
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "same-origin" if pagina > 1 else "none",
+        "Sec-Fetch-Site": sec_fetch_site,
         "Sec-Fetch-User": "?1",
+        "Sec-CH-UA": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": '"Windows"',
         "Upgrade-Insecure-Requests": "1",
         "Cache-Control": "max-age=0",
         "Connection": "keep-alive",
@@ -289,11 +311,20 @@ class FotocasaScraper:
         return f"{base}?page={pagina}"
 
     async def _session_warming(self) -> None:
-        """Visita la homepage de Fotocasa para obtener cookies iniciales."""
+        """
+        Visita la homepage de Fotocasa simulando tráfico desde Google.
+
+        Fix Cloudflare: la primera request usa Referer de Google para parecer
+        tráfico orgánico, luego la siguiente usa Referer de fotocasa.es.
+        """
         try:
-            logger.debug("Fotocasa session warming: visitando homepage")
+            logger.debug("Fotocasa session warming: visitando homepage via Google referer")
+            # pagina=0 usa Referer de Google → parece tráfico orgánico
             await self._get(_BASE_URL + "/es/", pagina=0)
-            await asyncio.sleep(random.uniform(1.5, 3.5))
+            await asyncio.sleep(random.uniform(2.0, 4.0))
+            # Segunda visita con Referer = fotocasa.es (calienta cookies Cloudflare)
+            await self._get(_BASE_URL + "/es/alquiler/locales-comerciales/todas-las-provincias/l", pagina=1)
+            await asyncio.sleep(random.uniform(1.5, 3.0))
         except Exception as e:
             logger.debug("Fotocasa warming falló (no crítico): %s", e)
 

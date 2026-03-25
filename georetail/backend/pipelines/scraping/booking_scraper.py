@@ -344,6 +344,121 @@ class BookingScraper:
 
         return hoteles
 
+    # ── Playwright fallback ────────────────────────────────────────────────────
+
+    async def scrape_barcelona_playwright(self, max_pages: int = 10) -> list[HotelBooking]:
+        """
+        Extrae hoteles de Barcelona usando Playwright en lugar de curl_cffi.
+
+        Booking.com usa JavaScript challenge (HTTP 202) que curl_cffi no resuelve.
+        Playwright ejecuta el JS real y obtiene la página renderizada.
+
+        Args:
+            max_pages: máximo de páginas a scrapear (25 hoteles/página).
+
+        Returns:
+            Lista de HotelBooking (puede estar vacía si Playwright no está instalado).
+        """
+        try:
+            from playwright.async_api import async_playwright
+        except ImportError:
+            logger.error(
+                "Playwright no instalado. "
+                "Instalar: pip install playwright && playwright install chromium"
+            )
+            return []
+
+        ua = random.choice(_USER_AGENTS_CH124)
+        hoteles: list[HotelBooking] = []
+
+        try:
+            async with async_playwright() as pw:
+                browser = await pw.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--disable-dev-shm-usage",
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--window-size=1280,900",
+                        "--disable-extensions",
+                        "--lang=es-ES",
+                    ],
+                )
+                ctx = await browser.new_context(
+                    user_agent=ua,
+                    viewport={"width": 1280, "height": 900},
+                    locale="es-ES",
+                    timezone_id="Europe/Madrid",
+                    extra_http_headers={
+                        "Accept-Language": "es-ES,es;q=0.9,ca;q=0.8,en;q=0.7",
+                        "Sec-CH-UA": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+                        "Sec-CH-UA-Mobile": "?0",
+                        "Sec-CH-UA-Platform": '"Windows"',
+                    },
+                )
+
+                page = await ctx.new_page()
+
+                # Warmup — visitar la homepage antes de buscar
+                try:
+                    await page.goto(_BOOKING_BASE + "/es/", timeout=25000, wait_until="domcontentloaded")
+                    await asyncio.sleep(random.uniform(2.0, 4.0))
+                except Exception as e:
+                    logger.debug("Booking Playwright warmup error: %s", e)
+
+                # Scraping de páginas
+                for page_num in range(max_pages):
+                    offset = page_num * _PAGE_SIZE
+                    checkin  = date.today() + timedelta(days=7)
+                    checkout = checkin + timedelta(days=2)
+                    params = {
+                        "ss":        "Barcelona",
+                        "checkin":   checkin.strftime("%Y-%m-%d"),
+                        "checkout":  checkout.strftime("%Y-%m-%d"),
+                        "group_adults":   "2",
+                        "no_rooms":       "1",
+                        "group_children": "0",
+                        "nflt":      "ht_id%3D204",
+                        "offset":    str(offset),
+                        "rows":      str(_PAGE_SIZE),
+                        "lang":      "es",
+                    }
+                    from urllib.parse import urlencode
+                    url = f"{_RESULTS_URL}?{urlencode(params, safe='%')}"
+
+                    try:
+                        logger.info("Booking Playwright pág %d (offset=%d)", page_num + 1, offset)
+                        await page.goto(url, timeout=30000, wait_until="domcontentloaded")
+                        await asyncio.sleep(random.uniform(2.0, 4.0))
+
+                        html = await page.content()
+                        if not html or _es_captcha(html):
+                            logger.warning("Booking Playwright: CAPTCHA/bloqueo en pág %d", page_num + 1)
+                            break
+
+                        page_hotels = self._parsear_jsonld(html)
+                        if not page_hotels:
+                            page_hotels = self._parsear_dom(html)
+
+                        if not page_hotels:
+                            logger.info("Booking Playwright pág %d sin resultados — fin", page_num + 1)
+                            break
+
+                        hoteles.extend(page_hotels)
+                        logger.info("Booking Playwright acumulados: %d hoteles", len(hoteles))
+
+                    except Exception as e:
+                        logger.warning("Booking Playwright error pág %d: %s", page_num + 1, e)
+                        break
+
+                await browser.close()
+
+        except Exception as exc:
+            logger.error("Booking Playwright error general: %s", exc, exc_info=True)
+
+        return hoteles
+
     # ── HTTP client con antibot ────────────────────────────────────────────────
 
     async def _get(self, url: str, referer: str = "") -> str:

@@ -1,7 +1,7 @@
 """
 pipelines/scraping/milanuncios_scraper.py — Scraper de Milanuncios para locales en alquiler.
 
-Milanuncios es propiedad de Adevinta. Usa React con SSR + hidratación.
+Milanuncios es propiedad de Adevinta. Usa React con hidratación cliente.
 Anti-bot: rate limiting moderado + User-Agent check.
 
 Mejoras respecto a la versión anterior:
@@ -11,8 +11,9 @@ Mejoras respecto a la versión anterior:
   - Mejor parsing de m2: extrae desde titulo, descripcion, atributos estructurados
   - Cookies persistentes entre ejecuciones
   - Delay 2-4s entre requests, backoff exponencial en 429/503
+  - Parser DOM BeautifulSoup con selector article[data-testid="AD_CARD"] (v2)
 
-URL patrón: https://www.milanuncios.com/locales-comerciales-en-alquiler-en-{ciudad}/
+URL patrón correcto: https://www.milanuncios.com/locales-comerciales-en-alquiler/{ciudad}.htm?pagina={pagina}
 """
 from __future__ import annotations
 
@@ -32,7 +33,9 @@ logger = logging.getLogger(__name__)
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 _BASE_URL   = "https://www.milanuncios.com"
-_SEARCH_URL = _BASE_URL + "/locales-comerciales-en-alquiler-en-{ciudad}/?{params}"
+# URL correcta: /locales-comerciales-en-alquiler/{ciudad}.htm?pagina={pagina}
+# La URL con "-en-{ciudad}/" da 404 — corregida
+_SEARCH_URL = _BASE_URL + "/locales-comerciales-en-alquiler/{ciudad}.htm?pagina={pagina}"
 
 _DELAY_MIN = 2.0
 _DELAY_MAX = 4.5
@@ -53,7 +56,7 @@ _CIUDADES = {
 # Warmup queries para simular navegación previa
 _WARMUP_PATHS = [
     "/",
-    "/locales-comerciales-en-alquiler/",
+    "/locales-comerciales-en-alquiler/",   # sección correcta
 ]
 
 
@@ -118,11 +121,10 @@ class MilanunciosScraper:
                 logger.warning("Milanuncios rate limit — esperando %.0f min", espera / 60)
                 await asyncio.sleep(espera)
 
-            params = f"pagina={pagina}&tipo=5"  # tipo=5 → alquiler
-            url = _SEARCH_URL.format(ciudad=ciudad_slug, params=params)
+            url = _SEARCH_URL.format(ciudad=ciudad_slug, pagina=pagina)
             referer = (
-                _SEARCH_URL.format(ciudad=ciudad_slug, params=f"pagina={pagina - 1}&tipo=5")
-                if pagina > 1 else _BASE_URL
+                _SEARCH_URL.format(ciudad=ciudad_slug, pagina=pagina - 1)
+                if pagina > 1 else _BASE_URL + "/locales-comerciales-en-alquiler/"
             )
             logger.info("Milanuncios scraping pág %d: %s", pagina, url)
 
@@ -281,7 +283,13 @@ def _parse_milanuncios(html: str) -> list[dict]:
             except (json.JSONDecodeError, Exception):
                 pass
 
-    # ── 4. HTML fallback mejorado ─────────────────────────────────────────────
+    # ── 4. BeautifulSoup DOM — article[data-testid="AD_CARD"] ────────────────
+    items = _parse_dom_beautifulsoup(html)
+    if items:
+        logger.debug("Milanuncios: parseado via BeautifulSoup DOM (%d items)", len(items))
+        return items
+
+    # ── 5. HTML fallback mejorado ─────────────────────────────────────────────
     return _parse_html_fallback_mejorado(html)
 
 
@@ -508,6 +516,148 @@ def _parse_m2(ad: dict) -> Optional[float]:
                             return val
 
     return None
+
+
+def _parse_dom_beautifulsoup(html: str) -> list[dict]:
+    """
+    Parser DOM con BeautifulSoup para Milanuncios.
+
+    Los anuncios están en <article data-testid="AD_CARD" class="ma-AdCardV2 ...">
+    El __NEXT_DATA__ / INITIAL_PROPS NO contiene los listings (JS-hydrated),
+    por lo que este parser DOM es el método primario para Milanuncios.
+
+    Estructura típica de un article:
+      - h2 o [class*="AdCard-title"] → título
+      - [class*="AdPrice"] o span con "€" → precio
+      - [class*="tag"] con "m²" → superficie
+      - [class*="AdCard-location"] → barrio/ciudad
+      - a[href] → URL del anuncio
+    """
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        logger.debug("BeautifulSoup no disponible (pip install beautifulsoup4)")
+        return []
+
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception as e:
+        logger.debug("Error instanciando BeautifulSoup Milanuncios: %s", e)
+        return []
+
+    # Selectores en orden de preferencia
+    cards = (
+        soup.select('article[data-testid="AD_CARD"]')
+        or soup.select("article.ma-AdCardV2")
+        or soup.select("article[class*='ma-AdCard']")
+        or soup.select("article[class*='AdCard']")
+    )
+
+    if not cards:
+        logger.debug("Milanuncios BeautifulSoup: no se encontraron article cards (HTML len=%d)", len(html))
+        return []
+
+    results = []
+    for card in cards:
+        try:
+            # ── Título ────────────────────────────────────────────────────────
+            titulo_el = (
+                card.select_one("h2")
+                or card.select_one("[class*='AdCard-title']")
+                or card.select_one("[class*='AdTitle']")
+                or card.select_one("[class*='title']")
+            )
+            titulo = titulo_el.get_text(strip=True) if titulo_el else None
+
+            # ── URL + ID ──────────────────────────────────────────────────────
+            link_el = card.select_one("a[href]")
+            url_path = link_el["href"] if link_el and link_el.get("href") else ""
+            url_completa = url_path if url_path.startswith("http") else f"{_BASE_URL}{url_path}"
+
+            # Extraer ID desde la URL (p.ej. /anuncio/local-bcn-1234567.htm)
+            id_match = re.search(r'[_-](\d{6,})', url_path)
+            ad_id = id_match.group(1) if id_match else None
+            if not ad_id:
+                # Intentar desde data-id o data-adid del article
+                ad_id = card.get("data-id") or card.get("data-adid") or card.get("id") or ""
+
+            # ── Precio ────────────────────────────────────────────────────────
+            precio = None
+            # Buscar elemento con clase de precio
+            precio_el = (
+                card.select_one("[class*='AdPrice']")
+                or card.select_one("[class*='price']")
+                or card.select_one("[class*='Price']")
+            )
+            if precio_el:
+                precio = _parse_precio(precio_el.get_text(strip=True))
+
+            # Si no encontramos con clase, buscar cualquier texto con €/mes
+            if precio is None:
+                texto_card = card.get_text(" ", strip=True)
+                precio_match = re.search(
+                    r'([\d]{1,3}(?:[.\s]?\d{3})*(?:[,]\d{1,2})?)\s*€',
+                    texto_card
+                )
+                if precio_match:
+                    precio = _parse_precio(precio_match.group(0))
+
+            if precio is None:
+                continue  # sin precio, descartar
+
+            # ── Superficie ───────────────────────────────────────────────────
+            m2 = None
+            # Buscar tags/badges con "m²"
+            for el in card.select("[class*='tag'], [class*='Tag'], [class*='feature'], [class*='Feature'], [class*='detail']"):
+                texto = el.get_text(strip=True)
+                m2_match = re.search(r'(\d+(?:[.,]\d+)?)\s*m[²2]', texto, re.IGNORECASE)
+                if m2_match:
+                    m2 = _to_float(m2_match.group(1).replace(",", "."))
+                    break
+            # Fallback: buscar "m²" en todo el texto del card
+            if m2 is None:
+                texto_card = card.get_text(" ", strip=True)
+                m2_match = re.search(r'(\d+(?:[.,]\d+)?)\s*m[²2]', texto_card, re.IGNORECASE)
+                if m2_match:
+                    m2 = _to_float(m2_match.group(1).replace(",", "."))
+
+            # ── Barrio/Localización ──────────────────────────────────────────
+            barrio = ""
+            loc_el = (
+                card.select_one("[class*='Location']")
+                or card.select_one("[class*='location']")
+                or card.select_one("[class*='AdCard-location']")
+                or card.select_one("[class*='AdLocation']")
+            )
+            if loc_el:
+                barrio = loc_el.get_text(strip=True)
+
+            # Generar ID único
+            if ad_id:
+                item_id = f"milanuncios_{ad_id}"
+            else:
+                item_id = f"milanuncios_{md5((url_path or titulo or str(precio)).encode()).hexdigest()[:8]}"
+
+            results.append({
+                "id": item_id,
+                "fuente": "milanuncios",
+                "titulo": titulo,
+                "precio": precio,
+                "m2": m2,
+                "precio_m2": round(precio / m2, 2) if precio and m2 and m2 > 0 else None,
+                "lat": None,
+                "lng": None,
+                "direccion": "",
+                "distrito": "",
+                "barrio": barrio,
+                "url": url_completa,
+            })
+
+        except Exception as e:
+            logger.debug("Error procesando article Milanuncios: %s", e)
+            continue
+
+    return results
 
 
 def _parse_html_fallback_mejorado(html: str) -> list[dict]:

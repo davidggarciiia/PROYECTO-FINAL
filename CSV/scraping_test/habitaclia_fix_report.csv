@@ -1,0 +1,2 @@
+scraper,estado,fix_aplicado,archivo,detalles
+habitaclia,FIXED,URL corregida con 3 candidatos + fallback automático,pipelines/scraping/habitaclia_scraper.py,"_SEARCH_URL cambiado a /locales-en-alquiler-en-{ciudad}.htm; añadidos _SEARCH_URL_ALT1=/buscar/locales/alquiler/{ciudad}/ y _SEARCH_URL_ALT2=/locales-comerciales-en-alquiler-{ciudad}.htm; _scrape_html() prueba las 3 URLs en orden y usa la primera que responda >1000 chars; warming path corregido a /locales-en-alquiler/"

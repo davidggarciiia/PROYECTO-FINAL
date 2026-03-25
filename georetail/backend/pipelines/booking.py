@@ -266,9 +266,44 @@ async def _booking_api_alojamientos() -> list[dict]:
 
     Requiere BOOKING_API_KEY en .env (obtener en affiliate.booking.com).
     Si la key no está configurada, esta función no se llama (ver _has_booking_key).
+
+    Fix HTTP 202 (JavaScript challenge): si el scraper curl_cffi devuelve vacío,
+    intenta BookingScraper.scrape_barcelona_playwright() como fallback.
     """
     key = getattr(settings, "BOOKING_API_KEY", "")
     resultados: list[dict] = []
+
+    # Intentar primero el BookingScraper (curl_cffi) y si falla, Playwright
+    try:
+        from pipelines.scraping.booking_scraper import BookingScraper
+        async with BookingScraper() as scraper:
+            hoteles = await scraper.scrape_barcelona(max_pages=5)
+            if not hoteles:
+                logger.info(
+                    "Booking curl_cffi sin resultados (posible JS challenge HTTP 202) "
+                    "— intentando Playwright"
+                )
+                hoteles = await scraper.scrape_barcelona_playwright(max_pages=5)
+
+            for h in hoteles:
+                resultados.append({
+                    "nombre":      h.nombre[:300],
+                    "tipo":        h.tipo,
+                    "estrellas":   h.estrellas,
+                    "lat":         h.lat,
+                    "lng":         h.lng,
+                    "num_habitaciones": None,
+                    "precio_noche_medio": h.precio_noche,
+                    "rating":      h.rating,
+                    "num_reviews": h.num_reviews,
+                    "booking_id":  h.booking_id,
+                    "fuente":      "booking_scraper",
+                })
+            if resultados:
+                logger.info("BookingScraper: %d hoteles obtenidos", len(resultados))
+                return resultados
+    except Exception as exc:
+        logger.warning("BookingScraper falló, continuando con API: %s", exc)
 
     # city_id de Barcelona en Booking.com: -372490
     params = {

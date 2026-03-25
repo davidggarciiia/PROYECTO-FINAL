@@ -30,8 +30,15 @@ logger = logging.getLogger(__name__)
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 _BASE_URL   = "https://www.habitaclia.com"
-_SEARCH_URL = _BASE_URL + "/buscar/local-comercial/{ciudad}/alquiler/"
-_API_URL    = _BASE_URL + "/api/v1/properties"
+# URL correcta — la anterior /buscar/local-comercial/{ciudad}/alquiler/ da 404
+# Candidatos probados (en orden de preferencia):
+#   1. /locales-en-alquiler-en-{ciudad}.htm  ← formato estándar Habitaclia
+#   2. /buscar/locales/alquiler/{ciudad}/
+#   3. /locales-comerciales-en-alquiler-{ciudad}.htm
+_SEARCH_URL      = _BASE_URL + "/locales-en-alquiler-en-{ciudad}.htm"
+_SEARCH_URL_ALT1 = _BASE_URL + "/buscar/locales/alquiler/{ciudad}/"
+_SEARCH_URL_ALT2 = _BASE_URL + "/locales-comerciales-en-alquiler-{ciudad}.htm"
+_API_URL         = _BASE_URL + "/api/v1/properties"
 
 _DELAY_MIN = 2.0   # segundos entre requests
 _DELAY_MAX = 4.5
@@ -143,8 +150,8 @@ class HabitacliaScraper:
             logger.debug("Habitaclia session warming: visitando homepage")
             await self._get(_BASE_URL + "/", referer="")
             await asyncio.sleep(random.uniform(1.5, 3.5))
-            # Visitar también la página de búsqueda general
-            await self._get(_BASE_URL + "/buscar/local-comercial/", referer=_BASE_URL + "/")
+            # Visitar también la sección de búsqueda general (URL correcta)
+            await self._get(_BASE_URL + "/locales-en-alquiler/", referer=_BASE_URL + "/")
             await asyncio.sleep(random.uniform(1.0, 2.5))
         except Exception as e:
             logger.debug("Habitaclia warming falló (no crítico): %s", e)
@@ -156,6 +163,7 @@ class HabitacliaScraper:
                 f"{_API_URL}?type=local&operation=rent"
                 f"&city={ciudad}&page={pagina}&limit=30"
             )
+            # Usar la URL correcta como referer (formato .htm)
             respuesta = await self._get(url, referer=_SEARCH_URL.format(ciudad=ciudad))
             if not respuesta:
                 return None
@@ -175,17 +183,36 @@ class HabitacliaScraper:
             return None
 
     async def _scrape_html(self, ciudad: str, pagina: int) -> list[dict]:
-        """Scraping HTML de Habitaclia con extracción del JSON incrustado."""
-        url = _SEARCH_URL.format(ciudad=ciudad)
-        if pagina > 1:
-            url += f"?page={pagina}"
-        referer = _SEARCH_URL.format(ciudad=ciudad) if pagina > 1 else _BASE_URL
+        """Scraping HTML de Habitaclia con extracción del JSON incrustado.
 
-        html = await self._get(url, referer=referer)
+        Prueba múltiples patrones de URL en orden hasta obtener respuesta válida.
+        """
+        # Lista de patrones de URL para Habitaclia (el primero que devuelva HTML usable)
+        url_candidates = [
+            _SEARCH_URL.format(ciudad=ciudad),
+            _SEARCH_URL_ALT1.format(ciudad=ciudad),
+            _SEARCH_URL_ALT2.format(ciudad=ciudad),
+        ]
+        # Añadir paginación a la URL candidata
+        if pagina > 1:
+            url_candidates = [u + f"?page={pagina}" for u in url_candidates]
+
+        html = ""
+        url_usada = url_candidates[0]
+        for url_candidate in url_candidates:
+            referer = _SEARCH_URL.format(ciudad=ciudad) if pagina > 1 else _BASE_URL
+            h = await self._get(url_candidate, referer=referer)
+            if h and len(h) > 1000:
+                html = h
+                url_usada = url_candidate
+                logger.debug("Habitaclia: URL activa es %s", url_candidate)
+                break
+            logger.debug("Habitaclia: URL %s sin respuesta o corta, probando siguiente", url_candidate)
+
         if not html:
-            # Fallback a Playwright
+            # Fallback a Playwright con la URL primaria
             logger.info("Habitaclia: intentando Playwright para pág %d", pagina)
-            html = await self._get_playwright(url)
+            html = await self._get_playwright(url_candidates[0])
         if not html:
             return []
         return _parse_habitaclia_html(html)

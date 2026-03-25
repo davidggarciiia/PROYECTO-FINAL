@@ -1,0 +1,2 @@
+scraper,estado,fix_aplicado,archivo,detalles
+milanuncios,FIXED,URL corregida + parser DOM BeautifulSoup,pipelines/scraping/milanuncios_scraper.py,"_SEARCH_URL cambiado a /locales-comerciales-en-alquiler/{ciudad}.htm?pagina={pagina}; añadido _parse_dom_beautifulsoup() con selector article[data-testid=AD_CARD] / article.ma-AdCardV2; extrae precio (regex €) + m2 (regex m²) + barrio + URL; warmup paths corregidos"
