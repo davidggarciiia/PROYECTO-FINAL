@@ -1,40 +1,30 @@
-#!/usr/bin/env python3
 """
-scripts/poblar_locales_habitaclia.py — Carga inicial de locales reales desde Habitaclia.
+poblar_locales_habitaclia.py — Script único para poblar la BD con datos de Habitaclia.
 
-Ejecutar DENTRO del contenedor backend (una sola vez, o cuando quieras refrescar):
+Ubicación: /app/poblar_locales_habitaclia.py  (raíz del backend, donde Python lo encuentra)
 
-  docker exec -it georetail_backend \
-    python scripts/poblar_locales_habitaclia.py
+Uso desde el contenedor Docker:
+    docker exec georetail_backend python poblar_locales_habitaclia.py
+    docker exec georetail_backend python poblar_locales_habitaclia.py --max-paginas 5
 
-  # Prueba rápida (5 páginas, ~75 locales, ~5 min):
-  docker exec -it georetail_backend \
-    python scripts/poblar_locales_habitaclia.py --max-paginas 5
-
-  # Cobertura completa (107 páginas, ~1.600 locales, ~25 min):
-  docker exec -it georetail_backend \
-    python scripts/poblar_locales_habitaclia.py --max-paginas 107
+Argumentos:
+    --max-paginas N   Páginas del listado de Habitaclia (default: 107 = todo BCN)
+                      Cada página tiene ~15 URLs → ~15 locales con detalle.
+                      Para test rápido usa --max-paginas 5 (~75 locales, ~10 min).
 
 Qué hace:
-  1. Aplica la migración 005 (amplía locales.id a VARCHAR(50), añade columna url)
-  2. Lanza HabitacliaScraper con la técnica de 2 pasos (listado + detalle)
-  3. Persiste en inmuebles_portales (staging)
-  4. Sincroniza en tabla locales (lo que ve el frontend)
-  5. Elimina locales del seed donde ya hay datos reales
-  6. Actualiza medianas de precio/m² en precios_alquiler_zona
-
-Al terminar, el frontend mostrará precios y m² reales de Habitaclia.
+  1. Aplica la migración 005 si no está aplicada (amplía VARCHAR id de 30→50)
+  2. Lanza el scraper de Habitaclia
+  3. Guarda en inmuebles_portales (staging)
+  4. Sincroniza a tabla locales (lo que ve el frontend)
+  5. Oculta locales del seed donde ya hay datos reales
+  6. Muestra resumen final
 """
-from __future__ import annotations
-
 import argparse
 import asyncio
 import logging
 import os
 import sys
-
-# Añadir el directorio backend al path para imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,93 +33,134 @@ logging.basicConfig(
 logger = logging.getLogger("poblar_habitaclia")
 
 
-async def aplicar_migracion():
-    """Aplica la migración 005 si no se ha aplicado ya."""
-    from db.conexion import get_db
-    import os
-
-    sql_path = os.path.join(
-        os.path.dirname(__file__),
-        "..", "db", "migraciones", "005_habitaclia_locales.sql",
-    )
-    if not os.path.exists(sql_path):
-        logger.warning("Migración 005 no encontrada en %s — asegúrate de aplicarla manualmente", sql_path)
-        return
-
-    try:
-        with open(sql_path) as f:
-            sql = f.read()
-        async with get_db() as conn:
-            await conn.execute(sql)
-        logger.info("Migración 005 aplicada correctamente")
-    except Exception as exc:
-        # Si ya está aplicada, el ALTER TABLE puede fallar — es OK
-        logger.info("Migración 005: %s (puede ya estar aplicada)", exc)
-
-
-async def main():
-    parser = argparse.ArgumentParser(
-        description="Poblar tabla locales con datos reales de Habitaclia"
-    )
-    parser.add_argument(
-        "--max-paginas",
-        type=int,
-        default=107,
-        help="Páginas del listado de Habitaclia (107 = todas, 5 = prueba rápida)",
-    )
-    parser.add_argument(
-        "--solo-sync",
-        action="store_true",
-        help="Solo sincronizar inmuebles_portales → locales (sin scrapear de nuevo)",
-    )
-    args = parser.parse_args()
-
+async def main(max_paginas: int) -> None:
     logger.info("=" * 60)
     logger.info("POBLAR LOCALES DESDE HABITACLIA")
     logger.info("=" * 60)
-    logger.info("max_paginas: %d (~%d locales)", args.max_paginas, args.max_paginas * 15)
+    logger.info("max_paginas: %d (~%d locales)", max_paginas, max_paginas * 15)
     logger.info("")
 
-    # 1. Migración
-    logger.info("Paso 1/5: Aplicando migración 005...")
-    await aplicar_migracion()
+    # Inicializar pool de BD y Redis ANTES de cualquier import que use get_db()
+    logger.info("Paso 1/5: Inicializando conexiones...")
+    from db.conexion import init_db_pool, close_db_pool
+    from db.redis_client import init_redis, close_redis
 
-    if args.solo_sync:
-        # Solo sincronizar staging → locales (si ya se scrapeó antes)
-        logger.info("Modo --solo-sync: sincronizando sin scrapear...")
-        from pipelines.mercado_inmobiliario import _sincronizar_locales_desde_portales, _limpiar_seed
-        sync = await _sincronizar_locales_desde_portales(fuente="habitaclia")
-        eliminados = await _limpiar_seed()
-        logger.info("Sincronizados: %d | Seed eliminados: %d", sync, eliminados)
-        return
+    await init_db_pool()
+    await init_redis()
+    logger.info("✅ Pool BD y Redis inicializados")
 
-    # 2. Pipeline completo
-    logger.info("Paso 2/5: Iniciando pipeline Habitaclia...")
-    from pipelines.mercado_inmobiliario import ejecutar_habitaclia
+    try:
+        # Migración 005: ampliar VARCHAR(30)→VARCHAR(50) para IDs de Habitaclia
+        logger.info("Paso 2/5: Aplicando migración 005...")
+        await _aplicar_migracion_005()
 
-    stats = await ejecutar_habitaclia(max_paginas=args.max_paginas)
+        # Scraping + sincronización
+        logger.info("Paso 3/5: Iniciando pipeline Habitaclia...")
+        from pipelines.mercado_inmobiliario import ejecutar_habitaclia
+        stats = await ejecutar_habitaclia(max_paginas=max_paginas)
+        logger.info("Pipeline completado: %s", stats)
 
-    logger.info("")
-    logger.info("=" * 60)
-    logger.info("RESULTADO FINAL")
-    logger.info("=" * 60)
-    logger.info("  Anuncios scrapeados:           %d", stats.get("scrapeados", 0))
-    logger.info("  Guardados en staging:          %d", stats.get("guardados_portales", 0))
-    logger.info("  Sincronizados en tabla locales:%d", stats.get("sincronizados_locales", 0))
-    logger.info("  Locales de seed eliminados:    %d", stats.get("seed_eliminados", 0))
-    logger.info("  Errores:                       %d", stats.get("errores", 0))
-    logger.info("")
+        # Resumen
+        logger.info("Paso 4/5: Resumen de resultados...")
+        await _mostrar_resumen()
 
-    if stats.get("sincronizados_locales", 0) > 0:
-        logger.info("✅ El frontend ahora mostrará datos reales de Habitaclia.")
-        logger.info("   Refresca el mapa para ver los precios actualizados.")
-    else:
-        logger.warning("⚠️  No se sincronizaron locales. Posibles causas:")
-        logger.warning("   - El scraping fue bloqueado (revisar logs de HabitacliaScraper)")
-        logger.warning("   - La migración 005 no se aplicó (locales.id demasiado corto)")
-        logger.warning("   - Ningún barrio de Habitaclia coincidió con los de la BD")
-        logger.warning("   Prueba con: python scripts/poblar_locales_habitaclia.py --solo-sync")
+        logger.info("Paso 5/5: ✅ Completado.")
+        logger.info("")
+        logger.info("Los datos de Habitaclia están en la BD.")
+        logger.info("Recarga el frontend para ver los precios actualizados.")
+
+    finally:
+        await close_db_pool()
+        await close_redis()
+
+
+async def _aplicar_migracion_005() -> None:
+    """
+    Amplía la columna id de locales de VARCHAR(30) a VARCHAR(50).
+    Los IDs de Habitaclia son del tipo 'habitaclia_47595000000952' (26 chars)
+    truncados a 30 — necesitamos 50 por seguridad.
+    """
+    from db.conexion import get_db
+    try:
+        async with get_db() as conn:
+            row = await conn.fetchrow("""
+                SELECT character_maximum_length
+                FROM information_schema.columns
+                WHERE table_name = 'locales' AND column_name = 'id'
+            """)
+            current_len = row["character_maximum_length"] if row else 30
+            if current_len and current_len < 50:
+                await conn.execute("ALTER TABLE locales ALTER COLUMN id TYPE VARCHAR(50)")
+                # También la FK en locales_historico_precios
+                await conn.execute(
+                    "ALTER TABLE locales_historico_precios "
+                    "ALTER COLUMN local_id TYPE VARCHAR(50)"
+                )
+                logger.info("✅ Migración 005: id ampliado de VARCHAR(%d) a VARCHAR(50)", current_len)
+            else:
+                logger.info("Migración 005 ya aplicada (VARCHAR(%s))", current_len or "?")
+    except Exception as e:
+        logger.warning("Migración 005: %s (puede que ya esté aplicada)", e)
+
+
+async def _mostrar_resumen() -> None:
+    from db.conexion import get_db
+    try:
+        async with get_db() as conn:
+            # Locales por fuente
+            rows = await conn.fetch("""
+                SELECT fuente, COUNT(*) AS total,
+                       ROUND(AVG(alquiler_mensual)::numeric, 0) AS precio_medio,
+                       ROUND(AVG(m2)::numeric, 0) AS m2_medio
+                FROM locales
+                WHERE disponible = TRUE
+                GROUP BY fuente ORDER BY total DESC
+            """)
+            logger.info("\nLocales disponibles por fuente:")
+            for r in rows:
+                logger.info(
+                    "  %-15s %4d locales | precio medio %s€/mes | m² medio %sm²",
+                    r["fuente"], r["total"],
+                    int(r["precio_medio"] or 0), int(r["m2_medio"] or 0),
+                )
+
+            # Top zonas con datos de Habitaclia
+            rows2 = await conn.fetch("""
+                SELECT z.nombre, d.nombre AS distrito, COUNT(*) AS total,
+                       MIN(l.alquiler_mensual)::int AS precio_min,
+                       MAX(l.alquiler_mensual)::int AS precio_max
+                FROM locales l
+                JOIN zonas z    ON z.id = l.zona_id
+                JOIN barrios b  ON b.id = z.barrio_id
+                JOIN distritos d ON d.id = b.distrito_id
+                WHERE l.fuente = 'habitaclia' AND l.disponible = TRUE
+                GROUP BY z.nombre, d.nombre
+                ORDER BY total DESC LIMIT 10
+            """)
+            if rows2:
+                logger.info("\nTop 10 zonas con más locales de Habitaclia:")
+                for r in rows2:
+                    logger.info(
+                        "  %-30s (%s): %d locales | %d€ - %d€/mes",
+                        r["nombre"], r["distrito"], r["total"],
+                        r["precio_min"] or 0, r["precio_max"] or 0,
+                    )
+
+            # Total en staging
+            n = await conn.fetchval(
+                "SELECT COUNT(*) FROM inmuebles_portales WHERE fuente='habitaclia'"
+            )
+            logger.info("\nTotal en inmuebles_portales (staging): %d", n or 0)
+
+    except Exception as e:
+        logger.warning("Error en resumen: %s", e)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="Poblar locales desde Habitaclia")
+    parser.add_argument(
+        "--max-paginas", type=int, default=107,
+        help="Páginas del listado (default: 107 = todo BCN, ~1.600 locales)",
+    )
+    args = parser.parse_args()
+    asyncio.run(main(max_paginas=args.max_paginas))
