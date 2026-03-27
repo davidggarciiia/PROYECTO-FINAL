@@ -1,7 +1,11 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
+import {
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
+} from "recharts";
 import type { ZonaPreview, LocalDetalleResponse, FinancieroResponse } from "@/lib/types";
+import type { ScoresDimensiones } from "@/lib/types";
 import { api } from "@/lib/api";
 import FinancialPanel from "./FinancialPanel";
 import ScoreBars from "./ScoreBars";
@@ -22,25 +26,76 @@ function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
   const circ = 2 * Math.PI * r;
   const fill = circ * (score / 100);
   const color = score >= 75 ? "var(--green)" : score >= 50 ? "var(--yellow)" : "var(--red)";
-  const glow  = score >= 75 ? "rgba(16,185,129,0.4)" : score >= 50 ? "rgba(245,158,11,0.4)" : "rgba(239,68,68,0.4)";
+  const glowRgb = score >= 75 ? "16,185,129" : score >= 50 ? "245,158,11" : "239,68,68";
+  const filterId = `score-glow-${size}-${Math.round(score)}`;
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5"/>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: "visible" }}>
+      <defs>
+        <filter id={filterId} x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/>
+          <feFlood floodColor={`rgb(${glowRgb})`} floodOpacity="0.3" result="glowColor"/>
+          <feComposite in="glowColor" in2="blur" operator="in" result="glow"/>
+          <feMerge>
+            <feMergeNode in="glow"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" style={{ stroke: "var(--surface-3)" }} strokeWidth="5"/>
       <circle
         cx={size/2} cy={size/2} r={r} fill="none"
         stroke={color} strokeWidth="5"
         strokeDasharray={`${fill} ${circ - fill}`}
         strokeLinecap="round"
         transform={`rotate(-90 ${size/2} ${size/2})`}
-        style={{ filter: `drop-shadow(0 0 6px ${glow})`, transition: "stroke-dasharray 0.6s cubic-bezier(0.16,1,0.3,1)" }}
+        filter={`url(#${filterId})`}
+        style={{ transition: "stroke-dasharray 0.6s cubic-bezier(0.16,1,0.3,1)" }}
       />
       <text x={size/2} y={size/2 - 3} textAnchor="middle" fontSize="16" fontWeight="800" fill={color}>
         {Math.round(score)}
       </text>
-      <text x={size/2} y={size/2 + 12} textAnchor="middle" fontSize="9" fill="rgba(255,255,255,0.4)" fontWeight="500">
+      <text x={size/2} y={size/2 + 12} textAnchor="middle" fontSize="9" style={{ fill: "var(--text-muted)" }} fontWeight="500">
         / 100
       </text>
     </svg>
+  );
+}
+
+const RADAR_DIMS: { key: keyof ScoresDimensiones; label: string }[] = [
+  { key: "flujo_peatonal",    label: "Flujo"    },
+  { key: "demografia",        label: "Demog."   },
+  { key: "competencia",       label: "Compet."  },
+  { key: "precio_alquiler",   label: "Alquiler" },
+  { key: "transporte",        label: "Transp."  },
+  { key: "seguridad",         label: "Segur."   },
+  { key: "turismo",           label: "Turismo"  },
+  { key: "entorno_comercial", label: "Entorno"  },
+];
+
+function ScoreRadar({ scores }: { scores: ScoresDimensiones }) {
+  const data = RADAR_DIMS
+    .filter(d => scores[d.key] != null)
+    .map(d => ({ dim: d.label, value: Math.round(scores[d.key] as number) }));
+  return (
+    <div className={styles.radarWrap}>
+      <ResponsiveContainer width="100%" height="100%">
+        <RadarChart data={data} margin={{ top: 20, right: 48, bottom: 20, left: 48 }}>
+          <PolarGrid stroke="var(--border)" />
+          <PolarAngleAxis
+            dataKey="dim"
+            tick={{ fontSize: 11, fill: "var(--text-muted)", fontWeight: 600 }}
+          />
+          <Radar
+            dataKey="value"
+            stroke="var(--accent)"
+            fill="var(--accent)"
+            fillOpacity={0.18}
+            strokeWidth={2}
+            dot={{ fill: "var(--accent)", r: 3 }}
+          />
+        </RadarChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -48,10 +103,44 @@ function Skeleton({ h = 16, w = "100%" }: { h?: number; w?: string }) {
   return <div className="skeleton" style={{ height: h, width: w, borderRadius: 6, marginBottom: 8 }} />;
 }
 
+const MIN_W = 340;
+const MAX_W = 740;
+const DEFAULT_W = 440;
+
 export default function DetailPanel({ zona, detalle, loading, sessionId, onClose }: Props) {
   const [tab, setTab] = useState<Tab>("analisis");
   const [financiero, setFinanciero] = useState<FinancieroResponse | null>(null);
   const [loadingFin, setLoadingFin] = useState(false);
+  const [scoreView, setScoreView] = useState<"bars" | "radar">("bars");
+
+  const panelRef   = useRef<HTMLDivElement>(null);
+  const dragState  = useRef({ active: false, startX: 0, startW: DEFAULT_W });
+
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startW = panelRef.current?.offsetWidth ?? DEFAULT_W;
+    dragState.current = { active: true, startX: e.clientX, startW };
+    document.body.style.cursor     = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMove = (ev: MouseEvent) => {
+      if (!dragState.current.active || !panelRef.current) return;
+      const delta  = dragState.current.startX - ev.clientX;
+      const newW   = Math.min(MAX_W, Math.max(MIN_W, dragState.current.startW + delta));
+      panelRef.current.style.width = `${newW}px`;
+    };
+
+    const onUp = () => {
+      dragState.current.active       = false;
+      document.body.style.cursor     = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup",   onUp);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup",   onUp);
+  }, []);
 
   const loadFinanciero = useCallback(async () => {
     if (financiero || loadingFin) return;
@@ -82,7 +171,21 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
   const m2       = z?.m2             ?? zona.m2;
 
   return (
-    <div className={`${styles.panel} slideInRight`}>
+    <div ref={panelRef} className={`${styles.panel} slideInRight`} style={{ width: DEFAULT_W }}>
+      {/* ── Resize handle (desktop only) ── */}
+      <div className={styles.resizeHandle} onMouseDown={onResizeStart}>
+        <div className={styles.resizeGrip} />
+      </div>
+      {/* ── Mobile back bar (only visible on small screens) ── */}
+      <div className={styles.mobileBackBar}>
+        <button className={styles.mobileBackBtn} onClick={onClose} aria-label="Volver al mapa">
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+            <path d="M11 4L6 9l5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Volver
+        </button>
+      </div>
+
       {/* ── Header ── */}
       <div className={styles.header}>
         <div className={styles.headerContent}>
@@ -166,18 +269,49 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
                   )}
                 </div>
 
-                {/* Score bars (from full detail) */}
+                {/* Score bars / radar (from full detail) */}
                 {z?.scores_dimensiones && (
                   <section className={styles.section}>
-                    <h3 className={styles.sectionTitle}>
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                        <rect x="1" y="7" width="2" height="4" rx="1"/>
-                        <rect x="5" y="4" width="2" height="7" rx="1"/>
-                        <rect x="9" y="1" width="2" height="10" rx="1"/>
-                      </svg>
-                      Puntuaciones por dimensión
-                    </h3>
-                    <ScoreBars scores={z.scores_dimensiones} />
+                    <div className={styles.sectionTitleRow}>
+                      <h3 className={styles.sectionTitle}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <rect x="1" y="7" width="2" height="4" rx="1"/>
+                          <rect x="5" y="4" width="2" height="7" rx="1"/>
+                          <rect x="9" y="1" width="2" height="10" rx="1"/>
+                        </svg>
+                        Puntuaciones por dimensión
+                      </h3>
+                      <div className={styles.viewToggle}>
+                        <button
+                          className={`${styles.viewBtn} ${scoreView === "bars" ? styles.viewBtnActive : ""}`}
+                          onClick={() => setScoreView("bars")}
+                          title="Barras"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 13 13" fill="currentColor">
+                            <rect x="1" y="7" width="2.5" height="5" rx="0.8"/>
+                            <rect x="5" y="4" width="2.5" height="8" rx="0.8"/>
+                            <rect x="9" y="1" width="2.5" height="11" rx="0.8"/>
+                          </svg>
+                        </button>
+                        <button
+                          className={`${styles.viewBtn} ${scoreView === "radar" ? styles.viewBtnActive : ""}`}
+                          onClick={() => setScoreView("radar")}
+                          title="Radar"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3">
+                            <polygon points="6.5,1 12,4.5 12,8.5 6.5,12 1,8.5 1,4.5" />
+                            <polygon points="6.5,3.5 9.5,5.5 9.5,7.5 6.5,9.5 3.5,7.5 3.5,5.5" />
+                            <line x1="6.5" y1="1" x2="6.5" y2="12"/>
+                            <line x1="1" y1="4.5" x2="12" y2="8.5"/>
+                            <line x1="12" y1="4.5" x2="1" y2="8.5"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    {scoreView === "bars"
+                      ? <ScoreBars scores={z.scores_dimensiones} />
+                      : <ScoreRadar scores={z.scores_dimensiones} />
+                    }
                   </section>
                 )}
 
@@ -233,11 +367,40 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
                       Flujo peatonal
                     </h3>
                     <div className={styles.flujoGrid}>
-                      {[
-                        { label: "Mañana", val: z.flujo_peatonal_dia.manana, icon: "🌅" },
-                        { label: "Tarde",  val: z.flujo_peatonal_dia.tarde,  icon: "☀️" },
-                        { label: "Noche",  val: z.flujo_peatonal_dia.noche,  icon: "🌙" },
-                      ].map(({ label, val, icon }) => (
+                      {([
+                        {
+                          label: "Mañana",
+                          val: z.flujo_peatonal_dia.manana,
+                          icon: (
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="10" cy="10" r="3.5" fill="currentColor" fillOpacity="0.15"/>
+                              <path d="M10 3v1.5M10 15.5V17M3 10h1.5M15.5 10H17M5.1 5.1l1.1 1.1M13.8 13.8l1.1 1.1M5.1 14.9l1.1-1.1M13.8 6.2l1.1-1.1"/>
+                              <path d="M4 17h12" strokeWidth="1.2"/>
+                            </svg>
+                          ),
+                        },
+                        {
+                          label: "Tarde",
+                          val: z.flujo_peatonal_dia.tarde,
+                          icon: (
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="10" cy="10" r="4.5" fill="currentColor" fillOpacity="0.15"/>
+                              <path d="M10 2.5V4M10 16v1.5M2.5 10H4M16 10h1.5M4.6 4.6l1.1 1.1M14.3 14.3l1.1 1.1M4.6 15.4l1.1-1.1M14.3 5.7l1.1-1.1"/>
+                            </svg>
+                          ),
+                        },
+                        {
+                          label: "Noche",
+                          val: z.flujo_peatonal_dia.noche,
+                          icon: (
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M15 13.5A7 7 0 0 1 6.5 5a7.5 7.5 0 1 0 8.5 8.5z" fill="currentColor" fillOpacity="0.15"/>
+                              <circle cx="15" cy="5" r="1" fill="currentColor" stroke="none" opacity="0.6"/>
+                              <circle cx="17" cy="9" r="0.6" fill="currentColor" stroke="none" opacity="0.4"/>
+                            </svg>
+                          ),
+                        },
+                      ] as { label: string; val: number | undefined; icon: React.ReactNode }[]).map(({ label, val, icon }) => (
                         <div key={label} className={styles.flujoItem}>
                           <span className={styles.flujoIcon}>{icon}</span>
                           <span className={styles.flujoVal}>{(val ?? 0).toLocaleString()}</span>

@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import SearchBox from "@/components/SearchBox";
 import ZoneList from "@/components/ZoneList";
 import DetailPanel from "@/components/DetailPanel";
 import styles from "./page.module.css";
-import type { ZonaPreview, LocalDetalleResponse } from "@/lib/types";
+import type { ZonaPreview, LocalDetalleResponse, Theme } from "@/lib/types";
 import { api } from "@/lib/api";
 
 const MapView = dynamic(() => import("@/components/MapView"), {
@@ -21,31 +21,71 @@ const EXAMPLES = [
   "Centro de estética y bienestar",
 ];
 
+function useTheme(): [Theme, (t: Theme) => void] {
+  const [theme, setThemeState] = useState<Theme>("dark");
+
+  useEffect(() => {
+    const stored = localStorage.getItem("georetail-theme") as Theme | null;
+    if (stored === "light" || stored === "dark") {
+      setThemeState(stored);
+      document.documentElement.setAttribute("data-theme", stored);
+    }
+  }, []);
+
+  const setTheme = useCallback((t: Theme) => {
+    setThemeState(t);
+    document.documentElement.setAttribute("data-theme", t);
+    localStorage.setItem("georetail-theme", t);
+  }, []);
+
+  return [theme, setTheme];
+}
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return isMobile;
+}
+
 export default function HomePage() {
-  const [sessionId, setSessionId] = useState("");
-  const [zonas, setZonas] = useState<ZonaPreview[]>([]);
-  const [selectedZona, setSelectedZona] = useState<ZonaPreview | null>(null);
-  const [detalle, setDetalle] = useState<LocalDetalleResponse | null>(null);
+  const isMobile = useIsMobile();
+  const [theme, setTheme] = useTheme();
+
+  const [sessionId, setSessionId]           = useState("");
+  const [zonas, setZonas]                   = useState<ZonaPreview[]>([]);
+  const [selectedZona, setSelectedZona]     = useState<ZonaPreview | null>(null);
+  const [detalle, setDetalle]               = useState<LocalDetalleResponse | null>(null);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery]       = useState("");
+  const [showDetail, setShowDetail]         = useState(false);
+  const [hasSearched, setHasSearched]       = useState(false);
+  const [searchBoxOpen, setSearchBoxOpen]   = useState(false);
 
   const handleResults = useCallback((newZonas: ZonaPreview[], sid: string) => {
     setZonas(newZonas);
     setSessionId(sid);
     setSelectedZona(null);
     setDetalle(null);
+    setShowDetail(false);
+    setHasSearched(true);
   }, []);
 
   const handleZonaClick = useCallback(async (zona: ZonaPreview) => {
     setSelectedZona(zona);
     setDetalle(null);
     setLoadingDetalle(true);
+    setShowDetail(true);
     try {
       const data = await api.localDetalle(zona.zona_id, sessionId);
       setDetalle(data);
     } catch (e) {
       console.error("Error cargando detalle:", e);
-      // detalle stays null — panel shows preview data from ZonaPreview
     } finally {
       setLoadingDetalle(false);
     }
@@ -54,80 +94,62 @@ export default function HomePage() {
   const handleClosePanel = useCallback(() => {
     setSelectedZona(null);
     setDetalle(null);
+    setShowDetail(false);
   }, []);
 
   return (
     <div className={styles.app}>
-      {/* ── Sidebar ── */}
-      <aside className={styles.sidebar}>
-        {/* Logo */}
-        <div className={styles.logoBar}>
-          <div className={styles.logoMark}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M8 1C5.24 1 3 3.24 3 6c0 3.5 5 9 5 9s5-5.5 5-9c0-2.76-2.24-5-5-5z" fill="white" opacity="0.9"/>
-              <circle cx="8" cy="6" r="2" fill="white" opacity="0.5"/>
-            </svg>
-          </div>
-          <span className={styles.logoText}>GeoRetail</span>
-          <span className={styles.logoBadge}>BCN</span>
-        </div>
 
-        {/* Search */}
-        <SearchBox
-          onResults={handleResults}
-          sessionId={sessionId}
-          externalQuery={searchQuery}
-          onQueryUsed={() => setSearchQuery("")}
-        />
-
-        {/* Results list — always visible when there are zones */}
-        {zonas.length > 0 && (
-          <>
-            <div className={styles.resultsHeader}>
-              <span className={styles.resultsCount}>{zonas.length} ubicaciones</span>
-              <span className={styles.resultsHint}>Haz clic para ver detalle</span>
-            </div>
-            <ZoneList
-              zonas={zonas}
-              selectedId={selectedZona?.zona_id}
-              onSelect={handleZonaClick}
-            />
-          </>
-        )}
-
-        {zonas.length === 0 && (
-          <div className={styles.emptyState}>
-            <div className={styles.emptyIllustration}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                <circle cx="12" cy="9" r="2.5" stroke="currentColor" strokeWidth="1.5"/>
-              </svg>
-            </div>
-            <p className={styles.emptyTitle}>Encuentra tu ubicación ideal</p>
-            <p className={styles.emptyDesc}>
-              Describe tu negocio y recibirás un análisis de viabilidad para cada zona de Barcelona
-            </p>
-            <div className={styles.exampleChips}>
-              {EXAMPLES.map(ex => (
-                <button key={ex} className={styles.chip} onClick={() => setSearchQuery(ex)}>
-                  {ex}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </aside>
-
-      {/* ── Map (always visible) ── */}
+      {/* ── Full-screen map ── */}
       <main className={styles.mapContainer}>
         <MapView
           zonas={zonas}
           selectedId={selectedZona?.zona_id}
           onZonaClick={handleZonaClick}
+          theme={theme}
+          onThemeChange={setTheme}
         />
 
-        {/* Detail panel overlays the map from the right */}
-        {selectedZona && (
+        {/* ── Floating overlay: search + zone list ── */}
+        <div className={styles.floatingOverlay}>
+
+          {/* Search ball */}
+          <SearchBox
+            onResults={handleResults}
+            sessionId={sessionId}
+            externalQuery={searchQuery}
+            onQueryUsed={() => setSearchQuery("")}
+            examples={EXAMPLES}
+            hasResults={zonas.length > 0}
+            onOpenChange={setSearchBoxOpen}
+          />
+
+          {/* Search hint — shown when no search done yet and box is closed */}
+          {!hasSearched && !searchBoxOpen && (
+            <div className={styles.searchHint}>
+              <div className={styles.searchHintBubble}>
+                <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <circle cx="6" cy="6" r="4.5"/>
+                  <path d="M9.5 9.5L12.5 12.5"/>
+                </svg>
+                Indica tu negocio en el buscador
+              </div>
+            </div>
+          )}
+
+          {/* Zone list — desktop floating panel */}
+          {zonas.length > 0 && !isMobile && (
+            <ZoneList
+              zonas={zonas}
+              selectedId={selectedZona?.zona_id}
+              onSelect={handleZonaClick}
+              asFloatingPanel
+            />
+          )}
+        </div>
+
+        {/* Desktop: detail panel overlays map from the right */}
+        {!isMobile && showDetail && selectedZona && (
           <DetailPanel
             zona={selectedZona}
             detalle={detalle}
@@ -137,6 +159,27 @@ export default function HomePage() {
           />
         )}
       </main>
+
+      {/* ── Mobile: bottom sheet zone list ── */}
+      {isMobile && zonas.length > 0 && !showDetail && (
+        <ZoneList
+          zonas={zonas}
+          selectedId={selectedZona?.zona_id}
+          onSelect={handleZonaClick}
+          asBottomSheet
+        />
+      )}
+
+      {/* ── Mobile: fullscreen detail panel ── */}
+      {isMobile && showDetail && selectedZona && (
+        <DetailPanel
+          zona={selectedZona}
+          detalle={detalle}
+          loading={loadingDetalle}
+          sessionId={sessionId}
+          onClose={handleClosePanel}
+        />
+      )}
     </div>
   );
 }
