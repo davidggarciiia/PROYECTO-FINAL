@@ -96,8 +96,6 @@ const SCORE_COLOR = (pct: number) =>
   pct >= 75 ? "#10B981" : pct >= 50 ? "#F59E0B" : "#EF4444";
 const SCORE_COLOR_DIM = (pct: number) =>
   pct >= 75 ? "#10B98166" : pct >= 50 ? "#F59E0B66" : "#EF444466";
-const SCORE_GLOW = (pct: number) =>
-  pct >= 75 ? "rgba(16,185,129,0.55)" : pct >= 50 ? "rgba(245,158,11,0.55)" : "rgba(239,68,68,0.55)";
 
 export default function ScoreBars({ scores }: Props) {
   const dims = DIMS.filter(d => scores[d.key] !== undefined && scores[d.key] !== null);
@@ -108,9 +106,8 @@ export default function ScoreBars({ scores }: Props) {
       {dims.map(({ key, label, Icon }, i) => {
         const val = scores[key] as number;
         const pct = Math.min(100, Math.max(0, val));
-        const hex  = SCORE_COLOR(pct);
-        const dim  = SCORE_COLOR_DIM(pct);
-        const glow = SCORE_GLOW(pct);
+        const hex = SCORE_COLOR(pct);
+        const dim = SCORE_COLOR_DIM(pct);
         return (
           <div key={key} className={styles.bar}>
             <div className={styles.barRow}>
@@ -124,7 +121,6 @@ export default function ScoreBars({ scores }: Props) {
                 style={{
                   width: `${pct}%`,
                   background: hex,
-                  boxShadow: `0 0 8px ${glow}, 0 0 3px ${glow}`,
                   animationDelay: `${i * 55}ms`,
                 }}
               />

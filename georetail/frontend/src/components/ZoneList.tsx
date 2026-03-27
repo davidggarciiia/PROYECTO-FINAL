@@ -101,18 +101,20 @@ function ZoneCards({ zonas, selectedId, onSelect }: Omit<Props, "asBottomSheet" 
         })}
       </div>
       <div className={styles.list}>
-        {sorted.map((zona, idx) => {
+        {sorted.map((zona) => {
           const score = zona.score_global ?? 0;
           const isSelected = selectedId === zona.zona_id;
+          const tier = score >= 75 ? "high" : score >= 50 ? "mid" : "low";
           return (
             <button
               key={zona.zona_id}
-              className={`${styles.card} ${isSelected ? styles.cardSelected : ""}`}
+              className={`${styles.card} ${styles[`cardTier_${tier}`]} ${isSelected ? styles.cardSelected : ""}`}
               onClick={() => onSelect(zona)}
             >
-              <div className={styles.rank}>#{idx + 1}</div>
               <div className={styles.info}>
-                <div className={styles.name}>{zona.nombre}</div>
+                <div className={styles.nameRow}>
+                  <div className={styles.name}>{zona.nombre}</div>
+                </div>
                 <div className={styles.sub}>{zona.barrio} · {zona.distrito}</div>
                 <div className={styles.meta}>
                   {zona.alquiler_mensual && (

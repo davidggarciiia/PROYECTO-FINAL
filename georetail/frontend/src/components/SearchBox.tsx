@@ -12,6 +12,7 @@ interface Props {
   onQueryUsed?: () => void;
   examples?: string[];
   hasResults?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export default function SearchBox({
@@ -21,6 +22,7 @@ export default function SearchBox({
   onQueryUsed,
   examples,
   hasResults,
+  onOpenChange,
 }: Props) {
   const [open, setOpen]       = useState(false);
   const [input, setInput]     = useState("");
@@ -28,13 +30,18 @@ export default function SearchBox({
   const [error, setError]     = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const openSearchBox = useCallback((value: boolean) => {
+    setOpen(value);
+    onOpenChange?.(value);
+  }, [onOpenChange]);
+
   useEffect(() => {
     if (externalQuery) {
       setInput(externalQuery);
-      setOpen(true);
+      openSearchBox(true);
       onQueryUsed?.();
     }
-  }, [externalQuery, onQueryUsed]);
+  }, [externalQuery, onQueryUsed, openSearchBox]);
 
   useEffect(() => {
     if (open) {
@@ -69,7 +76,7 @@ export default function SearchBox({
         }));
         onResults(zonasPreview, res.session_id);
         setInput("");
-        setOpen(false);
+        openSearchBox(false);
       } else if (res.estado === "cuestionario") {
         setError("Describe tu negocio con más detalle: tipo, público y presupuesto.");
       } else if (res.estado === "error_tipo_negocio") {
@@ -98,7 +105,7 @@ export default function SearchBox({
 
   const handleKeyDown = (e: { key: string; shiftKey: boolean; preventDefault(): void }) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); buscar(input); }
-    if (e.key === "Escape") { setOpen(false); setError(""); }
+    if (e.key === "Escape") { openSearchBox(false); setError(""); }
   };
 
   return (
@@ -107,7 +114,7 @@ export default function SearchBox({
       {/* ── Floating ball ── */}
       <button
         className={styles.ball}
-        onClick={() => { setOpen((o: boolean) => !o); setError(""); }}
+        onClick={() => { openSearchBox(!open); setError(""); }}
         title={open ? "Cerrar búsqueda" : "Buscar ubicación"}
         aria-label="Buscar"
         aria-expanded={open}

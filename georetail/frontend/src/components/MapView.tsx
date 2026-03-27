@@ -9,12 +9,11 @@ import styles from "./MapView.module.css";
 const BCN_CENTER: [number, number] = [41.3851, 2.1734];
 
 // ── Map styles ────────────────────────────────────────────────────────────────
-type MapStyleId = 
-  | "light" 
-  | "colorful" 
-  | "vibrant" 
-  | "pastel" 
-  | "satellite" 
+type MapStyleId =
+  | "light"
+  | "colorful"
+  | "vibrant"
+  | "satellite"
   | "dark"
   | "humanitarian";
 
@@ -46,16 +45,6 @@ const MAP_STYLES: MapStyle[] = [
     emoji: "🎨",
     url: "https://tiles.stadiamaps.com/tiles/osm_bright/{z}/{x}/{y}{r}.png",
     attribution: '© <a href="https://www.stadiamaps.com/">Stadia Maps</a>, © <a href="https://openmaptiles.org/">OpenMapTiles</a>, © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    subdomains: "abc",
-    dark: false,
-    maxZoom: 20,
-  },
-  {
-    id: "pastel",
-    label: "Pastel",
-    emoji: "🌸",
-    url: "https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png",
-    attribution: '© <a href="https://www.stadiamaps.com/">Stadia Maps</a>, © <a href="https://www.stamen.com/">Stamen Design</a>, © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     subdomains: "abc",
     dark: false,
     maxZoom: 20,
@@ -174,7 +163,7 @@ function AutoBounds({ zonas }: { zonas: ZonaPreview[] }) {
   return null;
 }
 
-function PanToSelected({ zona }: { zona: ZonaPreview | null }) {
+function PanTo({ zona }: { zona: ZonaPreview | null }) {
   const map = useMap();
   const prevId = useRef<string | null>(null);
   useEffect(() => {
@@ -268,16 +257,31 @@ export default function MapView({ zonas, selectedId, onZonaClick, theme, onTheme
   const [styleId, setStyleId] = useState<MapStyleId>("vibrant");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [panTarget, setPanTarget] = useState<ZonaPreview | null>(null);
 
   const currentStyle = MAP_STYLES.find(s => s.id === styleId)!;
   const selectedZona = useMemo(() => zonas.find(z => z.zona_id === selectedId) ?? null, [zonas, selectedId]);
 
+  // Pan when selection changes from the zone list (not via marker click)
+  useEffect(() => {
+    if (selectedZona) setPanTarget(selectedZona);
+  }, [selectedZona]);
+
   const handleMarkerClick = useCallback((zona: ZonaPreview) => {
-    if (expandedId === zona.zona_id) {
+    setPanTarget(zona);
+    const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+    if (isMobile) {
+      // Mobile: first click shows card, second click opens detail
+      if (expandedId === zona.zona_id) {
+        onZonaClick(zona);
+        setExpandedId(null);
+      } else {
+        setExpandedId(zona.zona_id);
+      }
+    } else {
+      // Desktop: click directly opens detail panel
       onZonaClick(zona);
       setExpandedId(null);
-    } else {
-      setExpandedId(zona.zona_id);
     }
   }, [expandedId, onZonaClick]);
 
@@ -304,7 +308,7 @@ export default function MapView({ zonas, selectedId, onZonaClick, theme, onTheme
         />
 
         <AutoBounds zonas={zonas} />
-        <PanToSelected zona={selectedZona} />
+        <PanTo zona={panTarget} />
 
         {zonas.map(zona => {
           const score = zona.score_global ?? 0;

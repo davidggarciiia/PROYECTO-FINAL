@@ -1,7 +1,11 @@
 "use client";
 
 import React, { useState, useCallback, useRef } from "react";
+import {
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
+} from "recharts";
 import type { ZonaPreview, LocalDetalleResponse, FinancieroResponse } from "@/lib/types";
+import type { ScoresDimensiones } from "@/lib/types";
 import { api } from "@/lib/api";
 import FinancialPanel from "./FinancialPanel";
 import ScoreBars from "./ScoreBars";
@@ -22,9 +26,21 @@ function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
   const circ = 2 * Math.PI * r;
   const fill = circ * (score / 100);
   const color = score >= 75 ? "var(--green)" : score >= 50 ? "var(--yellow)" : "var(--red)";
-  const glow  = score >= 75 ? "rgba(16,185,129,0.4)" : score >= 50 ? "rgba(245,158,11,0.4)" : "rgba(239,68,68,0.4)";
+  const glowRgb = score >= 75 ? "16,185,129" : score >= 50 ? "245,158,11" : "239,68,68";
+  const filterId = `score-glow-${size}-${Math.round(score)}`;
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: "visible" }}>
+      <defs>
+        <filter id={filterId} x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/>
+          <feFlood floodColor={`rgb(${glowRgb})`} floodOpacity="0.3" result="glowColor"/>
+          <feComposite in="glowColor" in2="blur" operator="in" result="glow"/>
+          <feMerge>
+            <feMergeNode in="glow"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
       <circle cx={size/2} cy={size/2} r={r} fill="none" style={{ stroke: "var(--surface-3)" }} strokeWidth="5"/>
       <circle
         cx={size/2} cy={size/2} r={r} fill="none"
@@ -32,7 +48,8 @@ function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
         strokeDasharray={`${fill} ${circ - fill}`}
         strokeLinecap="round"
         transform={`rotate(-90 ${size/2} ${size/2})`}
-        style={{ filter: `drop-shadow(0 0 6px ${glow})`, transition: "stroke-dasharray 0.6s cubic-bezier(0.16,1,0.3,1)" }}
+        filter={`url(#${filterId})`}
+        style={{ transition: "stroke-dasharray 0.6s cubic-bezier(0.16,1,0.3,1)" }}
       />
       <text x={size/2} y={size/2 - 3} textAnchor="middle" fontSize="16" fontWeight="800" fill={color}>
         {Math.round(score)}
@@ -41,6 +58,44 @@ function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
         / 100
       </text>
     </svg>
+  );
+}
+
+const RADAR_DIMS: { key: keyof ScoresDimensiones; label: string }[] = [
+  { key: "flujo_peatonal",    label: "Flujo"    },
+  { key: "demografia",        label: "Demog."   },
+  { key: "competencia",       label: "Compet."  },
+  { key: "precio_alquiler",   label: "Alquiler" },
+  { key: "transporte",        label: "Transp."  },
+  { key: "seguridad",         label: "Segur."   },
+  { key: "turismo",           label: "Turismo"  },
+  { key: "entorno_comercial", label: "Entorno"  },
+];
+
+function ScoreRadar({ scores }: { scores: ScoresDimensiones }) {
+  const data = RADAR_DIMS
+    .filter(d => scores[d.key] != null)
+    .map(d => ({ dim: d.label, value: Math.round(scores[d.key] as number) }));
+  return (
+    <div className={styles.radarWrap}>
+      <ResponsiveContainer width="100%" height="100%">
+        <RadarChart data={data} margin={{ top: 20, right: 48, bottom: 20, left: 48 }}>
+          <PolarGrid stroke="var(--border)" />
+          <PolarAngleAxis
+            dataKey="dim"
+            tick={{ fontSize: 11, fill: "var(--text-muted)", fontWeight: 600 }}
+          />
+          <Radar
+            dataKey="value"
+            stroke="var(--accent)"
+            fill="var(--accent)"
+            fillOpacity={0.18}
+            strokeWidth={2}
+            dot={{ fill: "var(--accent)", r: 3 }}
+          />
+        </RadarChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -56,6 +111,7 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
   const [tab, setTab] = useState<Tab>("analisis");
   const [financiero, setFinanciero] = useState<FinancieroResponse | null>(null);
   const [loadingFin, setLoadingFin] = useState(false);
+  const [scoreView, setScoreView] = useState<"bars" | "radar">("bars");
 
   const panelRef   = useRef<HTMLDivElement>(null);
   const dragState  = useRef({ active: false, startX: 0, startW: DEFAULT_W });
@@ -123,12 +179,11 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
       {/* ── Mobile back bar (only visible on small screens) ── */}
       <div className={styles.mobileBackBar}>
         <button className={styles.mobileBackBtn} onClick={onClose} aria-label="Volver al mapa">
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
             <path d="M11 4L6 9l5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          Volver al mapa
+          Volver
         </button>
-        <span className={styles.mobileBackLabel}>{z?.nombre ?? zona.nombre}</span>
       </div>
 
       {/* ── Header ── */}
@@ -214,18 +269,49 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
                   )}
                 </div>
 
-                {/* Score bars (from full detail) */}
+                {/* Score bars / radar (from full detail) */}
                 {z?.scores_dimensiones && (
                   <section className={styles.section}>
-                    <h3 className={styles.sectionTitle}>
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                        <rect x="1" y="7" width="2" height="4" rx="1"/>
-                        <rect x="5" y="4" width="2" height="7" rx="1"/>
-                        <rect x="9" y="1" width="2" height="10" rx="1"/>
-                      </svg>
-                      Puntuaciones por dimensión
-                    </h3>
-                    <ScoreBars scores={z.scores_dimensiones} />
+                    <div className={styles.sectionTitleRow}>
+                      <h3 className={styles.sectionTitle}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <rect x="1" y="7" width="2" height="4" rx="1"/>
+                          <rect x="5" y="4" width="2" height="7" rx="1"/>
+                          <rect x="9" y="1" width="2" height="10" rx="1"/>
+                        </svg>
+                        Puntuaciones por dimensión
+                      </h3>
+                      <div className={styles.viewToggle}>
+                        <button
+                          className={`${styles.viewBtn} ${scoreView === "bars" ? styles.viewBtnActive : ""}`}
+                          onClick={() => setScoreView("bars")}
+                          title="Barras"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 13 13" fill="currentColor">
+                            <rect x="1" y="7" width="2.5" height="5" rx="0.8"/>
+                            <rect x="5" y="4" width="2.5" height="8" rx="0.8"/>
+                            <rect x="9" y="1" width="2.5" height="11" rx="0.8"/>
+                          </svg>
+                        </button>
+                        <button
+                          className={`${styles.viewBtn} ${scoreView === "radar" ? styles.viewBtnActive : ""}`}
+                          onClick={() => setScoreView("radar")}
+                          title="Radar"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3">
+                            <polygon points="6.5,1 12,4.5 12,8.5 6.5,12 1,8.5 1,4.5" />
+                            <polygon points="6.5,3.5 9.5,5.5 9.5,7.5 6.5,9.5 3.5,7.5 3.5,5.5" />
+                            <line x1="6.5" y1="1" x2="6.5" y2="12"/>
+                            <line x1="1" y1="4.5" x2="12" y2="8.5"/>
+                            <line x1="12" y1="4.5" x2="1" y2="8.5"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    {scoreView === "bars"
+                      ? <ScoreBars scores={z.scores_dimensiones} />
+                      : <ScoreRadar scores={z.scores_dimensiones} />
+                    }
                   </section>
                 )}
 

@@ -64,6 +64,8 @@ export default function HomePage() {
   const [loadingDetalle, setLoadingDetalle] = useState(false);
   const [searchQuery, setSearchQuery]       = useState("");
   const [showDetail, setShowDetail]         = useState(false);
+  const [hasSearched, setHasSearched]       = useState(false);
+  const [searchBoxOpen, setSearchBoxOpen]   = useState(false);
 
   const handleResults = useCallback((newZonas: ZonaPreview[], sid: string) => {
     setZonas(newZonas);
@@ -71,6 +73,7 @@ export default function HomePage() {
     setSelectedZona(null);
     setDetalle(null);
     setShowDetail(false);
+    setHasSearched(true);
   }, []);
 
   const handleZonaClick = useCallback(async (zona: ZonaPreview) => {
@@ -118,7 +121,21 @@ export default function HomePage() {
             onQueryUsed={() => setSearchQuery("")}
             examples={EXAMPLES}
             hasResults={zonas.length > 0}
+            onOpenChange={setSearchBoxOpen}
           />
+
+          {/* Search hint — shown when no search done yet and box is closed */}
+          {!hasSearched && !searchBoxOpen && (
+            <div className={styles.searchHint}>
+              <div className={styles.searchHintBubble}>
+                <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <circle cx="6" cy="6" r="4.5"/>
+                  <path d="M9.5 9.5L12.5 12.5"/>
+                </svg>
+                Indica tu negocio en el buscador
+              </div>
+            </div>
+          )}
 
           {/* Zone list — desktop floating panel */}
           {zonas.length > 0 && !isMobile && (
