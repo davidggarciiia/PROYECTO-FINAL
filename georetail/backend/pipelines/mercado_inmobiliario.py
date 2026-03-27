@@ -2,20 +2,45 @@
 pipelines/mercado_inmobiliario.py — Pipeline de locales en alquiler desde Habitaclia.
 
 FLUJO:
-  1. HabitacliaScraper.scrape()         → list[dict] con precio, m2, barrio, url
-  2. _persistir_en_inmuebles_portales() → INSERT en inmuebles_portales (staging)
-  3. _sincronizar_a_locales()           → Lee staging, asigna zona_id por barrio,
-                                          escribe en tabla locales (lo ve el frontend)
-  4. _limpiar_seed()                    → Oculta locales hardcodeados en zonas cubiertas
-  5. _actualizar_precios_zona()         → Recalcula medianas en precios_alquiler_zona
+  1. HabitacliaScraper.scrape()           → list[dict] del listado (sin páginas de detalle)
+  2. _persistir_en_inmuebles_portales()   → INSERT en inmuebles_portales (staging)
+  3. _sincronizar_a_locales()             → staging → tabla locales (lo ve el frontend)
+  4. _limpiar_seed()                      → oculta locales hardcodeados en zonas cubiertas
+  5. _actualizar_precios_zona()           → recalcula medianas en precios_alquiler_zona
 
-Puntos de entrada:
-  ejecutar_habitaclia(max_paginas)  — lanzado por el script poblar_locales_habitaclia.py
-  ejecutar(modo, ...)               — compatibilidad con el scheduler y api/admin.py
+SCHEMAS REALES (verificados contra las migraciones SQL):
+
+  locales (001_schema_inicial.sql + 005_habitaclia_locales.sql):
+    id VARCHAR(50) PK, zona_id VARCHAR(20), direccion TEXT,
+    lat FLOAT NOT NULL, lng FLOAT NOT NULL,
+    geometria GEOMETRY(POINT, 4326),
+    m2 FLOAT, planta VARCHAR(10), escaparate_ml FLOAT,
+    referencia_catastral VARCHAR(30), alquiler_mensual FLOAT,
+    disponible BOOLEAN, fuente VARCHAR(30),
+    url TEXT, titulo TEXT, descripcion TEXT,   ← añadidas por migración 005
+    created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
+
+  inmuebles_portales (004_inmuebles_portales.sql):
+    portal_id TEXT UNIQUE, fuente TEXT, url TEXT, tipo_operacion TEXT,
+    precio NUMERIC(12,2), precio_m2 NUMERIC(10,2), superficie_util NUMERIC(10,2),
+    titulo TEXT, direccion TEXT, barrio TEXT, distrito TEXT,
+    lat DOUBLE PRECISION, lon DOUBLE PRECISION, escaparate BOOLEAN, ...
+
+  precios_alquiler_zona (001_schema_inicial.sql):
+    zona_id, fecha, precio_m2, precio_min, precio_max, num_muestras, fuente
+    UNIQUE (zona_id, fecha, fuente)
+    — SIN columna 'tipo' —
+
+  zonas (001_schema_inicial.sql):
+    id VARCHAR(20) PK, nombre TEXT, barrio_id INT → barrios(id),
+    geometria GEOMETRY(POLYGON, 4326)
+
+  barrios (001_schema_inicial.sql):
+    id SERIAL PK, codigo VARCHAR(6), nombre TEXT, distrito_id INT,
+    geometria GEOMETRY(MULTIPOLYGON, 4326)
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from datetime import datetime, timezone
@@ -34,11 +59,11 @@ logger = logging.getLogger(__name__)
 
 async def ejecutar_habitaclia(max_paginas: int = 107) -> dict:
     """
-    Scraping completo de Habitaclia + sincronización a la tabla locales.
+    Scraping de Habitaclia (solo listados) + sincronización a tabla locales.
 
     Args:
-        max_paginas: páginas del listado (107 = cobertura total BCN ~1.600 locales).
-                     Para prueba rápida usa 5 (~75 locales, ~10 min).
+        max_paginas: 107 = cobertura total BCN (~1.600 locales).
+                     Para prueba rápida usa 5 (~75 locales, ~2 min).
     """
     cfg          = get_settings()
     scraping_cfg = _build_scraping_config(cfg)
@@ -61,28 +86,29 @@ async def ejecutar_habitaclia(max_paginas: int = 107) -> dict:
         return stats
 
     if not anuncios_raw:
-        logger.warning("Habitaclia: sin resultados")
+        logger.warning("Habitaclia: sin resultados — ¿bloqueado?")
         return stats
 
-    # PASO 2: Staging en inmuebles_portales ────────────────────────────────────
+    # PASO 2: Persistencia en staging ──────────────────────────────────────────
     ids_conocidos = await _cargar_ids_conocidos()
     nuevos        = await _persistir_en_inmuebles_portales(anuncios_raw, ids_conocidos)
     stats["guardados_portales"] = nuevos
     logger.info("Habitaclia: %d nuevos en inmuebles_portales", nuevos)
 
-    # PASO 3: Sincronizar staging → locales (tabla que usa el frontend) ────────
+    # PASO 3: Sincronizar staging → tabla locales ──────────────────────────────
     sincronizados = await _sincronizar_a_locales()
     stats["sincronizados_locales"] = sincronizados
     logger.info("Habitaclia: %d locales sincronizados en tabla locales", sincronizados)
 
-    # PASO 4: Ocultar seed en zonas ya cubiertas ───────────────────────────────
+    # PASO 4: Ocultar seed en zonas cubiertas ──────────────────────────────────
     ocultos = await _limpiar_seed()
     stats["seed_ocultados"] = ocultos
 
     # PASO 5: Recalcular precios por zona ──────────────────────────────────────
     if sincronizados > 0:
         try:
-            await _actualizar_precios_zona()
+            n_precios = await _actualizar_precios_zona()
+            logger.info("Precios actualizados en %d zonas", n_precios)
         except Exception as exc:
             logger.error("Error en _actualizar_precios_zona: %s", exc)
 
@@ -97,9 +123,7 @@ async def ejecutar(
     portales: Optional[list[str]] = None,
 ) -> dict:
     """Compatibilidad con el scheduler y api/admin.py."""
-    if modo in ("locales_alquiler", "locales_venta", "viviendas"):
-        return await ejecutar_habitaclia(max_paginas=max_paginas or 107)
-    return {"scrapeados": 0, "guardados_portales": 0, "sincronizados_locales": 0}
+    return await ejecutar_habitaclia(max_paginas=max_paginas or 107)
 
 
 # ── PASO 2: Persistencia en staging ──────────────────────────────────────────
@@ -165,54 +189,56 @@ async def _upsert_inmueble(inm: InmueblePortal) -> None:
         )
 
 
-# ── PASO 3: Sincronización a la tabla locales ─────────────────────────────────
+# ── PASO 3: Sincronización a tabla locales ────────────────────────────────────
 
 async def _sincronizar_a_locales() -> int:
     """
-    Lee inmuebles_portales (Habitaclia) y escribe en la tabla locales.
+    Lee inmuebles_portales (Habitaclia) y escribe en tabla locales.
 
-    La tabla locales tiene estas columnas según 001_schema_inicial.sql:
-      id, zona_id, direccion, lat, lng, geometria,
-      m2, planta, escaparate_ml, referencia_catastral,
-      alquiler_mensual, disponible, fuente, created_at, updated_at
-
-    Habitaclia NO devuelve lat/lng exactos, solo el nombre del barrio.
-    Usamos el centroide de la zona asignada como coordenadas del local.
-    Esto es suficiente — el frontend usa las coords de la zona para el mapa.
+    Puntos importantes del schema real:
+      - locales.lat y locales.lng son FLOAT NOT NULL → usamos centroide de la zona
+      - locales.id es VARCHAR(50) tras migración 005 → truncamos a 50 chars
+      - locales.url y locales.titulo existen tras migración 005
+      - ST_MakePoint(lng, lat) — PostGIS usa (X=lng, Y=lat)
     """
-    mapa_barrios = await _cargar_mapa_barrios()
-    logger.info("Mapa barrios: %d entradas disponibles", len(mapa_barrios))
+    mapa_zonas = await _cargar_mapa_zonas()
+    logger.info("Mapa zonas: %d entradas disponibles", len(mapa_zonas))
+
+    if not mapa_zonas:
+        logger.error("Mapa de zonas vacío — ¿están cargados los datos de barrios?")
+        return 0
 
     async with get_db() as conn:
         rows = await conn.fetch("""
             SELECT portal_id, precio, precio_m2, superficie_util AS m2,
-                   barrio, distrito, escaparate
+                   barrio, distrito, escaparate, url, titulo
             FROM inmuebles_portales
-            WHERE fuente = 'habitaclia'
-              AND tipo_operacion = 'alquiler-locales'
+            WHERE fuente          = 'habitaclia'
+              AND tipo_operacion  = 'alquiler-locales'
               AND precio IS NOT NULL
               AND precio BETWEEN 100 AND 100000
             ORDER BY fecha_scraping DESC
         """)
 
-    logger.info("Staging Habitaclia: %d anuncios a sincronizar", len(rows))
+    logger.info("Staging Habitaclia: %d anuncios candidatos", len(rows))
 
     sincronizados = 0
-    sin_zona      = 0
+    sin_zona = 0
 
     async with get_db() as conn:
         for row in rows:
             barrio_texto = (row["barrio"] or row["distrito"] or "").strip()
-            zona_info    = _resolver_zona(barrio_texto, mapa_barrios)
+            zona_info    = _resolver_zona(barrio_texto, mapa_zonas)
 
             if not zona_info:
                 sin_zona += 1
+                logger.debug("Sin zona para barrio: '%s'", barrio_texto)
                 continue
 
             zona_id, lat, lng = zona_info
 
-            # ID del local: portal_id truncado a 30 chars (tamaño de la columna)
-            local_id = row["portal_id"][:30]
+            # ID máx. 50 chars (schema tras migración 005)
+            local_id = row["portal_id"][:50]
 
             try:
                 await conn.execute("""
@@ -220,27 +246,34 @@ async def _sincronizar_a_locales() -> int:
                         id, zona_id, direccion,
                         lat, lng, geometria,
                         m2, planta, escaparate_ml,
-                        alquiler_mensual, disponible, fuente
+                        alquiler_mensual, disponible, fuente,
+                        url, titulo
                     ) VALUES (
                         $1, $2, $3,
                         $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326),
                         $6, 'PB', $7,
-                        $8, TRUE, 'habitaclia'
+                        $8, TRUE, 'habitaclia',
+                        $9, $10
                     )
                     ON CONFLICT (id) DO UPDATE SET
                         alquiler_mensual = EXCLUDED.alquiler_mensual,
                         m2               = COALESCE(EXCLUDED.m2, locales.m2),
                         disponible       = TRUE,
                         fuente           = 'habitaclia',
+                        url              = COALESCE(EXCLUDED.url, locales.url),
+                        titulo           = COALESCE(EXCLUDED.titulo, locales.titulo),
                         updated_at       = NOW()
                 """,
                     local_id,
                     zona_id,
                     barrio_texto,
-                    lat, lng,
+                    lat,                                           # lat (Y)
+                    lng,                                           # lng (X)
                     float(row["m2"]) if row["m2"] else None,
-                    1.0 if row["escaparate"] else None,
+                    1.0 if row["escaparate"] else None,            # escaparate_ml
                     float(row["precio"]),
+                    row["url"] or "",
+                    row["titulo"] or "",
                 )
                 sincronizados += 1
             except Exception as exc:
@@ -250,12 +283,21 @@ async def _sincronizar_a_locales() -> int:
         "Sincronización: %d escritos, %d sin zona asignada",
         sincronizados, sin_zona,
     )
+    if sin_zona > 0:
+        logger.warning(
+            "%d anuncios sin zona — revisa el mapa de barrios o el parser de URLs",
+            sin_zona,
+        )
     return sincronizados
 
 
-async def _cargar_mapa_barrios() -> dict[str, tuple[str, float, float]]:
+async def _cargar_mapa_zonas() -> dict[str, tuple[str, float, float]]:
     """
     Devuelve: barrio_nombre_lower → (zona_id, lat_centroide, lng_centroide)
+
+    Hace JOIN barrios → zonas usando los polígonos de geometría para obtener
+    el centroide de cada zona. Esto da coordenadas reales para locales.lat/lng,
+    que son NOT NULL en el schema.
     """
     async with get_db() as conn:
         rows = await conn.fetch("""
@@ -266,26 +308,45 @@ async def _cargar_mapa_barrios() -> dict[str, tuple[str, float, float]]:
                 ST_X(ST_Centroid(z.geometria)) AS lng
             FROM barrios b
             JOIN zonas z ON z.barrio_id = b.id
+            WHERE z.geometria IS NOT NULL
             ORDER BY b.nombre, z.id
         """)
 
     return {
-        row["barrio_nombre"].lower().strip(): (row["zona_id"], row["lat"], row["lng"])
+        row["barrio_nombre"].lower().strip(): (
+            row["zona_id"],
+            float(row["lat"]),
+            float(row["lng"]),
+        )
         for row in rows
+        if row["lat"] is not None and row["lng"] is not None
     }
 
 
 def _resolver_zona(
     barrio_texto: str,
-    mapa_barrios: dict[str, tuple[str, float, float]],
+    mapa_zonas: dict[str, tuple[str, float, float]],
 ) -> Optional[tuple[str, float, float]]:
     """
-    Convierte el texto libre de barrio de Habitaclia a (zona_id, lat, lng).
+    Convierte texto libre de barrio (Habitaclia) a (zona_id, lat, lng).
 
-    Ejemplos de texto de Habitaclia:
-      "Sant Gervasi - Galvany"        → busca "sant gervasi"
-      "La Nova Esquerra de l'Eixample" → busca "eixample"
-      "El Raval"                       → busca "raval"
+    El mapa_zonas tiene los nombres EXACTOS del seed_demo.sql, que son:
+      'el raval', 'el gòtic', 'la barceloneta', 'el born',
+      'esquerra eixample', 'dreta eixample', 'sagrada família', 'fort pienc',
+      'sants', 'hostafrancs', 'la bordeta',
+      'les corts', 'la maternitat',
+      'sant gervasi', 'sarrià',
+      'vila de gràcia', 'el camp de gràcia', 'la salut',
+      'el guinardó', 'la vall d'hebron',
+      'nou barris nord', 'prosperitat',
+      'sant andreu', 'la sagrera',
+      'el poblenou', 'el clot', 'el parc', 'la vila olímpica'
+
+    Estrategia en 4 capas:
+      1. Match exacto
+      2. Match por contenido (texto ⊆ clave o clave ⊆ texto)
+      3. Match por palabras clave significativas (≥4 chars)
+      4. Fallback explícito: términos de Habitaclia → nombre exacto en el mapa
     """
     if not barrio_texto:
         return None
@@ -293,61 +354,151 @@ def _resolver_zona(
     texto = barrio_texto.lower().strip()
 
     # 1. Match exacto
-    if texto in mapa_barrios:
-        return mapa_barrios[texto]
+    if texto in mapa_zonas:
+        return mapa_zonas[texto]
 
-    # 2. Match parcial — el texto de Habitaclia está en el nombre del barrio o viceversa
-    for key, val in mapa_barrios.items():
+    # 2. Contenido bidireccional
+    for key, val in mapa_zonas.items():
         if texto in key or key in texto:
             return val
 
     # 3. Match por palabras significativas (≥4 chars)
-    palabras = [p for p in re.split(r"[\s\-']+", texto) if len(p) >= 4]
-    for key, val in mapa_barrios.items():
+    palabras = [p for p in re.split(r"[\s\-'·]+", texto) if len(p) >= 4]
+    for key, val in mapa_zonas.items():
         if any(p in key for p in palabras):
             return val
 
-    # 4. Fallback por términos conocidos de Habitaclia → nombre de barrio en BD
-    _FALLBACK = {
-        "eixample":      "eixample",     "nova esquerra":  "eixample",
-        "dreta":         "eixample",     "esquerra":       "eixample",
-        "sagrada":       "eixample",     "fort pienc":     "eixample",
-        "gracia":        "gràcia",       "gràcia":         "gràcia",
-        "vila de":       "gràcia",
-        "sant gervasi":  "sant gervasi", "gervasi":        "sant gervasi",
-        "sarria":        "sarrià",       "sarrià":         "sarrià",
-        "pedralbes":     "sarrià",       "tres torres":    "sarrià",
-        "raval":         "raval",        "gotic":          "barri gòtic",
-        "gothic":        "barri gòtic",  "gòtic":          "barri gòtic",
-        "born":          "sant pere",    "barceloneta":    "barceloneta",
-        "sant pere":     "sant pere",    "santa caterina": "sant pere",
-        "poblenou":      "poblenou",     "clot":           "clot",
-        "vila olimpica": "poblenou",     "provencals":     "poblenou",
-        "sants":         "sants",        "hostafrancs":    "hostafrancs",
-        "poble sec":     "sants",        "montjuic":       "sants",
-        "les corts":     "les corts",    "maternitat":     "les corts",
-        "horta":         "horta",        "guinardo":       "guinardó",
-        "carmel":        "carmel",
-        "nou barris":    "nou barris",   "prosperitat":    "prosperitat",
-        "sant andreu":   "sant andreu",  "sagrera":        "sagrera",
-        "navas":         "sant andreu",
+    # 4. Fallback calibrado contra los nombres exactos del seed_demo.sql.
+    #    Clave: término que puede venir de Habitaclia (slug de URL o texto libre)
+    #    Valor: nombre exacto del barrio en la BD (lower, sin artículos iniciales)
+    #
+    #    Nombres en BD (28 barrios):
+    #      el raval · el gòtic · la barceloneta · el born
+    #      esquerra eixample · dreta eixample · sagrada família · fort pienc
+    #      sants · hostafrancs · la bordeta
+    #      les corts · la maternitat
+    #      sant gervasi · sarrià
+    #      vila de gràcia · el camp de gràcia · la salut
+    #      el guinardó · la vall d'hebron
+    #      nou barris nord · prosperitat
+    #      sant andreu · la sagrera
+    #      el poblenou · el clot · el parc · la vila olímpica
+    _FALLBACK: dict[str, str] = {
+        # ── Eixample ─────────────────────────────────────────────────────────
+        "nova esquerra":         "esquerra eixample",
+        "antiga esquerra":       "esquerra eixample",
+        "esquerra de l eixample": "esquerra eixample",
+        "esquerra eixample":     "esquerra eixample",
+        "esquerra":              "esquerra eixample",
+        "dreta de l eixample":   "dreta eixample",
+        "dreta eixample":        "dreta eixample",
+        "dreta":                 "dreta eixample",
+        "sagrada familia":       "sagrada família",
+        "sagrada família":       "sagrada família",
+        "sagrada":               "sagrada família",
+        "fort pienc":            "fort pienc",
+        "sant antoni":           "esquerra eixample",  # Sant Antoni pertenece a Esquerra
+        "eixample":              "esquerra eixample",  # genérico → Esquerra (más grande)
+        # ── Gràcia ───────────────────────────────────────────────────────────
+        "vila de gracia":        "vila de gràcia",
+        "vila de gràcia":        "vila de gràcia",
+        "vila de":               "vila de gràcia",
+        "camp de gracia":        "el camp de gràcia",
+        "camp de gràcia":        "el camp de gràcia",
+        "la salut":              "la salut",
+        "salut":                 "la salut",
+        "gracia":                "vila de gràcia",
+        "gràcia":                "vila de gràcia",
+        # ── Sarrià-Sant Gervasi ───────────────────────────────────────────────
+        "sant gervasi galvany":  "sant gervasi",
+        "sant gervasi bonanova": "sant gervasi",
+        "sant gervasi":          "sant gervasi",
+        "gervasi":               "sant gervasi",
+        "sarria":                "sarrià",
+        "sarrià":                "sarrià",
+        "pedralbes":             "sarrià",
+        "tres torres":           "sarrià",
+        "vallvidrera":           "sarrià",
+        # ── Ciutat Vella ──────────────────────────────────────────────────────
+        "el raval":              "el raval",
+        "raval":                 "el raval",
+        "barri gotic":           "el gòtic",
+        "barri gòtic":           "el gòtic",
+        "barrio gotico":         "el gòtic",
+        "gotic":                 "el gòtic",
+        "gòtic":                 "el gòtic",
+        "gothic":                "el gòtic",
+        "barceloneta":           "la barceloneta",
+        "el born":               "el born",
+        "born":                  "el born",
+        "sant pere":             "el born",           # Sant Pere → zona Born (más cercana)
+        "santa caterina":        "el born",
+        "sant pere santa caterina el born": "el born",
+        # ── Sants-Montjuïc ────────────────────────────────────────────────────
+        "sants":                 "sants",
+        "hostafrancs":           "hostafrancs",
+        "la bordeta":            "la bordeta",
+        "bordeta":               "la bordeta",
+        "poble sec":             "sants",             # Poble Sec no tiene zona propia → Sants
+        "montjuic":              "sants",
+        # ── Les Corts ─────────────────────────────────────────────────────────
+        "les corts":             "les corts",
+        "maternitat":            "la maternitat",
+        "la maternitat":         "la maternitat",
+        # ── Horta-Guinardó ────────────────────────────────────────────────────
+        "el guinardo":           "el guinardó",
+        "guinardo":              "el guinardó",
+        "el guinardó":           "el guinardó",
+        "horta":                 "el guinardó",       # Horta → zona Guinardó (más próxima)
+        "carmel":                "el guinardó",
+        "el carmel":             "el guinardó",
+        # ── Nou Barris ────────────────────────────────────────────────────────
+        "nou barris":            "nou barris nord",
+        "prosperitat":           "prosperitat",
+        "trinitat":              "nou barris nord",
+        "roquetes":              "nou barris nord",
+        "verdun":                "nou barris nord",
+        "porta":                 "nou barris nord",
+        # ── Sant Andreu ───────────────────────────────────────────────────────
+        "sant andreu":           "sant andreu",
+        "la sagrera":            "la sagrera",
+        "sagrera":               "la sagrera",
+        "bon pastor":            "sant andreu",
+        "navas":                 "sant andreu",
+        # ── Sant Martí ────────────────────────────────────────────────────────
+        "el poblenou":           "el poblenou",
+        "poblenou":              "el poblenou",
+        "el clot":               "el clot",
+        "clot":                  "el clot",
+        "vila olimpica":         "la vila olímpica",
+        "vila olímpica":         "la vila olímpica",
+        "la vila olimpica":      "la vila olímpica",
+        "el parc":               "el parc",
+        "parc":                  "el parc",
+        "diagonal mar":          "el poblenou",
+        "rambla del poblenou":   "el poblenou",
     }
+
     for keyword, barrio_bd in _FALLBACK.items():
         if keyword in texto:
-            if barrio_bd in mapa_barrios:
-                return mapa_barrios[barrio_bd]
-            # Búsqueda parcial del fallback en el mapa
-            for key, val in mapa_barrios.items():
-                if barrio_bd in key:
+            # Búsqueda exacta primero
+            if barrio_bd in mapa_zonas:
+                return mapa_zonas[barrio_bd]
+            # Búsqueda parcial (el nombre en BD puede tener artículo: "el raval")
+            for key, val in mapa_zonas.items():
+                if barrio_bd in key or key in barrio_bd:
                     return val
 
     return None
 
 
-# ── PASO 4 y 5: Limpieza y precios ───────────────────────────────────────────
+# ── PASO 4: Limpiar seed ──────────────────────────────────────────────────────
 
 async def _limpiar_seed() -> int:
-    """Oculta los locales del seed hardcodeado en zonas ya cubiertas por Habitaclia."""
+    """
+    Oculta locales del seed hardcodeado en zonas ya cubiertas por Habitaclia.
+    Los IDs de seed empiezan por 'loc_' (según seed_demo.sql).
+    """
     async with get_db() as conn:
         result = await conn.execute("""
             UPDATE locales seed_loc
@@ -355,8 +506,8 @@ async def _limpiar_seed() -> int:
             WHERE seed_loc.id LIKE 'loc_%'
               AND EXISTS (
                   SELECT 1 FROM locales real_loc
-                  WHERE real_loc.zona_id  = seed_loc.zona_id
-                    AND real_loc.fuente   = 'habitaclia'
+                  WHERE real_loc.zona_id   = seed_loc.zona_id
+                    AND real_loc.fuente    = 'habitaclia'
                     AND real_loc.disponible = TRUE
               )
         """)
@@ -369,31 +520,47 @@ async def _limpiar_seed() -> int:
         return 0
 
 
+# ── PASO 5: Actualizar precios por zona ───────────────────────────────────────
+
 async def _actualizar_precios_zona() -> int:
-    """Recalcula medianas de precio/m² por zona en precios_alquiler_zona."""
+    """
+    Recalcula medianas de precio/m² por zona en precios_alquiler_zona.
+
+    Schema verificado (001_schema_inicial.sql):
+      zona_id, fecha, precio_m2, precio_min, precio_max, num_muestras, fuente
+      UNIQUE (zona_id, fecha, fuente)
+      — NO tiene columna 'tipo' —
+
+    Solo incluye locales con m2 > 0 para evitar divisiones por cero.
+    Mínimo 2 muestras por zona para que la mediana sea significativa.
+    """
     async with get_db() as conn:
         resultado = await conn.execute("""
-            INSERT INTO precios_alquiler_zona (zona_id, precio_m2, tipo, fecha, fuente, n_muestras)
+            INSERT INTO precios_alquiler_zona
+                (zona_id, fecha, precio_m2, precio_min, precio_max, num_muestras, fuente)
             SELECT
                 l.zona_id,
+                CURRENT_DATE AS fecha,
                 PERCENTILE_CONT(0.5) WITHIN GROUP
-                    (ORDER BY l.alquiler_mensual / NULLIF(l.m2, 0))::numeric(10,2),
-                'alquiler',
-                NOW(),
-                'habitaclia',
-                COUNT(*)::int
+                    (ORDER BY l.alquiler_mensual / l.m2)::float  AS precio_m2,
+                MIN(l.alquiler_mensual / l.m2)::float            AS precio_min,
+                MAX(l.alquiler_mensual / l.m2)::float            AS precio_max,
+                COUNT(*)::int                                     AS num_muestras,
+                'habitaclia'                                      AS fuente
             FROM locales l
-            WHERE l.fuente     = 'habitaclia'
-              AND l.disponible = TRUE
+            WHERE l.fuente          = 'habitaclia'
+              AND l.disponible      = TRUE
               AND l.alquiler_mensual IS NOT NULL
-              AND l.m2 IS NOT NULL AND l.m2 > 0
+              AND l.m2 IS NOT NULL
+              AND l.m2 > 0
               AND l.zona_id IS NOT NULL
             GROUP BY l.zona_id
             HAVING COUNT(*) >= 2
-            ON CONFLICT (zona_id, tipo, (DATE_TRUNC('day', fecha))) DO UPDATE SET
-                precio_m2  = EXCLUDED.precio_m2,
-                fecha      = EXCLUDED.fecha,
-                n_muestras = EXCLUDED.n_muestras
+            ON CONFLICT (zona_id, fecha, fuente) DO UPDATE SET
+                precio_m2    = EXCLUDED.precio_m2,
+                precio_min   = EXCLUDED.precio_min,
+                precio_max   = EXCLUDED.precio_max,
+                num_muestras = EXCLUDED.num_muestras
         """)
     try:
         return int(resultado.split()[-1])
@@ -401,14 +568,16 @@ async def _actualizar_precios_zona() -> int:
         return 0
 
 
+# ── Configuración ─────────────────────────────────────────────────────────────
+
 def _build_scraping_config(cfg) -> ScrapingConfig:
     return ScrapingConfig(
-        service        = getattr(cfg, "SCRAPING_SERVICE", "none"),
-        scrapingbee_key= getattr(cfg, "SCRAPINGBEE_API_KEY", ""),
-        zenrows_key    = getattr(cfg, "ZENROWS_API_KEY", ""),
-        proxies_raw    = getattr(cfg, "SCRAPING_PROXIES", ""),
-        delay_min      = float(getattr(cfg, "SCRAPING_DELAY_MIN", 1.5)),
-        delay_max      = float(getattr(cfg, "SCRAPING_DELAY_MAX", 4.0)),
-        timeout        = int(getattr(cfg, "SCRAPING_TIMEOUT", 25)),
-        max_retries    = int(getattr(cfg, "SCRAPING_MAX_RETRIES", 3)),
+        service         = getattr(cfg, "SCRAPING_SERVICE", "none"),
+        scrapingbee_key = getattr(cfg, "SCRAPINGBEE_API_KEY", ""),
+        zenrows_key     = getattr(cfg, "ZENROWS_API_KEY", ""),
+        proxies_raw     = getattr(cfg, "SCRAPING_PROXIES", ""),
+        delay_min       = float(getattr(cfg, "SCRAPING_DELAY_MIN", 1.5)),
+        delay_max       = float(getattr(cfg, "SCRAPING_DELAY_MAX", 4.0)),
+        timeout         = int(getattr(cfg, "SCRAPING_TIMEOUT", 25)),
+        max_retries     = 1,   # fijo a 1: fallar rápido es mejor que esperar 75s
     )

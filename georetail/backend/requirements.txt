@@ -47,6 +47,7 @@ aiohttp==3.10.5
 curl-cffi==0.7.4              # impersona TLS fingerprint de Chrome/Firefox (derrota la mayoría de anti-bots)
 playwright==1.49.0            # browser automation para páginas JS-heavy (instalar: playwright install chromium)
 lxml==5.3.0                   # parser HTML rápido para extracción de datos
+beautifulsoup4==4.12.2
 
 # ─── Generación de PDFs ───────────────────────────────────────────────────────
 weasyprint==62.3              # genera PDFs desde HTML/CSS
@@ -61,3 +62,4 @@ python-dotenv==1.0.1
 tenacity==9.0.0               # reintentos automáticos en llamadas a APIs
 python-dateutil==2.9.0
 pytz==2024.2
+
