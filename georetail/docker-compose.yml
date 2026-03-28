@@ -59,6 +59,7 @@ services:
       REDIS_URL:              redis://redis:6379
       CELERY_BROKER_URL:      redis://redis:6379/1
       CELERY_RESULT_BACKEND:  redis://redis:6379/2
+      GOSOM_BASE_URL:         http://gosom-scraper:8080
     ports:
       - "8000:8000"
     volumes:
@@ -71,6 +72,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      gosom-scraper:
+        condition: service_started
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   # ─── Worker Celery (tareas en segundo plano) ────────────────────────────────
@@ -85,6 +88,7 @@ services:
       REDIS_URL:              redis://redis:6379
       CELERY_BROKER_URL:      redis://redis:6379/1
       CELERY_RESULT_BACKEND:  redis://redis:6379/2
+      GOSOM_BASE_URL:         http://gosom-scraper:8080
     volumes:
       - ./backend:/app
       - models_data:/data/models
@@ -95,19 +99,23 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      gosom-scraper:
+        condition: service_started
     command: celery -A workers.celery_app worker --loglevel=info --concurrency=2
 
   # ─── gosom Google Maps scraper (Go) ────────────────────────────────────────
+  # Modo -web: sin autenticación, sin API key requerida.
+  # El backend accede vía http://gosom-scraper:8080 (service discovery Docker).
+  # -lang es    → resultados en español (Barcelona)
+  # -depth 1    → una página de resultados por query (~20 lugares)
   gosom-scraper:
     image: gosom/google-maps-scraper
     container_name: georetail_gosom
     ports:
       - "8080:8080"
-    environment:
-      - API_KEY=${GOSOM_API_KEY:-changeme}
     volumes:
       - gosom_data:/gmapsdata
-    command: ["-data-folder", "/gmapsdata", "-web"]
+    command: ["-data-folder", "/gmapsdata", "-web", "-lang", "es", "-depth", "1"]
     restart: unless-stopped
 
   # ─── Frontend Next.js ───────────────────────────────────────────────────────
