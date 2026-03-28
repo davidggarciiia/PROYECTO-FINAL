@@ -127,7 +127,7 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
                     ORDER BY alquiler_mensual ASC NULLS LAST LIMIT 1
                 ) l ON TRUE
                 LEFT JOIN LATERAL (
-                    SELECT * FROM variables_zona WHERE zona_id=z.id
+                    SELECT * FROM v_variables_zona WHERE zona_id=z.id
                     ORDER BY fecha DESC LIMIT 1
                 ) vz ON TRUE
                 LEFT JOIN LATERAL (

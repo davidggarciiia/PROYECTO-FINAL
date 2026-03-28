@@ -241,7 +241,7 @@ async def _construir_features_historicas(
                 vz.nivel_ruido_db, vz.score_equipamientos, vz.m2_zonas_verdes_cercanas,
                 vz.ratio_locales_comerciales,
                 -- v3: turismo y dinamismo comercial
-                vz.airbnb_listings_500m,
+                vz.airbnb_density_500m,
                 vz.airbnb_occupancy_est,
                 vz.licencias_nuevas_1a,
                 vz.eventos_culturales_500m,
@@ -372,7 +372,7 @@ async def _construir_features_historicas(
             "dist_playa_m":              vz.get("dist_playa_m"),
             "ratio_locales_comerciales": vz.get("ratio_locales_comerciales"),
             # v3: turismo y dinamismo comercial
-            "airbnb_density_500m":       vz.get("airbnb_listings_500m"),
+            "airbnb_density_500m":       vz.get("airbnb_density_500m"),
             "airbnb_occupancy_est":      vz.get("airbnb_occupancy_est"),
             "google_review_count_medio": google_reviews_dict.get(zona_id),
             "licencias_nuevas_1a":       vz.get("licencias_nuevas_1a"),

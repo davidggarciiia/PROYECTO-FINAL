@@ -482,7 +482,7 @@ async def _crear_taula_si_no_existeix() -> None:
                 lat         DOUBLE PRECISION,
                 lng         DOUBLE PRECISION,
                 geometria   GEOMETRY(Point, 4326),
-                zona_id     UUID,
+                zona_id     VARCHAR(20),
                 fuente      VARCHAR(50) DEFAULT 'bcn_vianants',
                 created_at  TIMESTAMPTZ DEFAULT NOW()
             )
@@ -576,14 +576,14 @@ async def _asignar_zonas(trams: list[dict], fecha: date) -> int:
                             z.geometria::geography,
                             ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
                         ) AS distancia_m,
-                        COALESCE(vz.ratio_locales_comerciales, 0.0) AS ratio_comercial
+                        COALESCE(vc.ratio_locales_comerciales, 0.0) AS ratio_comercial
                     FROM zonas z
                     LEFT JOIN LATERAL (
                         SELECT ratio_locales_comerciales
-                        FROM variables_zona
+                        FROM vz_comercial
                         WHERE zona_id = z.id
                         ORDER BY fecha DESC LIMIT 1
-                    ) vz ON TRUE
+                    ) vc ON TRUE
                     WHERE ST_DWithin(
                         z.geometria::geography,
                         ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
@@ -614,18 +614,30 @@ async def _asignar_zonas(trams: list[dict], fecha: date) -> int:
                     tarde  = round(flujo_dia * _FRAC_TARDE,  1)
                     noche  = round(flujo_dia * _FRAC_NOCHE,  1)
 
+                    # Anchor en variables_zona (tabla coordinadora delgada)
                     await conn.execute(
                         """
-                        INSERT INTO variables_zona
+                        INSERT INTO variables_zona (zona_id, fecha, fuente)
+                        VALUES ($1, $2, 'vianants_bcn')
+                        ON CONFLICT (zona_id, fecha) DO UPDATE
+                        SET fuente = EXCLUDED.fuente, updated_at = NOW()
+                        """,
+                        zona["zona_id"], fecha,
+                    )
+                    # Datos de flujo en tabla satélite vz_flujo
+                    await conn.execute(
+                        """
+                        INSERT INTO vz_flujo
                             (zona_id, fecha,
                              flujo_peatonal_manana, flujo_peatonal_tarde,
                              flujo_peatonal_noche,  fuente)
                         VALUES ($1, $2, $3, $4, $5, 'vianants_bcn')
                         ON CONFLICT (zona_id, fecha) DO UPDATE
-                        SET flujo_peatonal_manana = COALESCE(variables_zona.flujo_peatonal_manana, 0) + $3,
-                            flujo_peatonal_tarde  = COALESCE(variables_zona.flujo_peatonal_tarde,  0) + $4,
-                            flujo_peatonal_noche  = COALESCE(variables_zona.flujo_peatonal_noche,  0) + $5,
-                            fuente = 'vianants_bcn'
+                        SET flujo_peatonal_manana = COALESCE(vz_flujo.flujo_peatonal_manana, 0) + $3,
+                            flujo_peatonal_tarde  = COALESCE(vz_flujo.flujo_peatonal_tarde,  0) + $4,
+                            flujo_peatonal_noche  = COALESCE(vz_flujo.flujo_peatonal_noche,  0) + $5,
+                            fuente = 'vianants_bcn',
+                            updated_at = NOW()
                         """,
                         zona["zona_id"], fecha, manana, tarde, noche,
                     )
@@ -652,16 +664,17 @@ async def _asignar_zonas(trams: list[dict], fecha: date) -> int:
 
 
 async def _recalcular_totales(desde: date) -> None:
-    """Recalcula flujo_peatonal_total = suma de les tres franges per als registres de vianants."""
+    """Recalcula flujo_peatonal_total = suma de les tres franges en vz_flujo per als registres de vianants."""
     async with get_db() as conn:
         await conn.execute(
             """
-            UPDATE variables_zona
+            UPDATE vz_flujo
             SET flujo_peatonal_total = (
                 COALESCE(flujo_peatonal_manana, 0) +
                 COALESCE(flujo_peatonal_tarde,  0) +
                 COALESCE(flujo_peatonal_noche,  0)
-            )
+            ),
+            updated_at = NOW()
             WHERE fecha >= $1
               AND fuente = 'vianants_bcn'
             """,

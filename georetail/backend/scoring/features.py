@@ -176,12 +176,12 @@ def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
 
 async def _vz(zid):
     async with _get_db()() as conn:
-        r = await conn.fetchrow("SELECT * FROM variables_zona WHERE zona_id=$1 ORDER BY fecha DESC NULLS LAST LIMIT 1", zid)
+        r = await conn.fetchrow("SELECT * FROM v_variables_zona WHERE zona_id=$1 ORDER BY fecha DESC NULLS LAST LIMIT 1", zid)
     return dict(r) if r else {}
 
 async def _vzs(zids):
     async with _get_db()() as conn:
-        rows = await conn.fetch("SELECT DISTINCT ON(zona_id) * FROM variables_zona WHERE zona_id=ANY($1) ORDER BY zona_id,fecha DESC NULLS LAST", zids)
+        rows = await conn.fetch("SELECT DISTINCT ON(zona_id) * FROM v_variables_zona WHERE zona_id=ANY($1) ORDER BY zona_id,fecha DESC NULLS LAST", zids)
     return {r["zona_id"]: dict(r) for r in rows}
 
 async def _comp(zid, sector):
@@ -282,7 +282,7 @@ async def _turismo(zona_id: str) -> dict:
     """Features de turismo y dinamismo comercial para una zona (v3).
 
     Columnas leídas de variables_zona:
-      - airbnb_listings_500m    → airbnb_density_500m
+      - airbnb_density_500m     → airbnb_density_500m
       - airbnb_occupancy_est    → airbnb_occupancy_est
       - licencias_nuevas_1a     → licencias_nuevas_1a
       - eventos_culturales_500m → eventos_culturales_500m
@@ -295,12 +295,12 @@ async def _turismo(zona_id: str) -> dict:
         vz_row = await conn.fetchrow(
             """
             SELECT
-                airbnb_listings_500m,
+                airbnb_density_500m,
                 airbnb_occupancy_est,
                 licencias_nuevas_1a,
                 eventos_culturales_500m,
                 booking_hoteles_500m
-            FROM variables_zona
+            FROM v_variables_zona
             WHERE zona_id = $1
             ORDER BY fecha DESC NULLS LAST
             LIMIT 1
@@ -321,7 +321,7 @@ async def _turismo(zona_id: str) -> dict:
 
     result: dict = {}
     if vz_row:
-        result["airbnb_density_500m"]   = vz_row["airbnb_listings_500m"]
+        result["airbnb_density_500m"]   = vz_row["airbnb_density_500m"]
         result["airbnb_occupancy_est"]  = vz_row["airbnb_occupancy_est"]
         result["licencias_nuevas_1a"]   = vz_row["licencias_nuevas_1a"]
         result["eventos_culturales_500m"] = vz_row["eventos_culturales_500m"]
@@ -337,12 +337,12 @@ async def _turismo_batch(zona_ids: list[str]) -> dict:
             """
             SELECT DISTINCT ON (zona_id)
                 zona_id,
-                airbnb_listings_500m,
+                airbnb_density_500m,
                 airbnb_occupancy_est,
                 licencias_nuevas_1a,
                 eventos_culturales_500m,
                 booking_hoteles_500m
-            FROM variables_zona
+            FROM v_variables_zona
             WHERE zona_id = ANY($1)
             ORDER BY zona_id, fecha DESC NULLS LAST
             """,
@@ -370,7 +370,7 @@ async def _turismo_batch(zona_ids: list[str]) -> dict:
     for row in vz_rows:
         zid = row["zona_id"]
         result[zid] = {
-            "airbnb_density_500m":    row["airbnb_listings_500m"],
+            "airbnb_density_500m":    row["airbnb_density_500m"],
             "airbnb_occupancy_est":   row["airbnb_occupancy_est"],
             "licencias_nuevas_1a":    row["licencias_nuevas_1a"],
             "eventos_culturales_500m": row["eventos_culturales_500m"],

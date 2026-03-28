@@ -343,19 +343,30 @@ async def _actualizar_popular_times_score() -> None:
     if not zona_peaks:
         return
 
-    # Guardar flujo_popular_times_score en variables_zona
+    # Guardar flujo_popular_times_score en tabla satélite vz_flujo
     async with get_db() as conn:
         for zona_id, peaks in zona_peaks.items():
             score = round(sum(peaks) / len(peaks), 1)
             try:
+                # Anchor en variables_zona
                 await conn.execute(
                     """
-                    INSERT INTO variables_zona
-                        (zona_id, fecha, flujo_popular_times_score, fuente)
+                    INSERT INTO variables_zona (zona_id, fecha, fuente)
+                    VALUES ($1, $2, 'popular_times_google')
+                    ON CONFLICT (zona_id, fecha) DO UPDATE
+                    SET fuente = EXCLUDED.fuente, updated_at = NOW()
+                    """,
+                    zona_id, hoy,
+                )
+                # Datos de flujo en vz_flujo
+                await conn.execute(
+                    """
+                    INSERT INTO vz_flujo (zona_id, fecha, flujo_popular_times_score, fuente)
                     VALUES ($1, $2, $3, 'popular_times_google')
                     ON CONFLICT (zona_id, fecha) DO UPDATE
-                    SET flujo_popular_times_score = $3,
-                        fuente = 'popular_times_google'
+                    SET flujo_popular_times_score = EXCLUDED.flujo_popular_times_score,
+                        fuente = EXCLUDED.fuente,
+                        updated_at = NOW()
                     """,
                     zona_id, hoy, score,
                 )
@@ -371,7 +382,8 @@ async def _actualizar_popular_times_score() -> None:
 async def _actualizar_review_count_medio() -> None:
     """
     Calcula la media de review_count de competidores en 300m para cada zona
-    y actualiza variables_zona. Se usa como feature google_review_count_medio en XGBoost v3.
+    y actualiza vz_comercial.google_review_count_medio.
+    Se usa como feature google_review_count_medio en XGBoost v3.
     """
     hoy = date.today()
     async with get_db() as conn:
@@ -388,18 +400,30 @@ async def _actualizar_review_count_medio() -> None:
         )
         for row in rows:
             try:
+                # Anchor en variables_zona
                 await conn.execute(
                     """
-                    INSERT INTO variables_zona
-                        (zona_id, fecha, fuente)
+                    INSERT INTO variables_zona (zona_id, fecha, fuente)
                     VALUES ($1, $2, 'google_maps')
                     ON CONFLICT (zona_id, fecha) DO UPDATE
-                    SET fuente = EXCLUDED.fuente
+                    SET fuente = EXCLUDED.fuente, updated_at = NOW()
                     """,
                     row["zona_id"], hoy,
                 )
+                # google_review_count_medio en tabla satélite vz_comercial
+                await conn.execute(
+                    """
+                    INSERT INTO vz_comercial (zona_id, fecha, google_review_count_medio, fuente)
+                    VALUES ($1, $2, $3, 'google_maps')
+                    ON CONFLICT (zona_id, fecha) DO UPDATE
+                    SET google_review_count_medio = EXCLUDED.google_review_count_medio,
+                        fuente = EXCLUDED.fuente,
+                        updated_at = NOW()
+                    """,
+                    row["zona_id"], hoy, row["avg_reviews"],
+                )
             except Exception as exc:
-                logger.debug("Error UPSERT variables_zona zona=%s: %s", row["zona_id"], exc)
+                logger.debug("Error UPSERT vz_comercial zona=%s: %s", row["zona_id"], exc)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

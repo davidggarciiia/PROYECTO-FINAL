@@ -37,12 +37,20 @@ _TERMINOS_YELP = {
 }
 
 
+_VALID_SECTORES = {
+    "restauracion", "moda", "estetica", "tatuajes", "shisha_lounge",
+    "supermercado", "farmacia", "electronica", "libreria", "sport",
+}
+
+
 async def buscar_negocios_cercanos(lat: float, lng: float, sector: str,
                                     radio_m: int = 500, limite: int = 50) -> list[dict]:
     """
     Busca negocios en un radio dado alrededor de (lat, lng).
     Devuelve lista normalizada de negocios con campos comunes.
     """
+    # Before insert: validate sector_codigo against known sectors to avoid FK violations
+    sector_codigo = sector if sector in _VALID_SECTORES else None
     r = get_redis()
     proveedores = ["google","foursquare","yelp","osm"]
 
@@ -50,14 +58,19 @@ async def buscar_negocios_cercanos(lat: float, lng: float, sector: str,
         if await r.get(f"places:exhausted:{prv}"):
             continue
         try:
+            results: list[dict] = []
             if prv == "google":
-                return await _buscar_google(lat, lng, sector, radio_m, limite)
-            if prv == "foursquare":
-                return await _buscar_foursquare(lat, lng, sector, radio_m, limite)
-            if prv == "yelp":
-                return await _buscar_yelp(lat, lng, sector, radio_m, limite)
-            if prv == "osm":
-                return await _buscar_osm(lat, lng, sector, radio_m, limite)
+                results = await _buscar_google(lat, lng, sector, radio_m, limite)
+            elif prv == "foursquare":
+                results = await _buscar_foursquare(lat, lng, sector, radio_m, limite)
+            elif prv == "yelp":
+                results = await _buscar_yelp(lat, lng, sector, radio_m, limite)
+            elif prv == "osm":
+                results = await _buscar_osm(lat, lng, sector, radio_m, limite)
+            # Normalise sector_codigo before returning so FK constraints are not violated
+            for neg in results:
+                neg["sector_codigo"] = sector_codigo
+            return results
         except _RateLimitError:
             await r.setex(f"places:exhausted:{prv}", 3600, "1")
             continue

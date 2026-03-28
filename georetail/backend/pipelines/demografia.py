@@ -107,11 +107,21 @@ async def _poblar_renta() -> int:
                 renta = renta_por_distrito.get(dist)
                 if not renta:
                     continue
+                # Anchor en variables_zona
                 await conn.execute("""
-                    INSERT INTO variables_zona (zona_id, fecha, renta_media_hogar, fuente)
+                    INSERT INTO variables_zona (zona_id, fecha, fuente)
+                    VALUES ($1, $2, 'renda_bcn_2022')
+                    ON CONFLICT (zona_id, fecha) DO UPDATE
+                    SET fuente = EXCLUDED.fuente, updated_at = NOW()
+                """, row["zona_id"], fecha)
+                # Datos demográficos en tabla satélite vz_demografia
+                await conn.execute("""
+                    INSERT INTO vz_demografia (zona_id, fecha, renta_media_hogar, fuente)
                     VALUES ($1, $2, $3, 'renda_bcn_2022')
                     ON CONFLICT (zona_id, fecha) DO UPDATE
-                    SET renta_media_hogar = $3
+                    SET renta_media_hogar = EXCLUDED.renta_media_hogar,
+                        fuente = EXCLUDED.fuente,
+                        updated_at = NOW()
                 """, row["zona_id"], fecha, round(renta, 2))
                 ok += 1
 
@@ -147,13 +157,23 @@ async def _poblar_padro() -> int:
                 """, barri_code)
 
                 for z in zona_ids:
+                    # Anchor en variables_zona
                     await conn.execute("""
-                        INSERT INTO variables_zona (zona_id, fecha, poblacion, pct_extranjeros, edad_media, fuente)
-                        VALUES ($1,$2,$3,$4,$5,'padro_bcn')
-                        ON CONFLICT (zona_id,fecha) DO UPDATE
-                        SET poblacion=EXCLUDED.poblacion,
-                            pct_extranjeros=EXCLUDED.pct_extranjeros,
-                            edad_media=EXCLUDED.edad_media
+                        INSERT INTO variables_zona (zona_id, fecha, fuente)
+                        VALUES ($1, $2, 'padro_bcn')
+                        ON CONFLICT (zona_id, fecha) DO UPDATE
+                        SET fuente = EXCLUDED.fuente, updated_at = NOW()
+                    """, z["id"], fecha)
+                    # Datos demográficos en tabla satélite vz_demografia
+                    await conn.execute("""
+                        INSERT INTO vz_demografia (zona_id, fecha, poblacion, pct_extranjeros, edad_media, fuente)
+                        VALUES ($1, $2, $3, $4, $5, 'padro_bcn')
+                        ON CONFLICT (zona_id, fecha) DO UPDATE
+                        SET poblacion        = EXCLUDED.poblacion,
+                            pct_extranjeros  = EXCLUDED.pct_extranjeros,
+                            edad_media       = EXCLUDED.edad_media,
+                            fuente           = EXCLUDED.fuente,
+                            updated_at       = NOW()
                     """, z["id"], fecha, poblacion, pct_estran, edad_mediana)
                     ok += 1
 

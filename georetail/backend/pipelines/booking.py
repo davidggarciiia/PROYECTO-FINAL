@@ -442,15 +442,27 @@ async def _actualizar_variables() -> int:
             if row["hoteles"] == 0:
                 continue
             try:
+                # Anchor en variables_zona (tabla coordinadora delgada)
                 await conn.execute(
                     """
-                    INSERT INTO variables_zona
+                    INSERT INTO variables_zona (zona_id, fecha, fuente)
+                    VALUES ($1, $2, 'booking')
+                    ON CONFLICT (zona_id, fecha) DO UPDATE
+                    SET fuente = EXCLUDED.fuente, updated_at = NOW()
+                    """,
+                    row["zona_id"], hoy,
+                )
+                # Datos de turismo en tabla satélite vz_turismo
+                await conn.execute(
+                    """
+                    INSERT INTO vz_turismo
                         (zona_id, fecha, booking_hoteles_500m, booking_rating_medio, fuente)
                     VALUES ($1, $2, $3, $4, 'booking')
                     ON CONFLICT (zona_id, fecha) DO UPDATE
-                    SET booking_hoteles_500m  = EXCLUDED.booking_hoteles_500m,
-                        booking_rating_medio  = EXCLUDED.booking_rating_medio,
-                        fuente                = EXCLUDED.fuente
+                    SET booking_hoteles_500m = EXCLUDED.booking_hoteles_500m,
+                        booking_rating_medio = EXCLUDED.booking_rating_medio,
+                        fuente               = EXCLUDED.fuente,
+                        updated_at           = NOW()
                     """,
                     row["zona_id"], hoy,
                     row["hoteles"],
