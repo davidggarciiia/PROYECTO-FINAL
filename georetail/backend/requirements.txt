@@ -38,6 +38,8 @@ transformers==4.44.2
 # ─── Geoespacial (mapas y coordenadas) ────────────────────────────────────────
 shapely==2.0.6                # manipulación de polígonos en Python
 pyproj==3.6.1                 # conversión entre sistemas de coordenadas
+mercantile>=1.2.1             # tile math (XYZ ↔ lat/lng), usado por vcity pipeline
+mapbox-vector-tile>=2.1.0     # decodifica MVT (Mapbox Vector Tiles) desde VCity BSC tileserver
 
 # ─── HTTP (llamadas a APIs externas) ──────────────────────────────────────────
 httpx[http2]==0.28.1          # cliente HTTP asíncrono (http2 para scrapers)
