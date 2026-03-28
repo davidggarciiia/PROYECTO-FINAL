@@ -97,6 +97,19 @@ services:
         condition: service_healthy
     command: celery -A workers.celery_app worker --loglevel=info --concurrency=2
 
+  # ─── gosom Google Maps scraper (Go) ────────────────────────────────────────
+  gosom-scraper:
+    image: gosom/google-maps-scraper
+    container_name: georetail_gosom
+    ports:
+      - "8080:8080"
+    environment:
+      - API_KEY=${GOSOM_API_KEY:-changeme}
+    volumes:
+      - gosom_data:/gmapsdata
+    command: ["-data-folder", "/gmapsdata", "-web"]
+    restart: unless-stopped
+
   # ─── Frontend Next.js ───────────────────────────────────────────────────────
   frontend:
     build:
@@ -119,3 +132,4 @@ volumes:
   redis_data:
   models_data:
   exports_data:
+  gosom_data:

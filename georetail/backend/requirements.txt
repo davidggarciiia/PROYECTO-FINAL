@@ -45,8 +45,11 @@ aiohttp==3.10.5
 
 # ─── Scraping anti-bot ────────────────────────────────────────────────────────
 curl-cffi==0.7.4              # impersona TLS fingerprint de Chrome/Firefox (derrota la mayoría de anti-bots)
-playwright==1.49.0            # browser automation para páginas JS-heavy (instalar: playwright install chromium)
+playwright==1.49.0            # browser automation para páginas JS-heavy — portales inmobiliarios (instalar: playwright install chromium)
 lxml==5.3.0                   # parser HTML rápido para extracción de datos
+# gosom scraper: run via Docker (gosom/google-maps-scraper)
+#   docker run -p 8080:8080 -e API_KEY=$GOSOM_API_KEY gosom/google-maps-scraper
+#   httpx (cliente REST) ya incluido arriba en sección HTTP
 
 # ─── Generación de PDFs ───────────────────────────────────────────────────────
 weasyprint==62.3              # genera PDFs desde HTML/CSS

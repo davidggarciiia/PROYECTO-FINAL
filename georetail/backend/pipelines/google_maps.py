@@ -1,26 +1,18 @@
 """
-pipelines/google_maps.py — Enriquecimiento de negocios activos con datos Google Maps.
+pipelines/google_maps.py — Enriquecimiento de negocios con gosom/google-maps-scraper.
 
-Qué hace:
-  1. Lee los sectores activos de la BD y las zonas con negocios
-  2. Para cada sector × zona usa GoogleMapsScraper para obtener:
-     - negocios del sector en esa zona
-     - su rating, review_count, google_place_id
-  3. Actualiza negocios_activos (match por nombre + zona_id)
-  4. Actualiza variables_zona.google_review_count_medio
+Usa el scraper Go (gosom) vía REST API para obtener por zona:
+  - rating, review_count (33 campos en total)
+  - popular_times: {day: {hour: busyness_pct}} → flujo_popular_times_score
+  - google_place_id, coordenadas
 
-Estrategia antibot:
-  - 1 instancia de GoogleMapsScraper con session warming
-  - Delays aleatorios de 20-45 s entre búsquedas
-  - Máximo 30 búsquedas por ejecución (≈ 6 sectores × 5 zonas)
-    para no sobrecargar la sesión de Playwright
-  - Si CAPTCHA → abort de la ejecución, reintentar la semana siguiente
+El scraper Go se levanta como servicio Docker:
+  docker run -p 8080:8080 gosom/google-maps-scraper
 
 Frecuencia: semanal miércoles 02:00 (scheduler.py)
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import random
 from datetime import date
@@ -31,10 +23,7 @@ from db.conexion import get_db
 logger = logging.getLogger(__name__)
 
 # ── Configuración ─────────────────────────────────────────────────────────────
-_MAX_BUSQUEDAS   = 30      # máximo de búsquedas por ejecución (throttle antibot)
 _RADIO_M         = 300     # radio de búsqueda alrededor del centroide de zona
-_DELAY_MIN_S     = 20.0    # pausa mínima entre búsquedas
-_DELAY_MAX_S     = 45.0    # pausa máxima entre búsquedas
 
 # Categorías Google Maps por código de sector
 _SECTOR_CATEGORIAS: dict[str, list[str]] = {
@@ -52,6 +41,10 @@ _SECTOR_CATEGORIAS: dict[str, list[str]] = {
 
 # Sectores prioritarios si hay más sectores que el límite de búsquedas
 _SECTORES_PRIORIDAD = ["restauracion", "moda", "estetica", "tatuajes"]
+
+# Límite de búsquedas por ejecución (gosom es rápido ~120 lugares/min, pero
+# mantenemos un límite razonable para no sobrecargar la cuota de la API)
+_MAX_BUSQUEDAS = 100
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -77,7 +70,7 @@ async def ejecutar() -> dict:
         busquedas = _planificar_busquedas(zonas, sectores)
         logger.info("Búsquedas planificadas: %d (límite %d)", len(busquedas), _MAX_BUSQUEDAS)
 
-        # 4. Ejecutar scraping con Playwright
+        # 4. Ejecutar scraping con gosom
         negocios_actualizados = await _ejecutar_scraping(busquedas)
         zonas_procesadas = len({b["zona_id"] for b in busquedas})
 
@@ -174,88 +167,21 @@ def _planificar_busquedas(zonas: list[dict], sectores: list[str]) -> list[dict]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def _ejecutar_scraping(busquedas: list[dict]) -> int:
-    """
-    Ejecuta búsquedas Google Maps con una sola instancia de scraper (1 sesión).
-    Actualiza negocios_activos en BD para cada negocio encontrado.
+    from pipelines.scraping.gosom_client import GosomClient, GosomServiceUnavailable
 
-    Estrategia:
-      - Intenta gosom primero (más datos, popular_times más completo).
-        gosom es el scraper Go (docker en localhost:8080) que devuelve
-        popular_times estructurado y tiene ~120 lugares/minuto.
-      - Si gosom no está disponible, cae al scraper Playwright existente.
-    """
-    # Intentar gosom primero (más datos, popular_times más completo)
-    from pipelines.scraping.gosom_client import GosomClient
     gosom = GosomClient()
-    usar_gosom = gosom.is_available()
-
-    if usar_gosom:
-        logger.info("gosom disponible en %s — usando scraper Go", gosom.base_url)
-        return await _ejecutar_scraping_gosom(gosom, busquedas)
-
-    logger.info("gosom no disponible — usando scraper Playwright")
-
-    try:
-        from pipelines.scraping.google_maps_scraper import GoogleMapsScraper
-    except ImportError as exc:
-        logger.error("GoogleMapsScraper no disponible (¿falta playwright?): %s", exc)
+    if not gosom.is_available():
+        logger.error(
+            "gosom scraper no disponible. Levanta el servicio: "
+            "docker run -p 8080:8080 -e API_KEY=$GOSOM_API_KEY gosom/google-maps-scraper"
+        )
         return 0
 
-    scraper = GoogleMapsScraper(session_id="pipeline_weekly", max_retries=2)
     n_actualizados = 0
-
-    for i, b in enumerate(busquedas):
-        try:
-            negocios = await scraper.buscar_negocios_por_categoria(
-                categoria=b["categoria"],
-                zona_nombre=b["zona_nombre"],
-                lat=b["lat"],
-                lng=b["lng"],
-                radio_m=_RADIO_M,
-            )
-            if negocios:
-                n = await _actualizar_negocios(negocios, b["zona_id"])
-                n_actualizados += n
-                logger.info(
-                    "Zona '%s' sector '%s': %d negocios scraped, %d actualizados",
-                    b["zona_nombre"], b["sector"], len(negocios), n,
-                )
-
-        except Exception as exc:
-            msg = str(exc).lower()
-            if "captcha" in msg:
-                logger.warning("CAPTCHA detectado en búsqueda %d/%d — abortando ejecución", i+1, len(busquedas))
-                break
-            logger.warning("Error en búsqueda zona='%s' sector='%s': %s", b["zona_nombre"], b["sector"], exc)
-
-        # Delay humano entre búsquedas (excepto la última)
-        if i < len(busquedas) - 1:
-            delay = random.uniform(_DELAY_MIN_S, _DELAY_MAX_S)
-            logger.debug("Esperando %.1f s antes de siguiente búsqueda", delay)
-            await asyncio.sleep(delay)
-
-    return n_actualizados
-
-
-async def _ejecutar_scraping_gosom(gosom, busquedas: list[dict]) -> int:
-    """
-    Ejecuta las búsquedas usando el cliente gosom (Go scraper REST API).
-
-    A diferencia del scraper Playwright, gosom devuelve GosomEntry con
-    popular_times estructurado como {day: {hour: pct}}. Los adaptamos
-    al formato esperado por _actualizar_negocios_gosom.
-
-    No se aplican delays humanos: gosom es un servicio controlado internamente
-    con su propio rate limiting (~120 lugares/minuto).
-    """
-    from pipelines.scraping.gosom_client import GosomEntry
-
-    n_actualizados = 0
-
-    async with gosom:
-        for i, b in enumerate(busquedas):
+    async with gosom:  # context manager
+        for b in busquedas:
             try:
-                entries: list[GosomEntry] = await gosom.search_zona(
+                entries = await gosom.search_zona(
                     zona_nombre=b["zona_nombre"],
                     categoria=b["categoria"],
                     lat=b["lat"],
@@ -265,15 +191,14 @@ async def _ejecutar_scraping_gosom(gosom, busquedas: list[dict]) -> int:
                     n = await _actualizar_negocios_gosom(entries, b["zona_id"])
                     n_actualizados += n
                     logger.info(
-                        "gosom zona='%s' sector='%s': %d resultados, %d actualizados",
+                        "Zona '%s' sector '%s': %d negocios, %d actualizados",
                         b["zona_nombre"], b["sector"], len(entries), n,
                     )
-
+            except GosomServiceUnavailable:
+                logger.error("gosom dejó de responder — abortando")
+                break
             except Exception as exc:
-                logger.warning(
-                    "gosom error zona='%s' sector='%s': %s",
-                    b["zona_nombre"], b["sector"], exc,
-                )
+                logger.warning("Error zona='%s' sector='%s': %s", b["zona_nombre"], b["sector"], exc)
 
     return n_actualizados
 
@@ -282,11 +207,10 @@ async def _actualizar_negocios_gosom(entries: list, zona_id: str) -> int:
     """
     Actualiza negocios_activos a partir de GosomEntry (resultado gosom).
 
-    Diferencias respecto a _actualizar_negocios (Playwright):
-      - Usa entry.place_id (más fiable que el nombre para el match)
-      - popular_times ya viene como dict {day: {int_hour: int_pct}}
-        y se guarda directamente en JSONB
-      - También guarda review_rating (gosom lo extrae, el scraper Playwright no)
+    - Usa entry.place_id (más fiable que el nombre para el match)
+    - popular_times ya viene como dict {day: {int_hour: int_pct}}
+      y se guarda directamente en JSONB
+    - También guarda review_rating (gosom lo extrae)
     """
     if not entries:
         return 0
@@ -356,74 +280,6 @@ async def _actualizar_negocios_gosom(entries: list, zona_id: str) -> int:
     return n
 
 
-async def _actualizar_negocios(negocios: list, zona_id: str) -> int:
-    """
-    Para cada negocio scraped, intenta hacer match en negocios_activos
-    por nombre aproximado y zona_id, y actualiza review_count + google_place_id
-    + popular_times (si disponible).
-    Match: nombre ILIKE '%nombre_scraped%' AND zona_id = zona_id
-    """
-    if not negocios:
-        return 0
-
-    import json as _json
-
-    n = 0
-    async with get_db() as conn:
-        for neg in negocios:
-            if not neg.nombre:
-                continue
-            try:
-                # Serializar popular_times a JSONB si está disponible
-                pt_json = _json.dumps(neg.popular_times) if neg.popular_times else None
-
-                result = await conn.execute(
-                    """
-                    UPDATE negocios_activos
-                    SET review_count    = $1,
-                        google_place_id = COALESCE($2, google_place_id),
-                        popular_times   = COALESCE($5::jsonb, popular_times)
-                    WHERE zona_id = $3
-                      AND LOWER(nombre) ILIKE LOWER($4)
-                      AND activo = TRUE
-                    """,
-                    neg.review_count,
-                    neg.google_place_id,
-                    zona_id,
-                    f"%{neg.nombre[:50]}%",
-                    pt_json,
-                )
-                # asyncpg devuelve "UPDATE N" como string
-                rows_affected = int(result.split()[-1]) if result else 0
-                if rows_affected > 0:
-                    n += rows_affected
-                elif neg.lat and neg.lng:
-                    # Si no hay match por nombre, intentar por proximidad geográfica
-                    result2 = await conn.execute(
-                        """
-                        UPDATE negocios_activos
-                        SET review_count    = $1,
-                            google_place_id = COALESCE($2, google_place_id),
-                            popular_times   = COALESCE($5::jsonb, popular_times)
-                        WHERE ST_DWithin(
-                            geometria::geography,
-                            ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography,
-                            30
-                        )
-                        AND activo = TRUE
-                        """,
-                        neg.review_count, neg.google_place_id,
-                        neg.lng, neg.lat,
-                        pt_json,
-                    )
-                    rows2 = int(result2.split()[-1]) if result2 else 0
-                    n += rows2
-            except Exception as exc:
-                logger.debug("Error actualizando negocio '%s': %s", neg.nombre, exc)
-
-    return n
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Actualización variables_zona
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -437,7 +293,7 @@ async def _actualizar_popular_times_score() -> None:
       1. Para cada zona, recoger los popular_times de todos los negocios que
          los tienen (columna JSONB popular_times en negocios_activos).
       2. Para cada negocio, calcular su pico de concurrencia:
-         peak_score = max de los 24 valores de todos los días disponibles.
+         peak_score = max de todos los valores de todos los días disponibles.
       3. flujo_popular_times_score = media de los peak_scores de la zona,
          normalizada a escala 0-100.
       4. UPSERT en variables_zona.flujo_popular_times_score con
