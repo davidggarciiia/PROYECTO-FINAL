@@ -9,13 +9,31 @@
 -- Ejecutar:
 --   psql $DATABASE_URL -f db/migraciones/008_vcity.sql
 
--- ── Columna principal ─────────────────────────────────────────────────────────
+-- ── Columnas principales ──────────────────────────────────────────────────────
 
 ALTER TABLE variables_zona
     ADD COLUMN IF NOT EXISTS vcity_flujo_peatonal FLOAT DEFAULT NULL;
 
+ALTER TABLE variables_zona
+    ADD COLUMN IF NOT EXISTS vcity_tourist_rate FLOAT DEFAULT NULL;
+
+ALTER TABLE variables_zona
+    ADD COLUMN IF NOT EXISTS vcity_shopping_rate FLOAT DEFAULT NULL;
+
+ALTER TABLE variables_zona
+    ADD COLUMN IF NOT EXISTS vcity_resident_rate FLOAT DEFAULT NULL;
+
 COMMENT ON COLUMN variables_zona.vcity_flujo_peatonal IS
-    'Promedio peatones/día por zona (fuente: BCN Open Data mobilitat o proxy vianants_bcn)';
+    'Promedio peatones/día por zona (fuente: VCity BSC MVT o proxy vianants_bcn)';
+
+COMMENT ON COLUMN variables_zona.vcity_tourist_rate IS
+    'Fracción de turistas sobre flujo peatonal (fuente: VCity BSC — barcelonapedestrians_100percentage_v2)';
+
+COMMENT ON COLUMN variables_zona.vcity_shopping_rate IS
+    'Fracción shopping/ocio sobre flujo peatonal (fuente: VCity BSC — shopping_and_leisure_rate)';
+
+COMMENT ON COLUMN variables_zona.vcity_resident_rate IS
+    'Fracción residentes sobre flujo peatonal (fuente: VCity BSC — resident_rate)';
 
 -- Índice parcial para consultas de scoring
 CREATE INDEX IF NOT EXISTS idx_variables_zona_vcity_flujo
