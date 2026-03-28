@@ -276,7 +276,8 @@ async def _get_datos_zona_completos(zona_id: str, sector: str) -> dict:
     async with get_db() as conn:
         row = await conn.fetchrow("""
             SELECT
-                vz.flujo_peatonal_total, vz.renta_media_hogar,
+                vz.flujo_peatonal_total, vz.flujo_popular_times_score,
+                vz.vcity_flujo_peatonal, vz.renta_media_hogar,
                 vz.score_turismo, vz.pct_locales_vacios, vz.tasa_rotacion_anual,
                 vz.incidencias_por_1000hab, vz.ratio_locales_comerciales,
                 cp.score_saturacion,

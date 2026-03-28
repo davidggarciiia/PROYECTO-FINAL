@@ -107,6 +107,8 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
                     l.escaparate_ml, l.alquiler_mensual, l.disponible,
                     vz.flujo_peatonal_manana, vz.flujo_peatonal_tarde,
                     vz.flujo_peatonal_noche, vz.flujo_peatonal_total,
+                    vz.flujo_popular_times_score,
+                    vz.vcity_flujo_peatonal,
                     vz.renta_media_hogar, vz.edad_media, vz.pct_extranjeros,
                     vz.score_turismo, vz.num_negocios_activos,
                     vz.pct_locales_vacios, vz.nivel_ruido_db,

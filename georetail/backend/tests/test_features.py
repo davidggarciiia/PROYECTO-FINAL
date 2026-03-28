@@ -2,10 +2,10 @@
 tests/test_features.py — Tests para scoring/features.py (función pura _build_array).
 
 _build_array es la única función sin I/O del módulo; construye el
-vector de 29 features para XGBoost (v3) a partir de dicts de datos de zona.
+vector de 30 features para XGBoost (v4) a partir de dicts de datos de zona.
 
 Cubre:
-  - Shape del array resultante (1 fila × 29 features)
+  - Shape del array resultante (1 fila × 30 features)
   - Dtype float32
   - Orden de features coincide con FEATURE_NAMES
   - Imputación con _MEDIAS cuando el dato es None/ausente
@@ -15,14 +15,16 @@ Cubre:
   - Features v3 (índices 23-28): airbnb_density_500m, airbnb_occupancy_est,
     google_review_count_medio, licencias_nuevas_1a, eventos_culturales_500m,
     booking_hoteles_500m
+  - Feature v4 (índice 29): flujo_peatonal_score (fusión ponderada 4 fuentes)
 """
 import pytest
 import numpy as np
 
 from scoring.features import _build_array, FEATURE_NAMES, _MEDIAS
 
-# Número total de features en v3
-N_FEATURES_V3 = 29
+# Número total de features en v4 (v3 + flujo_peatonal_score)
+N_FEATURES_V4 = 30
+N_FEATURES_V3 = N_FEATURES_V4  # alias de compatibilidad — tests usan la constante antigua
 
 
 # ─── Fixtures ──────────────────────────────────────────────────────────────────
@@ -103,8 +105,8 @@ class TestEstructuraArray:
         arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
         assert arr.dtype == np.float32
 
-    def test_feature_names_tiene_29_elementos(self):
-        assert len(FEATURE_NAMES) == N_FEATURES_V3
+    def test_feature_names_tiene_30_elementos(self):
+        assert len(FEATURE_NAMES) == N_FEATURES_V4
 
     def test_no_hay_duplicados_en_feature_names(self):
         assert len(FEATURE_NAMES) == len(set(FEATURE_NAMES))
@@ -125,13 +127,17 @@ class TestEstructuraArray:
         assert "dist_playa_m" in FEATURE_NAMES
         assert "ratio_locales_comerciales" in FEATURE_NAMES
 
-    def test_v3_features_estan_al_final(self):
+    def test_v3_features_estan_en_indices_23_a_28(self):
         """Las 6 features v3 deben ocupar los índices 23-28 (tras v1 y v2)."""
-        v3_start = 23
-        v3_features = FEATURE_NAMES[v3_start:]
+        v3_features = FEATURE_NAMES[23:29]
         assert len(v3_features) == 6
         assert v3_features[0] == "airbnb_density_500m"
         assert v3_features[-1] == "booking_hoteles_500m"
+
+    def test_v4_flujo_score_es_el_ultimo_feature(self):
+        """La feature v4 flujo_peatonal_score debe ocupar el índice 29 (último)."""
+        assert FEATURE_NAMES[29] == "flujo_peatonal_score"
+        assert FEATURE_NAMES[-1] == "flujo_peatonal_score"
 
 
 # ─── Tests de imputación con medias ──────────────────────────────────────────
@@ -140,10 +146,21 @@ class TestImputacion:
     def test_datos_vacios_usa_todas_las_medias(self):
         arr = _build_array({}, {}, None, {}, {}, {})
         vec = arr[0]
+        # flujo_peatonal_score (v4) es calculado en tiempo real por calcular_flujo_score(),
+        # no imputado de _MEDIAS. Con todas las fuentes a None devuelve el fallback (30.0).
+        _COMPUTED_FEATURES = {"flujo_peatonal_score"}
         for i, feat in enumerate(FEATURE_NAMES):
+            if feat in _COMPUTED_FEATURES:
+                continue
             assert vec[i] == pytest.approx(_MEDIAS[feat], rel=1e-5), (
                 f"Feature {feat}: esperado {_MEDIAS[feat]}, obtenido {vec[i]}"
             )
+
+    def test_flujo_peatonal_score_con_datos_vacios_es_fallback(self):
+        """Con todos los inputs None, flujo_peatonal_score devuelve el fallback conservador."""
+        arr = _build_array({}, {}, None, {}, {}, {})
+        idx = FEATURE_NAMES.index("flujo_peatonal_score")
+        assert arr[0][idx] == pytest.approx(30.0, abs=0.01)
 
     def test_precio_none_usa_media(
         self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
