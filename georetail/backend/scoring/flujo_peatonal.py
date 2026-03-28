@@ -10,7 +10,7 @@ Combina 4 fuentes con pesos adaptativos (si falta una, redistribuye):
 Output: flujo_peatonal_score [0-100] listo para usar en XGBoost v4.
 
 Nota sobre normalización:
-  - popular_times_score ya está en escala 0-100 (viene de GoogleMapsScraper)
+  - popular_times_score ya está en escala 0-100 (viene de gosom/google-maps-scraper vía GosomClient)
   - vcity_flujo_peatonal es el promedio diario de peatones (peatones/día); se
     normaliza dividiendo por vcity_max_barcelona (default: 50 000)
   - flujo_peatonal_total (vianants BCN) es intensidad diaria (personas/día); se
