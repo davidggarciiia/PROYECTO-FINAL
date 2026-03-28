@@ -494,32 +494,34 @@ async def _actualizar_variables_zona(fecha: date) -> int:
             n_noves  = noves.get(zona_id, 0)
             n_baixes = baixes.get(zona_id, 0)
 
-            # Insertar / actualitzar variables_zona
-            await conn.execute(
-                """
-                INSERT INTO variables_zona (zona_id, fecha, fuente)
-                VALUES ($1, $2, 'llicencies_bcn')
-                ON CONFLICT (zona_id, fecha) DO UPDATE
-                SET fuente = EXCLUDED.fuente
-                """,
-                zona_id, fecha,
-            )
-
-            # Columnes específiques de llicències (si existeixen)
-            for col, val in [
-                ("licencias_nuevas_1a", n_noves),
-                ("licencias_bajas_1a",  n_baixes),
-            ]:
-                try:
-                    await conn.execute(
-                        f"UPDATE variables_zona SET {col} = $1 "
-                        f"WHERE zona_id = $2 AND fecha = $3",
-                        val, zona_id, fecha,
-                    )
-                except Exception:
-                    pass  # columna no existeix en schema actual
-
-            n += 1
+            try:
+                # Anchor en variables_zona (tabla coordinadora delgada)
+                await conn.execute(
+                    """
+                    INSERT INTO variables_zona (zona_id, fecha, fuente)
+                    VALUES ($1, $2, 'llicencies_bcn')
+                    ON CONFLICT (zona_id, fecha) DO UPDATE
+                    SET fuente = EXCLUDED.fuente, updated_at = NOW()
+                    """,
+                    zona_id, fecha,
+                )
+                # Dades de llicències en taula satèl·lit vz_comercial
+                await conn.execute(
+                    """
+                    INSERT INTO vz_comercial
+                        (zona_id, fecha, licencias_nuevas_1a, licencias_bajas_1a, fuente)
+                    VALUES ($1, $2, $3, $4, 'llicencies_bcn')
+                    ON CONFLICT (zona_id, fecha) DO UPDATE
+                    SET licencias_nuevas_1a = EXCLUDED.licencias_nuevas_1a,
+                        licencias_bajas_1a  = EXCLUDED.licencias_bajas_1a,
+                        fuente              = EXCLUDED.fuente,
+                        updated_at          = NOW()
+                    """,
+                    zona_id, fecha, n_noves, n_baixes,
+                )
+                n += 1
+            except Exception as exc:
+                logger.debug("Error actualizando vz_comercial llicències zona=%s: %s", zona_id, exc)
 
     return n
 

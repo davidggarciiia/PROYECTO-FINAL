@@ -110,12 +110,22 @@ async def _actualizar_negocios_activos() -> None:
             await asyncio.sleep(0.2)
 
 
+_VALID_SECTORES = {
+    "restauracion", "moda", "estetica", "tatuajes", "shisha_lounge",
+    "supermercado", "farmacia", "electronica", "libreria", "sport",
+}
+
+
 async def _upsert_negocios(negocios: list[dict], zona_id: str) -> None:
     """Inserta o actualiza negocios_activos."""
     async with get_db() as conn:
         for n in negocios:
             if not n.get("lat") or not n.get("lng"):
                 continue
+            # Validate sector_codigo against known sectors to avoid FK violations
+            sector_codigo = n.get("sector_codigo")
+            sector_codigo = sector_codigo if sector_codigo in _VALID_SECTORES else None
+            n = {**n, "sector_codigo": sector_codigo}
             await conn.execute("""
                 INSERT INTO negocios_activos
                     (id, nombre, sector_codigo, lat, lng,

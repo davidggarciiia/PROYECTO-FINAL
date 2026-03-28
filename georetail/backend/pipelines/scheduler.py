@@ -209,7 +209,7 @@ async def _run_purgar_portales():
 # ── Runners v3: turismo y dinamismo comercial ─────────────────────────────────
 
 async def _run_airbnb():
-    """Mensual día 3, 05:00 — Inside Airbnb → airbnb_listings_500m, airbnb_occupancy_est."""
+    """Mensual día 3, 05:00 — Inside Airbnb → airbnb_density_500m, airbnb_occupancy_est."""
     try:
         from pipelines.airbnb import ejecutar
         await ejecutar()

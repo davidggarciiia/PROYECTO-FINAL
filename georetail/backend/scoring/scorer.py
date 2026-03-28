@@ -291,7 +291,7 @@ async def _get_datos_zona_completos(zona_id: str, sector: str) -> dict:
                         '2.2130 41.3900,2.2250 41.3970,2.2380 41.4020)', 4326
                     )::geography
                 )::int AS dist_playa_m
-            FROM variables_zona vz
+            FROM v_variables_zona vz
             JOIN zonas z ON z.id = vz.zona_id
             LEFT JOIN competencia_por_local cp ON cp.zona_id=vz.zona_id
                 AND cp.sector_codigo=$2 AND cp.radio_m=300

@@ -10,7 +10,7 @@ Qué hace:
              room_type, price, minimum_nights, number_of_reviews,
              review_scores_rating, availability_365
   3. Para cada zona (ST_DWithin 500m), calcula:
-     - airbnb_listings_500m: número de listings activos
+     - airbnb_density_500m: número de listings activos
      - airbnb_occupancy_est: estimación = (365 - availability_365) / 365
   4. Actualiza variables_zona con los nuevos valores
 
@@ -289,40 +289,43 @@ async def _actualizar_variables(
     n = 0
     async with get_db() as conn:
         for zona_id, data in stats.items():
-            await conn.execute(
-                """
-                INSERT INTO variables_zona
-                    (zona_id, fecha, score_turismo, fuente)
-                VALUES ($1, $2, $3, 'airbnb_insideairbnb')
-                ON CONFLICT (zona_id, fecha) DO UPDATE
-                SET score_turismo = EXCLUDED.score_turismo,
-                    fuente = EXCLUDED.fuente
-                """,
-                zona_id,
-                fecha,
-                # Normalizar count a score_turismo (0-100) como proxy turístico
-                # también guardamos airbnb_listings_500m y airbnb_occupancy_est
-                # en columnas adicionales si existen, o lo dejamos en score_turismo
-                round(min(100.0, data["count"] / 2.0), 2),  # 200 listings → score 100
-            )
-            # Actualizar columnas específicas de airbnb si existen en el schema
             try:
+                # Anchor en variables_zona (tabla coordinadora delgada)
                 await conn.execute(
                     """
-                    UPDATE variables_zona
-                    SET airbnb_listings_500m  = $1,
-                        airbnb_occupancy_est  = $2
-                    WHERE zona_id = $3 AND fecha = $4
+                    INSERT INTO variables_zona (zona_id, fecha, fuente)
+                    VALUES ($1, $2, 'airbnb_insideairbnb')
+                    ON CONFLICT (zona_id, fecha) DO UPDATE
+                    SET fuente = EXCLUDED.fuente, updated_at = NOW()
                     """,
-                    data["count"],
-                    round(data["avg_ocupacion"], 4),
+                    zona_id, fecha,
+                )
+                # Datos de turismo en tabla satélite vz_turismo
+                await conn.execute(
+                    """
+                    INSERT INTO vz_turismo
+                        (zona_id, fecha,
+                         score_turismo,
+                         airbnb_density_500m, airbnb_occupancy_est,
+                         fuente)
+                    VALUES ($1, $2, $3, $4, $5, 'airbnb_insideairbnb')
+                    ON CONFLICT (zona_id, fecha) DO UPDATE
+                    SET score_turismo       = EXCLUDED.score_turismo,
+                        airbnb_density_500m  = EXCLUDED.airbnb_density_500m,
+                        airbnb_occupancy_est = EXCLUDED.airbnb_occupancy_est,
+                        fuente               = EXCLUDED.fuente,
+                        updated_at           = NOW()
+                    """,
                     zona_id,
                     fecha,
+                    # Normalizar count a score_turismo (0-100): 200 listings → score 100
+                    round(min(100.0, data["count"] / 2.0), 2),
+                    data["count"],
+                    round(data["avg_ocupacion"], 4),
                 )
-            except Exception:
-                # Columnas no existen aún en el schema — silenciar y continuar
-                pass
-            n += 1
+                n += 1
+            except Exception as exc:
+                logger.debug("Error actualizando vz_turismo airbnb zona=%s: %s", zona_id, exc)
 
     return n
 

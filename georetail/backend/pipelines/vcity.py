@@ -420,20 +420,34 @@ async def _persistir(zona_data: dict[str, dict]) -> int:
                 shopping = metrics.get("shopping_rate")
                 resident = metrics.get("resident_rate")
 
+                # Anchor en variables_zona (tabla coordinadora delgada)
                 await conn.execute(
                     """
-                    INSERT INTO variables_zona
+                    INSERT INTO variables_zona (zona_id, fecha, fuente)
+                    VALUES ($1, $2, 'vcity_mvt')
+                    ON CONFLICT (zona_id, fecha) DO UPDATE
+                    SET fuente = EXCLUDED.fuente, updated_at = NOW()
+                    """,
+                    zona_id, fecha,
+                )
+                # Datos de flujo en tabla satélite vz_flujo
+                await conn.execute(
+                    """
+                    INSERT INTO vz_flujo
                         (zona_id, fecha,
                          vcity_flujo_peatonal,
                          vcity_tourist_rate,
                          vcity_shopping_rate,
-                         vcity_resident_rate)
-                    VALUES ($1, $2, $3, $4, $5, $6)
+                         vcity_resident_rate,
+                         fuente)
+                    VALUES ($1, $2, $3, $4, $5, $6, 'vcity_mvt')
                     ON CONFLICT (zona_id, fecha) DO UPDATE
                     SET vcity_flujo_peatonal = EXCLUDED.vcity_flujo_peatonal,
                         vcity_tourist_rate   = EXCLUDED.vcity_tourist_rate,
                         vcity_shopping_rate  = EXCLUDED.vcity_shopping_rate,
-                        vcity_resident_rate  = EXCLUDED.vcity_resident_rate
+                        vcity_resident_rate  = EXCLUDED.vcity_resident_rate,
+                        fuente = EXCLUDED.fuente,
+                        updated_at = NOW()
                     """,
                     zona_id, fecha, flujo, tourist, shopping, resident,
                 )
@@ -457,17 +471,21 @@ async def _fallback_desde_vianants() -> int:
     Devuelve el número de filas actualizadas.
     """
     async with get_db() as conn:
+        # Copiar flujo_peatonal_total de vz_flujo → vcity_flujo_peatonal en vz_flujo
         await conn.execute(
             """
-            UPDATE variables_zona
-            SET vcity_flujo_peatonal = flujo_peatonal_total
+            UPDATE vz_flujo
+            SET vcity_flujo_peatonal = flujo_peatonal_total,
+                fuente = 'vianants_proxy',
+                updated_at = NOW()
             WHERE flujo_peatonal_total IS NOT NULL
               AND flujo_peatonal_total > 0
+              AND vcity_flujo_peatonal IS NULL
             """
         )
         n = await conn.fetchval(
             """
-            SELECT COUNT(*) FROM variables_zona
+            SELECT COUNT(*) FROM vz_flujo
             WHERE vcity_flujo_peatonal IS NOT NULL
             """
         )
