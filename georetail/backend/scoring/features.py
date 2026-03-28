@@ -1,4 +1,4 @@
-"""scoring/features.py — Vector de 29 features para XGBoost.
+"""scoring/features.py — Vector de 30 features para XGBoost.
 
 Cambio v2: añadidas dos features de granularidad geográfica de nivel zona:
   - dist_playa_m              → distancia PostGIS al litoral de Barcelona (metros)
@@ -13,9 +13,22 @@ Cambio v3: añadidas seis features de turismo y dinamismo comercial al final
   - eventos_culturales_500m   → venues culturales / ocio en radio 500m
   - booking_hoteles_500m      → hoteles Booking en 500m (proxy turismo alojado)
 
-NOTA: Los modelos entrenados con v1 (21 features) o v2 (23 features) fallarán al
-recibir 29 features y caerán al scorer manual. Relanzar scoring/train.py para
-entrenar en v3.
+Cambio v4 (flujo_peatonal_score): añadida la feature de fusión ponderada de fuentes
+de flujo peatonal al final (índice 29). Sustituye a flujo_peatonal_total como señal
+principal de afluencia. Calculada por scoring/flujo_peatonal.py a partir de:
+  - popular_times_peak  (35%) — Google Maps Popular Times
+  - vcity_peatones      (30%) — VCity BSC promedio diario
+  - vianants_bcn        (20%) — Sensores BCN Open Data
+  - ratio_locales       (15%) — proxy estructural (siempre disponible)
+flujo_peatonal_total se mantiene en FEATURE_NAMES para compatibilidad con modelos v1-v3.
+
+vcity_flujo_peatonal: columna nueva en variables_zona (pipeline VCity BSC).
+  Candidato a incluir en FEATURE_NAMES como feature directa en v5.
+  Por ahora solo se usa como input de la fusión en flujo_peatonal_score.
+
+NOTA: Los modelos entrenados con v1 (21 features), v2 (23 features) o v3 (29 features)
+fallarán al recibir 30 features y caerán al scorer manual. Relanzar scoring/train.py
+para entrenar en v4.
 """
 from __future__ import annotations
 import logging
@@ -51,6 +64,11 @@ FEATURE_NAMES = [
     "licencias_nuevas_1a",        # nuevas licencias de actividad último año en la zona
     "eventos_culturales_500m",    # venues culturales/ocio en 500m
     "booking_hoteles_500m",       # hoteles Booking en 500m (proxy turismo alojado)
+    # ── v4: fusión ponderada de fuentes de flujo peatonal ─────────────────────
+    # Combina Popular Times (35%), VCity BSC (30%), vianants BCN (20%) y
+    # ratio_locales (15%) con redistribución adaptativa si falta alguna fuente.
+    # Calculado en _build_array() via scoring/flujo_peatonal.calcular_flujo_score().
+    "flujo_peatonal_score",       # fusión 0-100 (v4)
 ]
 
 # Medias de imputación calculadas sobre dataset de entrenamiento BCN
@@ -72,12 +90,17 @@ _MEDIAS = {
     "licencias_nuevas_1a": 4.0,        # ~4 nuevas licencias por zona/año (media BCN)
     "eventos_culturales_500m": 3.0,    # ~3 venues culturales/ocio en radio 500m
     "booking_hoteles_500m": 2.0,       # ~2 hoteles Booking en radio 500m (media BCN)
-    # v4 (pendiente de incluir en FEATURE_NAMES — no rompe modelos existentes)
-    # flujo_popular_times_score: media del pico de concurrencia (Popular Times Google Maps)
-    # de los negocios de la zona, normalizado 0-100. Calculado por pipelines/google_maps.py.
-    # Se almacena en variables_zona.flujo_popular_times_score.
-    # Fuente: GoogleMapsScraper._extraer_popular_times() — histograma de horas punta.
+    # v4 — fusión ponderada de fuentes de flujo peatonal (incluida en FEATURE_NAMES v4)
+    # Calculada en tiempo real por scoring/flujo_peatonal.calcular_flujo_score().
+    # Media estimada BCN: ~45 pts (ponderación de las 4 fuentes con cobertura parcial).
+    "flujo_peatonal_score": 45.0,      # ~45 pts media BCN (fusión Popular Times + VCity + vianants + ratio)
+    # Candidatos v4 usados como input de la fusión (NO en FEATURE_NAMES aún):
+    # flujo_popular_times_score: pico Popular Times Google Maps, escala 0-100.
+    #   Almacenado en variables_zona.flujo_popular_times_score.
     "flujo_popular_times_score": 48.0, # ~48 pts media BCN (estimación conservadora)
+    # vcity_flujo_peatonal: promedio diario VCity BSC (peatones/día, raw).
+    #   Almacenado en variables_zona.vcity_flujo_peatonal. Candidato v5.
+    "vcity_flujo_peatonal": 18_000.0,  # ~18 000 peatones/día media BCN (estimación VCity)
 }
 
 
@@ -104,9 +127,20 @@ async def construir_features_batch(zona_ids: list[str], sector: str):
 
 
 def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
+    from scoring.flujo_peatonal import calcular_flujo_score  # noqa: PLC0415
+
     # Distinguir None (sin dato → imputa) de 0 (flujo real cero → score 0)
     _flujo_raw = vz.get("flujo_peatonal_total")
     total = _flujo_raw if _flujo_raw is not None else 0
+
+    # v4: fusión ponderada de las 4 fuentes de flujo peatonal
+    _flujo_score = calcular_flujo_score(
+        popular_times_score=vz.get("flujo_popular_times_score"),
+        vcity_flujo=vz.get("vcity_flujo_peatonal"),
+        vianants_intensitat=_flujo_raw,
+        ratio_locales=vz.get("ratio_locales_comerciales"),
+    )
+
     raw = {
         "flujo_peatonal_total": _flujo_raw,
         "flujo_manana_pct": (vz.get("flujo_peatonal_manana") or 0)/total if total else None,
@@ -139,6 +173,10 @@ def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
         "licencias_nuevas_1a":       tur.get("licencias_nuevas_1a"),
         "eventos_culturales_500m":   tur.get("eventos_culturales_500m"),
         "booking_hoteles_500m":      tur.get("booking_hoteles_500m"),
+        # v4: fusión ponderada de flujo peatonal (Popular Times 35% + VCity 30%
+        #     + vianants BCN 20% + ratio_locales 15%); pesos adaptativos si falta
+        #     alguna fuente. Ver scoring/flujo_peatonal.py para detalles.
+        "flujo_peatonal_score":      _flujo_score,
     }
     vec = [float(raw.get(f) if raw.get(f) is not None else _MEDIAS[f]) for f in FEATURE_NAMES]
     return np.array([vec], dtype=np.float32)

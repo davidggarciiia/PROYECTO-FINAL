@@ -177,7 +177,24 @@ async def _ejecutar_scraping(busquedas: list[dict]) -> int:
     """
     Ejecuta búsquedas Google Maps con una sola instancia de scraper (1 sesión).
     Actualiza negocios_activos en BD para cada negocio encontrado.
+
+    Estrategia:
+      - Intenta gosom primero (más datos, popular_times más completo).
+        gosom es el scraper Go (docker en localhost:8080) que devuelve
+        popular_times estructurado y tiene ~120 lugares/minuto.
+      - Si gosom no está disponible, cae al scraper Playwright existente.
     """
+    # Intentar gosom primero (más datos, popular_times más completo)
+    from pipelines.scraping.gosom_client import GosomClient
+    gosom = GosomClient()
+    usar_gosom = gosom.is_available()
+
+    if usar_gosom:
+        logger.info("gosom disponible en %s — usando scraper Go", gosom.base_url)
+        return await _ejecutar_scraping_gosom(gosom, busquedas)
+
+    logger.info("gosom no disponible — usando scraper Playwright")
+
     try:
         from pipelines.scraping.google_maps_scraper import GoogleMapsScraper
     except ImportError as exc:
@@ -218,6 +235,125 @@ async def _ejecutar_scraping(busquedas: list[dict]) -> int:
             await asyncio.sleep(delay)
 
     return n_actualizados
+
+
+async def _ejecutar_scraping_gosom(gosom, busquedas: list[dict]) -> int:
+    """
+    Ejecuta las búsquedas usando el cliente gosom (Go scraper REST API).
+
+    A diferencia del scraper Playwright, gosom devuelve GosomEntry con
+    popular_times estructurado como {day: {hour: pct}}. Los adaptamos
+    al formato esperado por _actualizar_negocios_gosom.
+
+    No se aplican delays humanos: gosom es un servicio controlado internamente
+    con su propio rate limiting (~120 lugares/minuto).
+    """
+    from pipelines.scraping.gosom_client import GosomEntry
+
+    n_actualizados = 0
+
+    async with gosom:
+        for i, b in enumerate(busquedas):
+            try:
+                entries: list[GosomEntry] = await gosom.search_zona(
+                    zona_nombre=b["zona_nombre"],
+                    categoria=b["categoria"],
+                    lat=b["lat"],
+                    lng=b["lng"],
+                )
+                if entries:
+                    n = await _actualizar_negocios_gosom(entries, b["zona_id"])
+                    n_actualizados += n
+                    logger.info(
+                        "gosom zona='%s' sector='%s': %d resultados, %d actualizados",
+                        b["zona_nombre"], b["sector"], len(entries), n,
+                    )
+
+            except Exception as exc:
+                logger.warning(
+                    "gosom error zona='%s' sector='%s': %s",
+                    b["zona_nombre"], b["sector"], exc,
+                )
+
+    return n_actualizados
+
+
+async def _actualizar_negocios_gosom(entries: list, zona_id: str) -> int:
+    """
+    Actualiza negocios_activos a partir de GosomEntry (resultado gosom).
+
+    Diferencias respecto a _actualizar_negocios (Playwright):
+      - Usa entry.place_id (más fiable que el nombre para el match)
+      - popular_times ya viene como dict {day: {int_hour: int_pct}}
+        y se guarda directamente en JSONB
+      - También guarda review_rating (gosom lo extrae, el scraper Playwright no)
+    """
+    if not entries:
+        return 0
+
+    import json as _json
+
+    n = 0
+    async with get_db() as conn:
+        for entry in entries:
+            if not entry.title:
+                continue
+            try:
+                pt_json = _json.dumps(entry.popular_times) if entry.popular_times else None
+
+                # 1. Intentar match por nombre + zona_id
+                result = await conn.execute(
+                    """
+                    UPDATE negocios_activos
+                    SET review_count    = $1,
+                        review_rating   = $2,
+                        google_place_id = COALESCE($3, google_place_id),
+                        popular_times   = COALESCE($6::jsonb, popular_times)
+                    WHERE zona_id = $4
+                      AND LOWER(nombre) ILIKE LOWER($5)
+                      AND activo = TRUE
+                    """,
+                    entry.review_count,
+                    entry.review_rating,
+                    entry.place_id or None,
+                    zona_id,
+                    f"%{entry.title[:50]}%",
+                    pt_json,
+                )
+                rows_affected = int(result.split()[-1]) if result else 0
+
+                if rows_affected > 0:
+                    n += rows_affected
+                elif entry.latitude and entry.longitude:
+                    # Fallback: match por proximidad geográfica (30m)
+                    result2 = await conn.execute(
+                        """
+                        UPDATE negocios_activos
+                        SET review_count    = $1,
+                            review_rating   = $2,
+                            google_place_id = COALESCE($3, google_place_id),
+                            popular_times   = COALESCE($6::jsonb, popular_times)
+                        WHERE ST_DWithin(
+                            geometria::geography,
+                            ST_SetSRID(ST_MakePoint($4, $5), 4326)::geography,
+                            30
+                        )
+                        AND activo = TRUE
+                        """,
+                        entry.review_count,
+                        entry.review_rating,
+                        entry.place_id or None,
+                        entry.longitude,
+                        entry.latitude,
+                        pt_json,
+                    )
+                    rows2 = int(result2.split()[-1]) if result2 else 0
+                    n += rows2
+
+            except Exception as exc:
+                logger.debug("gosom: error actualizando '%s': %s", entry.title, exc)
+
+    return n
 
 
 async def _actualizar_negocios(negocios: list, zona_id: str) -> int:
