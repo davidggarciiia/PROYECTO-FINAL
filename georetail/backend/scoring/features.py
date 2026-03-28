@@ -14,17 +14,13 @@ Cambio v3: añadidas seis features de turismo y dinamismo comercial al final
   - booking_hoteles_500m      → hoteles Booking en 500m (proxy turismo alojado)
 
 Cambio v4 (flujo_peatonal_score): añadida la feature de fusión ponderada de fuentes
-de flujo peatonal al final (índice 29). Sustituye a flujo_peatonal_total como señal
-principal de afluencia. Calculada por scoring/flujo_peatonal.py a partir de:
-  - popular_times_peak  (35%) — Google Maps Popular Times
-  - vcity_peatones      (30%) — VCity BSC promedio diario
-  - vianants_bcn        (20%) — Sensores BCN Open Data
-  - ratio_locales       (15%) — proxy estructural (siempre disponible)
+de flujo peatonal al final (índice 29). Calculada por scoring/flujo_peatonal.py a
+partir de 4 fuentes con redistribución adaptativa de pesos si falta alguna:
+  - flujo_popular_times_score  (35%) — Google Maps Popular Times
+  - vcity_flujo_peatonal       (30%) — VCity BSC promedio diario
+  - flujo_peatonal_total       (20%) — Sensores vianants BCN Open Data
+  - ratio_locales_comerciales  (15%) — proxy estructural (siempre disponible)
 flujo_peatonal_total se mantiene en FEATURE_NAMES para compatibilidad con modelos v1-v3.
-
-vcity_flujo_peatonal: columna nueva en variables_zona (pipeline VCity BSC).
-  Candidato a incluir en FEATURE_NAMES como feature directa en v5.
-  Por ahora solo se usa como input de la fusión en flujo_peatonal_score.
 
 NOTA: Los modelos entrenados con v1 (21 features), v2 (23 features) o v3 (29 features)
 fallarán al recibir 30 features y caerán al scorer manual. Relanzar scoring/train.py
@@ -90,17 +86,13 @@ _MEDIAS = {
     "licencias_nuevas_1a": 4.0,        # ~4 nuevas licencias por zona/año (media BCN)
     "eventos_culturales_500m": 3.0,    # ~3 venues culturales/ocio en radio 500m
     "booking_hoteles_500m": 2.0,       # ~2 hoteles Booking en radio 500m (media BCN)
-    # v4 — fusión ponderada de fuentes de flujo peatonal (incluida en FEATURE_NAMES v4)
+    # v4 — fusión ponderada de fuentes de flujo peatonal (feature #30, índice 29)
     # Calculada en tiempo real por scoring/flujo_peatonal.calcular_flujo_score().
     # Media estimada BCN: ~45 pts (ponderación de las 4 fuentes con cobertura parcial).
-    "flujo_peatonal_score": 45.0,      # ~45 pts media BCN (fusión Popular Times + VCity + vianants + ratio)
-    # Candidatos v4 usados como input de la fusión (NO en FEATURE_NAMES aún):
-    # flujo_popular_times_score: pico Popular Times Google Maps, escala 0-100.
-    #   Almacenado en variables_zona.flujo_popular_times_score.
-    "flujo_popular_times_score": 48.0, # ~48 pts media BCN (estimación conservadora)
-    # vcity_flujo_peatonal: promedio diario VCity BSC (peatones/día, raw).
-    #   Almacenado en variables_zona.vcity_flujo_peatonal. Candidato v5.
-    "vcity_flujo_peatonal": 18_000.0,  # ~18 000 peatones/día media BCN (estimación VCity)
+    "flujo_peatonal_score": 45.0,      # ~45 pts media BCN
+    # Inputs de la fusión v4 — usados por calcular_flujo_score(), no en FEATURE_NAMES:
+    "flujo_popular_times_score": 48.0, # ~48 pts media BCN (escala 0-100)
+    "vcity_flujo_peatonal": 18_000.0,  # ~18 000 peatones/día media BCN (raw, normalizar)
 }
 
 

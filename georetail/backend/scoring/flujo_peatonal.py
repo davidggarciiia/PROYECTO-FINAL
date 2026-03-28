@@ -2,21 +2,29 @@
 scoring/flujo_peatonal.py — Fusión ponderada de fuentes de flujo peatonal.
 
 Combina 4 fuentes con pesos adaptativos (si falta una, redistribuye):
-  1. popular_times_peak    (35%) — Google Maps Popular Times
-  2. vcity_peatones        (30%) — VCity BSC promedio diario
-  3. vianants_bcn          (20%) — Sensores BCN Open Data
-  4. ratio_locales         (15%) — proxy estructural (siempre disponible)
+  1. popular_times  (35%) — Google Maps Popular Times (ya en 0-100)
+  2. vcity          (30%) — VCity BSC promedio diario (peatones/día, normalizar)
+  3. vianants       (20%) — Sensores BCN Open Data (personas/día, normalizar)
+  4. ratio_locales  (15%) — proxy estructural (fracción 0-1, siempre disponible)
 
 Output: flujo_peatonal_score [0-100] listo para usar en XGBoost v4.
 
-Nota sobre normalización:
-  - popular_times_score ya está en escala 0-100 (viene de gosom/google-maps-scraper vía GosomClient)
-  - vcity_flujo_peatonal es el promedio diario de peatones (peatones/día); se
-    normaliza dividiendo por vcity_max_barcelona (default: 50 000)
-  - flujo_peatonal_total (vianants BCN) es intensidad diaria (personas/día); se
-    normaliza dividiendo por vianants_max_barcelona (default: 15 000)
-  - ratio_locales_comerciales es fracción 0-1; se multiplica por 100 para obtener
-    una puntuación coherente con las demás fuentes
+Fórmula de fusión:
+  1. Normalizar cada fuente disponible a escala 0-100.
+  2. Calcular peso_disponible = suma de PESOS_BASE de las fuentes presentes.
+  3. Redistribuir proporcionalmente: peso_adj[k] = PESOS_BASE[k] / peso_disponible.
+  4. score = Σ(peso_adj[k] × valor_norm[k]), acotado a [0, 100].
+  Si no hay ninguna fuente disponible, devuelve el fallback conservador (30.0).
+
+Normalización por fuente:
+  - popular_times_score: ya en escala 0-100 (sin transformación).
+  - vcity_flujo_peatonal: peatones/día ÷ VCITY_MAX_BARCELONA × 100.
+  - flujo_peatonal_total (vianants): personas/día ÷ VIANANTS_MAX_BARCELONA × 100.
+  - ratio_locales_comerciales: fracción 0-1 × 100.
+
+Constantes de normalización configurables a nivel de módulo:
+  VCITY_MAX_BARCELONA    = 50 000  peatones/día (percentil 99 estimado BCN)
+  VIANANTS_MAX_BARCELONA = 15 000  personas/día (sensor máximo BCN Open Data)
 """
 from __future__ import annotations
 
@@ -31,9 +39,14 @@ PESOS_BASE: dict[str, float] = {
     "ratio_locales": 0.15,
 }
 
-# Valores de referencia para normalización (percentil 99 estimado en BCN)
-_VCITY_MAX_BCN:    float = 50_000.0  # peatones/día zona muy transitada
-_VIANANTS_MAX_BCN: float = 15_000.0  # personas/día sensor máximo BCN Open Data
+# Valores de referencia para normalización (percentil 99 estimado en BCN).
+# Modificar aquí para ajustar la escala global sin tocar las funciones.
+VCITY_MAX_BARCELONA:    float = 50_000.0  # peatones/día zona muy transitada
+VIANANTS_MAX_BARCELONA: float = 15_000.0  # personas/día sensor máximo BCN Open Data
+
+# Alias privados mantenidos por compatibilidad interna
+_VCITY_MAX_BCN    = VCITY_MAX_BARCELONA
+_VIANANTS_MAX_BCN = VIANANTS_MAX_BARCELONA
 
 
 # ---------------------------------------------------------------------------
@@ -45,8 +58,8 @@ def calcular_flujo_score(
     vcity_flujo: Optional[float],           # peatones/día (raw, normalizar)
     vianants_intensitat: Optional[float],   # personas/día (raw, normalizar)
     ratio_locales: Optional[float],         # 0.0-1.0
-    vcity_max_barcelona: float = _VCITY_MAX_BCN,
-    vianants_max_barcelona: float = _VIANANTS_MAX_BCN,
+    vcity_max_barcelona: float = VCITY_MAX_BARCELONA,
+    vianants_max_barcelona: float = VIANANTS_MAX_BARCELONA,
 ) -> float:
     """
     Devuelve flujo_peatonal_score [0-100].
@@ -178,3 +191,110 @@ def fuentes_disponibles(row: dict) -> list[str]:
         fuentes.append("ratio_locales")
 
     return fuentes
+
+
+# ---------------------------------------------------------------------------
+# Explicación detallada de la fusión (debugging y frontend)
+# ---------------------------------------------------------------------------
+
+def flujo_peatonal_explain(
+    row: dict,
+    vcity_max_barcelona: float = VCITY_MAX_BARCELONA,
+    vianants_max_barcelona: float = VIANANTS_MAX_BARCELONA,
+) -> dict:
+    """
+    Devuelve un desglose detallado de la fusión ponderada para una zona.
+
+    Útil para debugging y para que el frontend muestre qué fuentes
+    contribuyeron al flujo_peatonal_score y en qué medida.
+
+    Args:
+        row: dict con claves del esquema variables_zona:
+             flujo_popular_times_score (o popular_times_score),
+             vcity_flujo_peatonal, flujo_peatonal_total,
+             ratio_locales_comerciales.
+        vcity_max_barcelona: referencia de normalización para VCity.
+        vianants_max_barcelona: referencia de normalización para vianants.
+
+    Returns:
+        Dict con estructura:
+        {
+          "score": float,            # flujo_peatonal_score final [0-100]
+          "sources": {
+            "popular_times": {
+              "value": float | None, # valor normalizado 0-100, o None si ausente
+              "weight": float,       # peso efectivo aplicado (0.0 si ausente)
+              "contribution": float, # weight × value
+              "missing": bool,       # True si la fuente no tenía dato
+            },
+            "vcity": { ... },
+            "vianants": { ... },
+            "ratio_locales": { ... },
+          },
+          "sources_available": int,  # número de fuentes con dato
+        }
+    """
+    # ── Resolver valores raw desde el dict ───────────────────────────────────
+    pt_raw = row.get("flujo_popular_times_score") or row.get("popular_times_score")
+    vc_raw = row.get("vcity_flujo_peatonal")
+    vi_raw = row.get("flujo_peatonal_total")
+    rl_raw = row.get("ratio_locales_comerciales")
+
+    # ── Normalizar a 0-100 ────────────────────────────────────────────────────
+    def _norm_pt(v: Optional[float]) -> Optional[float]:
+        return float(min(100.0, max(0.0, v))) if v is not None else None
+
+    def _norm_vc(v: Optional[float]) -> Optional[float]:
+        return float(min(100.0, max(0.0, v / vcity_max_barcelona * 100.0))) if v is not None else None
+
+    def _norm_vi(v: Optional[float]) -> Optional[float]:
+        return float(min(100.0, max(0.0, v / vianants_max_barcelona * 100.0))) if v is not None else None
+
+    def _norm_rl(v: Optional[float]) -> Optional[float]:
+        return float(min(100.0, max(0.0, v * 100.0))) if v is not None else None
+
+    norm_values: dict[str, Optional[float]] = {
+        "popular_times": _norm_pt(pt_raw),
+        "vcity":         _norm_vc(vc_raw),
+        "vianants":      _norm_vi(vi_raw),
+        "ratio_locales": _norm_rl(rl_raw),
+    }
+
+    # ── Redistribución adaptativa de pesos ───────────────────────────────────
+    disponibles = {k: v for k, v in norm_values.items() if v is not None}
+    n_disponibles = len(disponibles)
+
+    if not disponibles:
+        # Fallback conservador: sin datos
+        sources = {
+            k: {"value": None, "weight": 0.0, "contribution": 0.0, "missing": True}
+            for k in PESOS_BASE
+        }
+        return {"score": 30.0, "sources": sources, "sources_available": 0}
+
+    peso_disponible = sum(PESOS_BASE[k] for k in disponibles)
+    pesos_adj: dict[str, float] = {
+        k: (PESOS_BASE[k] / peso_disponible if k in disponibles else 0.0)
+        for k in PESOS_BASE
+    }
+
+    score = round(float(min(100.0, max(0.0, sum(
+        pesos_adj[k] * disponibles[k] for k in disponibles
+    )))), 2)
+
+    sources = {}
+    for k in PESOS_BASE:
+        val = norm_values[k]
+        w   = pesos_adj[k]
+        sources[k] = {
+            "value":        round(val, 4) if val is not None else None,
+            "weight":       round(w, 4),
+            "contribution": round(w * val, 4) if val is not None else 0.0,
+            "missing":      val is None,
+        }
+
+    return {
+        "score":             score,
+        "sources":           sources,
+        "sources_available": n_disponibles,
+    }

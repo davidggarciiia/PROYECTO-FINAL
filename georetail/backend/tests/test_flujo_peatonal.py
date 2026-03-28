@@ -4,8 +4,11 @@ from __future__ import annotations
 import pytest
 from scoring.flujo_peatonal import (
     PESOS_BASE,
+    VCITY_MAX_BARCELONA,
+    VIANANTS_MAX_BARCELONA,
     calcular_flujo_score,
     calcular_flujo_score_batch,
+    flujo_peatonal_explain,
     fuentes_disponibles,
 )
 
@@ -199,3 +202,118 @@ def test_pesos_base_suman_uno():
 def test_pesos_base_claves_correctas():
     """PESOS_BASE tiene exactamente las 4 fuentes esperadas."""
     assert set(PESOS_BASE.keys()) == {"popular_times", "vcity", "vianants", "ratio_locales"}
+
+
+def test_constantes_publicas_exportadas():
+    """VCITY_MAX_BARCELONA y VIANANTS_MAX_BARCELONA son accesibles y tienen valores correctos."""
+    assert VCITY_MAX_BARCELONA == pytest.approx(50_000.0)
+    assert VIANANTS_MAX_BARCELONA == pytest.approx(15_000.0)
+
+
+# ---------------------------------------------------------------------------
+# flujo_peatonal_explain
+# ---------------------------------------------------------------------------
+
+class TestFlujoExplain:
+    def test_estructura_completa(self):
+        """explain devuelve score, sources con 4 entradas y sources_available."""
+        row = {
+            "flujo_popular_times_score": 80.0,
+            "vcity_flujo_peatonal": 30_000.0,
+            "flujo_peatonal_total": 8_000.0,
+            "ratio_locales_comerciales": 0.5,
+        }
+        result = flujo_peatonal_explain(row)
+        assert "score" in result
+        assert "sources" in result
+        assert "sources_available" in result
+        assert set(result["sources"].keys()) == {"popular_times", "vcity", "vianants", "ratio_locales"}
+
+    def test_score_coincide_con_calcular_flujo_score(self):
+        """El score de explain coincide con calcular_flujo_score para los mismos inputs."""
+        row = {
+            "flujo_popular_times_score": 75.0,
+            "vcity_flujo_peatonal": 25_000.0,
+            "flujo_peatonal_total": 6_000.0,
+            "ratio_locales_comerciales": 0.4,
+        }
+        explain_score = flujo_peatonal_explain(row)["score"]
+        direct_score = calcular_flujo_score(75.0, 25_000.0, 6_000.0, 0.4)
+        assert explain_score == pytest.approx(direct_score, abs=0.01)
+
+    def test_fuente_ausente_marca_missing(self):
+        """La fuente vcity=None aparece con missing=True y weight=0."""
+        row = {
+            "flujo_popular_times_score": 70.0,
+            "vcity_flujo_peatonal": None,
+            "flujo_peatonal_total": 5_000.0,
+            "ratio_locales_comerciales": 0.3,
+        }
+        result = flujo_peatonal_explain(row)
+        vcity = result["sources"]["vcity"]
+        assert vcity["missing"] is True
+        assert vcity["weight"] == pytest.approx(0.0)
+        assert vcity["contribution"] == pytest.approx(0.0)
+        assert result["sources_available"] == 3
+
+    def test_sin_ninguna_fuente_devuelve_fallback(self):
+        """Sin ninguna fuente disponible, score=30.0 y sources_available=0."""
+        row = {
+            "flujo_popular_times_score": None,
+            "vcity_flujo_peatonal": None,
+            "flujo_peatonal_total": None,
+            "ratio_locales_comerciales": None,
+        }
+        result = flujo_peatonal_explain(row)
+        assert result["score"] == pytest.approx(30.0)
+        assert result["sources_available"] == 0
+        for src in result["sources"].values():
+            assert src["missing"] is True
+
+    def test_pesos_redistribuidos_suman_uno(self):
+        """Con 3 fuentes disponibles, la suma de pesos efectivos es 1.0."""
+        row = {
+            "flujo_popular_times_score": 60.0,
+            "vcity_flujo_peatonal": None,        # ausente
+            "flujo_peatonal_total": 5_000.0,
+            "ratio_locales_comerciales": 0.35,
+        }
+        result = flujo_peatonal_explain(row)
+        total_w = sum(
+            src["weight"]
+            for src in result["sources"].values()
+            if not src["missing"]
+        )
+        assert total_w == pytest.approx(1.0, abs=1e-6)
+
+    def test_alias_popular_times_score(self):
+        """explain acepta 'popular_times_score' como alias de 'flujo_popular_times_score'."""
+        row_alias = {"popular_times_score": 65.0, "ratio_locales_comerciales": 0.3}
+        row_col   = {"flujo_popular_times_score": 65.0, "ratio_locales_comerciales": 0.3}
+        assert (
+            flujo_peatonal_explain(row_alias)["score"]
+            == pytest.approx(flujo_peatonal_explain(row_col)["score"], abs=0.01)
+        )
+
+    def test_contribuciones_suman_score(self):
+        """La suma de contribuciones de fuentes disponibles coincide con el score."""
+        row = {
+            "flujo_popular_times_score": 80.0,
+            "vcity_flujo_peatonal": 40_000.0,
+            "flujo_peatonal_total": 10_000.0,
+            "ratio_locales_comerciales": 0.6,
+        }
+        result = flujo_peatonal_explain(row)
+        total_contrib = sum(src["contribution"] for src in result["sources"].values())
+        assert total_contrib == pytest.approx(result["score"], abs=0.01)
+
+    def test_sources_available_todas_presentes(self):
+        """Con las 4 fuentes disponibles, sources_available == 4."""
+        row = {
+            "flujo_popular_times_score": 50.0,
+            "vcity_flujo_peatonal": 20_000.0,
+            "flujo_peatonal_total": 7_000.0,
+            "ratio_locales_comerciales": 0.25,
+        }
+        result = flujo_peatonal_explain(row)
+        assert result["sources_available"] == 4
