@@ -150,17 +150,17 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
                 "noche":  int(result.pop("flujo_peatonal_noche")  or 0),
             }
 
-            # Competidores cercanos 300m
+            # Competidores cercanos 500m
             competidores = await conn.fetch("""
                 SELECT na.nombre, na.sector_codigo AS sector,
                        round(ST_Distance(na.geometria::geography, z.geometria::geography)::numeric, 0) AS distancia_m,
-                       na.rating, na.precio_nivel,
+                       na.rating, na.num_resenas, na.precio_nivel,
                        (na.sector_codigo = $2) AS es_competencia_directa
                 FROM negocios_activos na
                 JOIN zonas z ON z.id=$1
-                WHERE ST_DWithin(na.geometria::geography, z.geometria::geography, 300)
+                WHERE ST_DWithin(na.geometria::geography, z.geometria::geography, 500)
                   AND na.activo=TRUE
-                ORDER BY distancia_m ASC LIMIT 15
+                ORDER BY distancia_m ASC LIMIT 20
             """, zona_id, sector)
             result["competidores_cercanos"] = [dict(c) for c in competidores]
 
@@ -275,4 +275,169 @@ async def get_zonas_lista(filtros: dict, sector: str,
         "filtros_disponibles": {
             "distritos": [r["nombre"] for r in distritos],
         },
+    }
+
+
+async def get_competencia_zona(zona_id: str, sector: str, radio_m: int = 500) -> Optional[dict]:
+    """
+    Devuelve los datos de competencia completos para la zona.
+
+    1. Intenta leer scores pre-calculados de competencia_detalle_zona.
+    2. Lee negocios_activos en radio 500m con datos individuales completos.
+    3. Clasifica competidores usando scoring.competencia.
+    4. Calcula amenaza_score individual por competidor.
+    5. Analiza gap de precio del segmento.
+
+    Returns dict compatible con CompetenciaDetalle, or None if zona not found.
+    """
+    from scoring.competencia import (
+        NegocioCompetidor,
+        negocios_desde_rows,
+        calcular_score_competencia,
+        amenaza_score_individual,
+        analizar_precio_segmento,
+        _es_vulnerable,
+        SECTORES_COMPETIDORES,
+        SECTORES_COMPLEMENTARIOS,
+    )
+
+    async with get_db() as conn:
+        # Verificar que la zona existe
+        zona_exists = await conn.fetchval("SELECT 1 FROM zonas WHERE id=$1", zona_id)
+        if not zona_exists:
+            return None
+
+        # 1. Intentar leer scores pre-calculados (pipeline mensual de competencia)
+        scores_row = await conn.fetchrow("""
+            SELECT score_competencia_v2, cluster_score, amenaza_incumbentes,
+                   oportunidad_mercado, ratio_complementarios,
+                   num_directos, pct_vulnerables, hhi_index, fuente
+            FROM competencia_detalle_zona
+            WHERE zona_id=$1 AND sector_codigo=$2 AND radio_m=$3
+            ORDER BY fecha DESC LIMIT 1
+        """, zona_id, sector, radio_m)
+
+        # 2. Leer negocios_activos en radio con todos los campos
+        negocios_rows = await conn.fetch("""
+            SELECT
+                na.nombre,
+                na.sector_codigo,
+                na.rating,
+                na.num_resenas,
+                na.precio_nivel,
+                round(ST_Distance(
+                    na.geometria::geography,
+                    ST_Centroid(z.geometria)::geography
+                )::numeric, 0)::float AS distancia_m
+            FROM negocios_activos na
+            JOIN zonas z ON z.id = $1
+            WHERE ST_DWithin(
+                na.geometria::geography,
+                ST_Centroid(z.geometria)::geography,
+                $2
+            )
+              AND na.activo = TRUE
+              AND na.sector_codigo IS NOT NULL
+            ORDER BY distancia_m ASC
+        """, zona_id, float(radio_m))
+
+    rows = [dict(r) for r in negocios_rows]
+
+    # 3. Construir NegocioCompetidor para cálculo de scores
+    # negocios_desde_rows filtra por sectores relevantes
+    negocios = negocios_desde_rows(rows, sector)
+
+    # 4. Si no hay scores pre-calculados, calcularlos al vuelo
+    if scores_row:
+        scores = {
+            "score_competencia":     float(scores_row["score_competencia_v2"] or 50.0),
+            "score_cluster":         float(scores_row["cluster_score"] or 50.0),
+            "amenaza_incumbentes":   float(scores_row["amenaza_incumbentes"] or 50.0),
+            "oportunidad_mercado":   float(scores_row["oportunidad_mercado"] or 50.0),
+            "score_complementarios": round(float(scores_row["ratio_complementarios"] or 0.0) * 100.0, 1),
+            "num_directos":          int(scores_row["num_directos"] or 0),
+            "pct_vulnerables":       float(scores_row["pct_vulnerables"] or 0.0),
+            "hhi_index":             float(scores_row["hhi_index"] or 0.0),
+            "ratio_complementarios": float(scores_row["ratio_complementarios"] or 0.0),
+            "fuente":                scores_row["fuente"] or "google_places",
+            "datos_calculados":      False,
+        }
+    else:
+        calc = calcular_score_competencia(negocios, sector)
+        scores = {
+            "score_competencia":     calc["score_competencia"],
+            "score_cluster":         calc["score_cluster"],
+            "amenaza_incumbentes":   calc["amenaza_incumbentes"],
+            "oportunidad_mercado":   calc["score_oportunidad"],
+            "score_complementarios": calc["score_complementarios"],
+            "num_directos":          calc["num_directos"],
+            "pct_vulnerables":       calc["pct_vulnerables"],
+            "hhi_index":             calc["hhi_index"],
+            "ratio_complementarios": calc["ratio_complementarios"],
+            "fuente":                "calculado_al_vuelo",
+            "datos_calculados":      True,
+        }
+
+    # 5. Clasificar competidores en 3 grupos construyendo NegocioCompetidor desde rows
+    sectores_comp  = SECTORES_COMPETIDORES.get(sector, [sector])
+    sectores_compl = SECTORES_COMPLEMENTARIOS.get(sector, [])
+
+    amenaza_list     = []
+    oportunidad_list = []
+    sinergicos_list  = []
+
+    for row in rows:
+        sc = row.get("sector_codigo")
+        if sc not in sectores_comp and sc not in sectores_compl:
+            continue
+
+        neg = NegocioCompetidor(
+            sector_codigo=sc,
+            distancia_m=float(row.get("distancia_m") or 500),
+            rating=row.get("rating"),
+            num_resenas=row.get("num_resenas") or 0,
+            precio_nivel=row.get("precio_nivel"),
+        )
+        es_directo = sc in sectores_comp
+        es_compl   = sc in sectores_compl and not es_directo
+        vulnerable = _es_vulnerable(neg)
+
+        entry = {
+            "nombre":                 row.get("nombre") or "Sin nombre",
+            "sector":                 sc,
+            "distancia_m":            neg.distancia_m,
+            "rating":                 neg.rating,
+            "num_resenas":            neg.num_resenas,
+            "precio_nivel":           neg.precio_nivel,
+            "es_competencia_directa": es_directo,
+            "es_complementario":      es_compl,
+            "es_vulnerable":          vulnerable,
+            "amenaza_score":          amenaza_score_individual(neg) if es_directo else None,
+        }
+
+        if es_directo and not vulnerable:
+            amenaza_list.append(entry)
+        elif es_directo and vulnerable:
+            oportunidad_list.append(entry)
+        elif es_compl:
+            sinergicos_list.append(entry)
+
+    # Ordenar listas
+    amenaza_list.sort(key=lambda x: x.get("amenaza_score") or 0, reverse=True)
+    oportunidad_list.sort(key=lambda x: x.get("distancia_m") or 9999)
+    sinergicos_list.sort(key=lambda x: x.get("distancia_m") or 9999)
+
+    # 6. Análisis de precio del segmento (sólo con directos)
+    directos = [n for n in negocios if n.sector_codigo in sectores_comp]
+    precio_seg = analizar_precio_segmento(directos, precio_objetivo=2)
+
+    return {
+        "zona_id": zona_id,
+        "sector":  sector,
+        "radio_m": radio_m,
+        **scores,
+        "precio_segmento": precio_seg,
+        "amenaza":     amenaza_list,
+        "oportunidad": oportunidad_list,
+        "sinergicos":  sinergicos_list,
     }

@@ -38,6 +38,10 @@ export interface CompetidorCercano {
   rating?: number;
   precio_nivel?: number;
   es_competencia_directa: boolean;
+  num_resenas?: number;
+  es_complementario?: boolean;
+  es_vulnerable?: boolean;
+  amenaza_score?: number;
 }
 
 export interface AlertaZona {
@@ -199,4 +203,47 @@ export interface FinancieroResponse {
 export interface LocalDetalleResponse {
   zona: ZonaDetalle;
   financiero_preview?: Partial<FinancieroResponse>;
+}
+
+export interface PrecioSegmento {
+  nivel_dominante?: number;    // 1=€ 2=€€ 3=€€€ 4=€€€€
+  etiqueta: string;            // "€", "€€", "€€€", "€€€€" or "Sin datos"
+  distribucion: Record<string, number>;  // {"1": 3, "2": 5, ...}
+  tiene_gap: boolean;
+  gap_nivel?: number;
+  gap_etiqueta?: string;
+}
+
+export interface CompetidorDetalle {
+  nombre: string;
+  sector?: string;
+  distancia_m?: number;
+  rating?: number;
+  num_resenas?: number;
+  precio_nivel?: number;
+  es_competencia_directa: boolean;
+  es_complementario: boolean;
+  es_vulnerable: boolean;
+  amenaza_score?: number;   // 0-100
+}
+
+export interface CompetenciaDetalle {
+  zona_id: string;
+  sector: string;
+  radio_m: number;
+  score_competencia: number;
+  score_cluster: number;
+  amenaza_incumbentes: number;
+  oportunidad_mercado: number;
+  score_complementarios: number;
+  num_directos: number;
+  pct_vulnerables: number;
+  hhi_index: number;
+  ratio_complementarios: number;
+  precio_segmento?: PrecioSegmento;
+  amenaza: CompetidorDetalle[];
+  oportunidad: CompetidorDetalle[];
+  sinergicos: CompetidorDetalle[];
+  fuente: string;
+  datos_calculados: boolean;
 }

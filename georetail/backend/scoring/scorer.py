@@ -112,20 +112,29 @@ def _score_manual(datos: dict, sector: dict) -> dict:
     # ── Calcular scores por dimensión ─────────────────────────────────────────
     # Cada dimensión normaliza su(s) variable(s) a 0-100
 
-    # FLUJO PEATONAL — normalizado sobre rango típico BCN (0–3000 pax/h)
-    flujo = datos.get("flujo_peatonal_total") or 0
-    s_flujo = min(100.0, flujo / 30.0)  # 3000 pax/h = score 100
+    # FLUJO PEATONAL — usa calcular_flujo_score (popular_times + vcity + ratio_locales)
+    from scoring.flujo_peatonal import calcular_flujo_score
+    s_flujo = calcular_flujo_score(
+        popular_times_score=datos.get("flujo_popular_times_score"),
+        vcity_flujo=datos.get("vcity_flujo_peatonal"),
+        vianants_intensitat=datos.get("flujo_peatonal_total"),
+        ratio_locales=datos.get("ratio_locales_comerciales"),
+    )
 
     # DEMOGRAFÍA — renta media normalizada (17k-60k rango BCN)
     _renta_raw = datos.get("renta_media_hogar")
     renta = _renta_raw if _renta_raw is not None else 30000  # `or` sustituiría renta=0 legítima
     s_demo = min(100.0, max(0.0, (renta - 17000) / 430.0))
 
-    # COMPETENCIA — score_saturacion invertido (menos saturación = mejor)
-    # Nota: se usa `is None` para respetar saturacion=0 (caso sin competencia)
-    sat_raw = datos.get("score_saturacion")
-    saturacion = 50 if sat_raw is None else sat_raw
-    s_comp = max(0.0, min(100.0, 100.0 - saturacion))
+    # COMPETENCIA — usa score_competencia_v2 (ya 0-100, mayor=mejor)
+    # Fallback a v1 (invertir score_saturacion) si no hay datos v2
+    comp_v2 = datos.get("score_competencia_v2")
+    if comp_v2 is not None:
+        s_comp = max(0.0, min(100.0, float(comp_v2)))
+    else:
+        sat_raw = datos.get("score_saturacion")
+        saturacion = 50 if sat_raw is None else sat_raw
+        s_comp = max(0.0, min(100.0, 100.0 - saturacion))
 
     # PRECIO ALQUILER — inversamente proporcional al precio (más barato = mejor)
     # Rango BCN: 8-45 €/m². Score 100 = 8€/m², Score 0 = 45€/m²
@@ -157,8 +166,11 @@ def _score_manual(datos: dict, sector: dict) -> dict:
     s_turismo = min(100.0, max(0.0, turismo_base))
 
     # ENTORNO COMERCIAL — % locales vacíos invertido + tasa de rotación
-    vacios = datos.get("pct_locales_vacios") or 0.15
-    rotacion = datos.get("tasa_rotacion_anual") or 0.18
+    # None vs 0 FIX: usar is not None para distinguir dato ausente de cero legítimo
+    _v = datos.get("pct_locales_vacios")
+    vacios = _v if _v is not None else 0.15
+    _r = datos.get("tasa_rotacion_anual")
+    rotacion = _r if _r is not None else 0.18
     s_entorno = max(0.0, 100.0 - vacios * 200.0 - rotacion * 100.0)
 
     # ── Score global ponderado ────────────────────────────────────────────────
@@ -281,6 +293,7 @@ async def _get_datos_zona_completos(zona_id: str, sector: str) -> dict:
                 vz.score_turismo, vz.pct_locales_vacios, vz.tasa_rotacion_anual,
                 vz.incidencias_por_1000hab, vz.ratio_locales_comerciales,
                 cp.score_saturacion,
+                cdz.score_competencia_v2,
                 paz.precio_m2,
                 trans.cnt AS num_lineas_transporte,
                 -- distancia al litoral BCN: granularidad real de nivel zona
@@ -295,6 +308,14 @@ async def _get_datos_zona_completos(zona_id: str, sector: str) -> dict:
             JOIN zonas z ON z.id = vz.zona_id
             LEFT JOIN competencia_por_local cp ON cp.zona_id=vz.zona_id
                 AND cp.sector_codigo=$2 AND cp.radio_m=300
+            LEFT JOIN LATERAL (
+                SELECT cdz.score_competencia_v2
+                FROM competencia_detalle_zona cdz
+                WHERE cdz.zona_id = vz.zona_id
+                  AND cdz.sector_codigo = $2
+                  AND cdz.radio_m = 500
+                ORDER BY cdz.fecha DESC LIMIT 1
+            ) cdz ON TRUE
             LEFT JOIN LATERAL (
                 SELECT precio_m2 FROM precios_alquiler_zona
                 WHERE zona_id=vz.zona_id ORDER BY fecha DESC LIMIT 1

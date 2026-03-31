@@ -89,7 +89,47 @@ class CompetidorCercano(BaseModel):
     distancia_m:            Optional[float] = None
     rating:                 Optional[float] = None
     precio_nivel:           Optional[int]   = None
-    es_competencia_directa: bool = False
+    es_competencia_directa: bool            = False
+    num_resenas:            Optional[int]   = None
+    es_complementario:      bool            = False
+    es_vulnerable:          bool            = False
+    amenaza_score:          Optional[float] = None   # 0-100, gravity model individual
+
+
+class PrecioSegmento(BaseModel):
+    nivel_dominante:    Optional[int]   = None   # 1=€ 2=€€ 3=€€€ 4=€€€€
+    etiqueta:           str             = "Sin datos"
+    distribucion:       dict            = {}     # {1: count, 2: count, ...}
+    tiene_gap:          bool            = False
+    gap_nivel:          Optional[int]   = None
+    gap_etiqueta:       Optional[str]   = None
+
+
+class CompetenciaDetalle(BaseModel):
+    """Respuesta del endpoint GET /api/competencia/{zona_id}."""
+    zona_id:                str
+    sector:                 str
+    radio_m:                int             = 500
+    # Scores v2 (de competencia_detalle_zona si existe, si no calculados al vuelo)
+    score_competencia:      float           = 50.0
+    score_cluster:          float           = 50.0
+    amenaza_incumbentes:    float           = 50.0
+    oportunidad_mercado:    float           = 50.0
+    score_complementarios:  float           = 50.0
+    # Métricas
+    num_directos:           int             = 0
+    pct_vulnerables:        float           = 0.0
+    hhi_index:              float           = 0.0
+    ratio_complementarios:  float           = 0.0
+    # Análisis de precio
+    precio_segmento:        Optional[PrecioSegmento] = None
+    # Competidores clasificados en 3 grupos
+    amenaza:                list[CompetidorCercano] = []
+    oportunidad:            list[CompetidorCercano] = []
+    sinergicos:             list[CompetidorCercano] = []
+    # Metadatos
+    fuente:                 str             = "google_places"
+    datos_calculados:       bool            = True   # False si viene de BD precalculada
 
 
 class AlertaZona(BaseModel):
