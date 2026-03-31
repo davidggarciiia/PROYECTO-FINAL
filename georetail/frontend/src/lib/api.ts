@@ -5,6 +5,7 @@ import type {
   CuestionarioResponse,
   LocalDetalleResponse,
   FinancieroResponse,
+  CompetenciaDetalle,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -45,6 +46,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ zona_id, session_id, overrides }),
     }),
+
+  competencia: (zona_id: string, session_id: string) =>
+    apiFetch<CompetenciaDetalle>(`/api/competencia/${zona_id}?session_id=${encodeURIComponent(session_id)}`),
 
   refinamiento: (session_id: string, texto: string) =>
     apiFetch<{ zonas: import("./types").ZonaPreview[]; total: number; mensaje_confirmacion: string }>(

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import type { ZonaPreview, LocalDetalleResponse, FinancieroResponse } from "@/lib/types";
+import type { ZonaPreview, LocalDetalleResponse, FinancieroResponse, CompetenciaDetalle } from "@/lib/types";
 import { api } from "@/lib/api";
 import FinancialPanel from "./FinancialPanel";
+import CompetenciaPanel from "./CompetenciaPanel";
 import ScoreBars from "./ScoreBars";
 import styles from "./DetailPanel.module.css";
 
@@ -15,7 +16,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Tab = "analisis" | "financiero" | "legal";
+type Tab = "analisis" | "competencia" | "financiero" | "legal";
 
 function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
   const r = (size / 2) - 6;
@@ -52,6 +53,8 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
   const [tab, setTab] = useState<Tab>("analisis");
   const [financiero, setFinanciero] = useState<FinancieroResponse | null>(null);
   const [loadingFin, setLoadingFin] = useState(false);
+  const [competencia, setCompetencia] = useState<CompetenciaDetalle | null>(null);
+  const [loadingComp, setLoadingComp] = useState(false);
 
   const loadFinanciero = useCallback(async () => {
     if (financiero || loadingFin) return;
@@ -66,9 +69,23 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
     }
   }, [zona.zona_id, sessionId, financiero, loadingFin]);
 
+  const loadCompetencia = useCallback(async () => {
+    if (competencia || loadingComp) return;
+    setLoadingComp(true);
+    try {
+      const data = await api.competencia(zona.zona_id, sessionId);
+      setCompetencia(data);
+    } catch (e) {
+      console.error("Error competencia:", e);
+    } finally {
+      setLoadingComp(false);
+    }
+  }, [zona.zona_id, sessionId, competencia, loadingComp]);
+
   const handleTab = (t: Tab) => {
     setTab(t);
     if (t === "financiero") loadFinanciero();
+    if (t === "competencia") loadCompetencia();
   };
 
   // Use detalle data when available, fall back to ZonaPreview
@@ -106,15 +123,16 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
 
       {/* ── Tabs ── */}
       <div className={styles.tabs}>
-        {(["analisis", "financiero", "legal"] as Tab[]).map(t => (
+        {(["analisis", "competencia", "financiero", "legal"] as Tab[]).map(t => (
           <button
             key={t}
             className={`${styles.tab} ${tab === t ? styles.tabActive : ""}`}
             onClick={() => handleTab(t)}
           >
-            {t === "analisis"   && "Análisis"}
-            {t === "financiero" && "Financiero"}
-            {t === "legal"      && "Legal"}
+            {t === "analisis"    && "Análisis"}
+            {t === "competencia" && "Competencia"}
+            {t === "financiero"  && "Financiero"}
+            {t === "legal"       && "Legal"}
           </button>
         ))}
       </div>
@@ -248,32 +266,11 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
                   </section>
                 )}
 
-                {/* Competitors */}
+                {/* Competitors teaser */}
                 {z?.competidores_cercanos && z.competidores_cercanos.length > 0 && (
-                  <section className={styles.section}>
-                    <h3 className={styles.sectionTitle}>
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                        <circle cx="4.5" cy="4" r="2" stroke="currentColor" strokeWidth="1.2"/>
-                        <circle cx="8.5" cy="4" r="2" stroke="currentColor" strokeWidth="1.2"/>
-                        <path d="M1 10c0-1.7 1.6-3 3.5-3M7 10c0-1.7 1.6-3 3.5-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                      </svg>
-                      Competidores cercanos
-                    </h3>
-                    <div className={styles.competitors}>
-                      {z.competidores_cercanos.slice(0, 6).map((c, i) => (
-                        <div key={i} className={`${styles.competitor} ${c.es_competencia_directa ? styles.competitorDirect : ""}`}>
-                          <div className={styles.competitorLeft}>
-                            {c.es_competencia_directa && <span className={styles.directTag}>directo</span>}
-                            <span className={styles.competitorName}>{c.nombre}</span>
-                          </div>
-                          <div className={styles.competitorRight}>
-                            {c.rating    && <span className={styles.rating}>★ {c.rating.toFixed(1)}</span>}
-                            {c.distancia_m && <span className={styles.distance}>{Math.round(c.distancia_m)}m</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
+                  <button className={styles.competenciaTeaser} onClick={() => handleTab("competencia")}>
+                    <span>{z.competidores_cercanos.length} negocios cerca · Ver análisis de competencia →</span>
+                  </button>
                 )}
 
                 {/* Alertas */}
@@ -308,6 +305,15 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
               </>
             )}
           </div>
+        )}
+
+        {/* ── Competencia tab ── */}
+        {tab === "competencia" && (
+          <CompetenciaPanel
+            competencia={competencia}
+            loading={loadingComp}
+            zona={zona}
+          />
         )}
 
         {/* ── Financiero tab ── */}

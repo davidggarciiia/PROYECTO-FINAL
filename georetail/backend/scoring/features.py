@@ -1,4 +1,4 @@
-"""scoring/features.py — Vector de 30 features para XGBoost.
+"""scoring/features.py — Vector de 36 features para XGBoost.
 
 Cambio v2: añadidas dos features de granularidad geográfica de nivel zona:
   - dist_playa_m              → distancia PostGIS al litoral de Barcelona (metros)
@@ -22,9 +22,29 @@ partir de 4 fuentes con redistribución adaptativa de pesos si falta alguna:
   - ratio_locales_comerciales  (15%) — proxy estructural (siempre disponible)
 flujo_peatonal_total se mantiene en FEATURE_NAMES para compatibilidad con modelos v1-v3.
 
-NOTA: Los modelos entrenados con v1 (21 features), v2 (23 features) o v3 (29 features)
-fallarán al recibir 30 features y caerán al scorer manual. Relanzar scoring/train.py
-para entrenar en v4.
+Cambio v5 (demografía avanzada): añadidas dos features demográficas al final
+(índices 30-31) escritas por pipelines/demografia.py desde CKAN + IERMB:
+  - pct_poblacio_25_44  (índice 30) — % de población 25-44 años (consumidores activos)
+                                      Fuente: padrón BCN quinquenal CKAN
+  - delta_renta_3a      (índice 31) — % variación renta disponible 2019→2022 por distrito
+                                      Proxy de gentrificación / dinamismo económico
+
+Cambio v5.1 (capital humano): añadida feature de educación al final (índice 32)
+escrita por pipelines/demografia.py._fetch_nivel_estudis() desde padrón BCN:
+  - nivel_estudios_alto_pct (índice 32) — fracción con estudios universitarios/postgrado
+                                          Correlaciona con renta disponible y ticket medio.
+
+Cambio v6 (competencia avanzada): añadidas tres features de análisis de competencia
+al final (índices 33-35) escritas por pipelines/competencia.py desde Google Maps:
+  - score_aglomeracion   (índice 33) — efecto cluster sectorial (campana por sector)
+                                       Fuente: competencia_detalle_zona.cluster_score
+  - pct_vulnerables      (índice 34) — % de competidores directos vulnerables (rating<3.5)
+                                       Proxy de oportunidad de desplazar incumbentes.
+  - ratio_complementarios (índice 35) — ratio negocios complementarios / máximo esperado
+                                        Proxy de sinergia sectorial en el radio 500m.
+
+NOTA: Los modelos entrenados con v1-v5.1 (21-33 features) fallarán al recibir 36 features
+y caerán al scorer manual. Relanzar scoring/train.py para entrenar en v6.
 """
 from __future__ import annotations
 import logging
@@ -65,13 +85,26 @@ FEATURE_NAMES = [
     # ratio_locales (15%) con redistribución adaptativa si falta alguna fuente.
     # Calculado en _build_array() via scoring/flujo_peatonal.calcular_flujo_score().
     "flujo_peatonal_score",       # fusión 0-100 (v4)
+    # ── v5: demografía avanzada (CKAN + IERMB) ────────────────────────────────
+    "pct_poblacio_25_44",         # % población 25-44 años (consumidores activos)
+    "delta_renta_3a",             # % variación renta 2019→2022 (proxy gentrificación)
+    # ── v5.1: capital humano (padrón BCN educación) ───────────────────────────
+    # Calculado por _fetch_nivel_estudis() en pipelines/demografia.py desde
+    # dataset pad_mdes / pad_mdnv_estudis. Correlaciona con renta y ticket medio.
+    "nivel_estudios_alto_pct",    # fracción con estudios universitarios/postgrado
+    # ── v6: competencia avanzada (Google Maps Places) ─────────────────────────
+    # Calculado por pipelines/competencia.py → competencia_detalle_zona.
+    # Distingue buena competencia (cluster, complementarios) de mala (incumbentes).
+    "score_aglomeracion",         # efecto cluster 0-100 (campana con óptimo sectorial)
+    "pct_vulnerables",            # % competidores directos con rating<3.5 (oportunidad)
+    "ratio_complementarios",      # negocios sinérgicos / máx esperado (sinergia 0-1)
 ]
 
 # Medias de imputación calculadas sobre dataset de entrenamiento BCN
 _MEDIAS = {
     "flujo_peatonal_total":850.0,"flujo_manana_pct":0.35,"flujo_tarde_pct":0.42,
-    "flujo_noche_pct":0.23,"renta_media_hogar":32000.0,"edad_media":42.5,
-    "pct_extranjeros":0.22,"densidad_hab_km2":22000.0,"num_competidores_300m":8.0,
+    "flujo_noche_pct":0.23,"renta_media_hogar":37000.0,"edad_media":42.5,
+    "pct_extranjeros":0.22,"densidad_hab_km2":16000.0,"num_competidores_300m":8.0,
     "rating_medio_competidores":3.9,"score_saturacion":50.0,"precio_m2_alquiler":18.0,
     "pct_locales_vacios":0.15,"tasa_rotacion_anual":0.18,"score_turismo":45.0,
     "incidencias_por_1000hab":35.0,"nivel_ruido_db":63.0,"score_equipamientos":55.0,
@@ -93,6 +126,15 @@ _MEDIAS = {
     # Inputs de la fusión v4 — usados por calcular_flujo_score(), no en FEATURE_NAMES:
     "flujo_popular_times_score": 48.0, # ~48 pts media BCN (escala 0-100)
     "vcity_flujo_peatonal": 18_000.0,  # ~18 000 peatones/día media BCN (raw, normalizar)
+    # v5 — demografía avanzada (padrón BCN quinquenal + renda IRPF histórica)
+    "pct_poblacio_25_44": 0.28,        # ~28% de población 25-44 en BCN (media por barrio)
+    "delta_renta_3a": 0.08,            # ~8% variación renta 2019→2022 (media distritos BCN)
+    # v5.1 — capital humano (padrón BCN dataset educación)
+    "nivel_estudios_alto_pct": 0.35,   # ~35% con estudios universitarios/postgrado (media BCN)
+    # v6 — competencia avanzada (Google Maps → competencia_detalle_zona)
+    "score_aglomeracion": 50.0,        # ~50 pts media BCN (zona con cluster moderado)
+    "pct_vulnerables":    0.35,        # ~35% de competidores son vulnerables (media BCN)
+    "ratio_complementarios": 0.40,     # ~40% del máximo de complementarios esperado
 }
 
 
@@ -169,6 +211,17 @@ def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
         #     + vianants BCN 20% + ratio_locales 15%); pesos adaptativos si falta
         #     alguna fuente. Ver scoring/flujo_peatonal.py para detalles.
         "flujo_peatonal_score":      _flujo_score,
+        # v5: demografía avanzada — leídas directamente de vz_demografia vía vista
+        "pct_poblacio_25_44":        vz.get("pct_poblacio_25_44"),
+        "delta_renta_3a":            vz.get("delta_renta_3a"),
+        # v5.1: capital humano — fracción con estudios universitarios/postgrado
+        "nivel_estudios_alto_pct":   vz.get("nivel_estudios_alto_pct"),
+        # v6: competencia avanzada — leídas de competencia_detalle_zona vía comp dict
+        # comp puede contener cluster_score, pct_vulnerables, ratio_complementarios
+        # si se leyeron de competencia_detalle_zona (pipeline competencia.py)
+        "score_aglomeracion":       comp.get("cluster_score"),
+        "pct_vulnerables":          comp.get("pct_vulnerables"),
+        "ratio_complementarios":    comp.get("ratio_complementarios"),
     }
     vec = [float(raw.get(f) if raw.get(f) is not None else _MEDIAS[f]) for f in FEATURE_NAMES]
     return np.array([vec], dtype=np.float32)
@@ -185,14 +238,62 @@ async def _vzs(zids):
     return {r["zona_id"]: dict(r) for r in rows}
 
 async def _comp(zid, sector):
+    """Lee datos de competencia: v2 (detalle) con fallback a v1 (por_local)."""
     async with _get_db()() as conn:
-        r = await conn.fetchrow("SELECT num_competidores,rating_medio,score_saturacion FROM competencia_por_local WHERE zona_id=$1 AND sector_codigo=$2 AND radio_m=300 ORDER BY fecha_calculo DESC LIMIT 1", zid, sector)
-    return dict(r) if r else {}
+        # v2: competencia_detalle_zona (radio 500m, análisis avanzado)
+        r_v2 = await conn.fetchrow("""
+            SELECT num_directos AS num_competidores,
+                   rating_medio_directos AS rating_medio,
+                   score_competencia_v2 AS score_saturacion,
+                   cluster_score,
+                   pct_vulnerables,
+                   ratio_complementarios
+            FROM competencia_detalle_zona
+            WHERE zona_id=$1 AND sector_codigo=$2 AND radio_m=500
+            ORDER BY fecha DESC LIMIT 1
+        """, zid, sector)
+        if r_v2:
+            return dict(r_v2)
+        # fallback v1: competencia_por_local (radio 300m)
+        r_v1 = await conn.fetchrow("""
+            SELECT num_competidores, rating_medio, score_saturacion
+            FROM competencia_por_local
+            WHERE zona_id=$1 AND sector_codigo=$2 AND radio_m=300
+            ORDER BY fecha_calculo DESC LIMIT 1
+        """, zid, sector)
+    return dict(r_v1) if r_v1 else {}
 
 async def _comps(zids, sector):
+    """Batch de datos de competencia: v2 con fallback a v1."""
     async with _get_db()() as conn:
-        rows = await conn.fetch("SELECT DISTINCT ON(zona_id) zona_id,num_competidores,rating_medio,score_saturacion FROM competencia_por_local WHERE zona_id=ANY($1) AND sector_codigo=$2 AND radio_m=300 ORDER BY zona_id,fecha_calculo DESC", zids, sector)
-    return {r["zona_id"]: dict(r) for r in rows}
+        rows_v2 = await conn.fetch("""
+            SELECT DISTINCT ON(zona_id)
+                zona_id,
+                num_directos AS num_competidores,
+                rating_medio_directos AS rating_medio,
+                score_competencia_v2 AS score_saturacion,
+                cluster_score,
+                pct_vulnerables,
+                ratio_complementarios
+            FROM competencia_detalle_zona
+            WHERE zona_id=ANY($1) AND sector_codigo=$2 AND radio_m=500
+            ORDER BY zona_id, fecha DESC
+        """, zids, sector)
+        result = {r["zona_id"]: dict(r) for r in rows_v2}
+
+        # fallback v1 para zonas sin datos v2
+        missing = [z for z in zids if z not in result]
+        if missing:
+            rows_v1 = await conn.fetch("""
+                SELECT DISTINCT ON(zona_id) zona_id,
+                       num_competidores, rating_medio, score_saturacion
+                FROM competencia_por_local
+                WHERE zona_id=ANY($1) AND sector_codigo=$2 AND radio_m=300
+                ORDER BY zona_id, fecha_calculo DESC
+            """, missing, sector)
+            for r in rows_v1:
+                result[r["zona_id"]] = dict(r)
+    return result
 
 async def _precio(zid):
     async with _get_db()() as conn:

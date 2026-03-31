@@ -21,6 +21,7 @@ Frecuencias (ver arquitectura.md):
   venues_ocio:         Mensual día 7, 07:00
   booking:             Semanal jueves 03:00
   google_maps:         Semanal miércoles 02:00
+  parques:             Mensual día 2, 06:00  ← parques AMB → m2_zonas_verdes_cercanas
 
 NOTA sobre flujo peatonal:
   aforaments.py mide TRÁFICO RODADO (vehicles + bicis) — proxy impreciso.
@@ -77,6 +78,9 @@ def init_scheduler() -> None:
     _scheduler.add_job(_run_venues_ocio, CronTrigger(day=7,              hour=7, minute=0), id="venues_ocio", replace_existing=True, **_JOB_DEFAULTS)
     _scheduler.add_job(_run_booking,     CronTrigger(day_of_week="thu",  hour=3, minute=0), id="booking",     replace_existing=True, **_JOB_DEFAULTS)
     _scheduler.add_job(_run_google_maps, CronTrigger(day_of_week="wed",  hour=2, minute=0), id="google_maps", replace_existing=True, **_JOB_DEFAULTS)
+
+    # ── Parques AMB (v5: m2_zonas_verdes_cercanas) ────────────────────────────
+    _scheduler.add_job(_run_parques,     CronTrigger(day=2,              hour=6, minute=0), id="parques",     replace_existing=True, **_JOB_DEFAULTS)
 
     _scheduler.start()
     logger.info("APScheduler iniciado con %d jobs", len(_scheduler.get_jobs()))
@@ -247,3 +251,15 @@ async def _run_google_maps():
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline google_maps error: %s", e)
+
+
+# ── Runner parques AMB (v5) ───────────────────────────────────────────────────
+
+async def _run_parques():
+    """Mensual día 2, 06:00 — Parques AMB → parques_amb + m2_zonas_verdes_cercanas."""
+    try:
+        from pipelines.parques import ejecutar
+        result = await ejecutar()
+        logger.info("Pipeline parques AMB — %s", result)
+    except Exception as e:
+        logger.error("Pipeline parques error: %s", e)
