@@ -101,6 +101,118 @@ async def calcular_scores_batch(zona_ids: list[str], sector: str) -> dict[str, d
     return resultados
 
 
+def _calcular_score_seguridad(datos: dict) -> float:
+    """
+    Fórmula compuesta de seguridad con 5 sub-scores (v7).
+
+    | Sub-score          | Peso | Fuente                              |
+    |--------------------|------|-------------------------------------|
+    | Tasa criminal      | 35%  | incidencias_por_1000hab             |
+    | Severidad delitos  | 20%  | hurtos, robatoris, danys ponderados |
+    | Nocturnidad        | 15%  | incidencias_noche_pct               |
+    | Proximidad policial| 15%  | comisarias_1km, dist_comisaria_m    |
+    | Percepción IERMB   | 15%  | seguridad_barri_score (0-10)        |
+    """
+    # 1. Tasa criminal (35%) — inverso, rango BCN 5-120 por 1000hab
+    incidencias = datos.get("incidencias_por_1000hab") or 35
+    s_tasa = min(100.0, max(0.0, (120.0 - incidencias) / 1.15))
+
+    # 2. Severidad (20%) — pondera tipos: robo×1.5 > daño×0.8 > hurto×0.5
+    hurtos = datos.get("hurtos_por_1000hab") or 18.0
+    robatoris = datos.get("robatoris_por_1000hab") or 8.0
+    danys = datos.get("danys_por_1000hab") or 5.0
+    severidad_raw = hurtos * 0.5 + robatoris * 1.5 + danys * 0.8
+    # Rango esperado BCN: ~5 (Pedralbes) a ~90 (Raval). Normalizar inverso.
+    s_severidad = min(100.0, max(0.0, (90.0 - severidad_raw) / 0.85))
+
+    # 3. Nocturnidad (15%) — alto % nocturno = peor. Rango BCN: 0.15-0.55
+    noche_pct = datos.get("incidencias_noche_pct") or 0.30
+    s_noche = min(100.0, max(0.0, (0.55 - noche_pct) / 0.004))
+
+    # 4. Proximidad policial (15%) — más comisarías + menor distancia = mejor
+    comisarias = datos.get("comisarias_1km") or 2
+    dist_com = datos.get("dist_comisaria_m") or 800
+    # Sub-sub: comisarías (0-5 → 0-100) y distancia (0-3000m invertido)
+    s_com_count = min(100.0, comisarias * 20.0)
+    s_com_dist = min(100.0, max(0.0, (3000.0 - dist_com) / 30.0))
+    s_policial = s_com_count * 0.5 + s_com_dist * 0.5
+
+    # 5. Percepción IERMB (15%) — escala 0-10 → 0-100
+    iermb = datos.get("seguridad_barri_score")
+    if iermb is not None:
+        s_iermb = min(100.0, max(0.0, float(iermb) * 10.0))
+    else:
+        s_iermb = 55.0  # fallback: valor medio-bajo BCN
+
+    # Ponderación final
+    score = (
+        s_tasa      * 0.35 +
+        s_severidad * 0.20 +
+        s_noche     * 0.15 +
+        s_policial  * 0.15 +
+        s_iermb     * 0.15
+    )
+    return min(100.0, max(0.0, score))
+
+
+def _calcular_score_entorno(datos: dict) -> float:
+    """
+    Fórmula compuesta de entorno comercial con 6 sub-scores (v8).
+
+    | Sub-score          | Peso | Fuente                                    |
+    |--------------------|------|-------------------------------------------|
+    | Vitalidad comercial| 25%  | pct_locales_vacios, tasa_rotacion_anual   |
+    | Dinamismo          | 20%  | licencias_nuevas_1a, ratio_locales_comerc.|
+    | Confort acústico   | 15%  | nivel_ruido_db                            |
+    | Equipamientos      | 15%  | score_equipamientos (0-100)               |
+    | Zonas verdes       | 10%  | m2_zonas_verdes_cercanas                  |
+    | Mercados y anclas  | 15%  | mercados_municipales_1km, eventos_cult.   |
+    """
+    # 1. Vitalidad comercial (25%) — menos vacíos + menos rotación = mejor
+    _v = datos.get("pct_locales_vacios")
+    vacios = _v if _v is not None else 0.15
+    _r = datos.get("tasa_rotacion_anual")
+    rotacion = _r if _r is not None else 0.18
+    s_vitalidad = max(0.0, min(100.0, 100.0 - vacios * 200.0 - rotacion * 100.0))
+
+    # 2. Dinamismo (20%) — licencias nuevas + densidad comercial
+    licencias = datos.get("licencias_nuevas_1a") or 4.0
+    ratio_com = datos.get("ratio_locales_comerciales") or 0.22
+    s_licencias = min(100.0, licencias * 10.0)
+    s_ratio = min(100.0, ratio_com * 250.0)
+    s_dinamismo = s_licencias * 0.6 + s_ratio * 0.4
+
+    # 3. Confort acústico (15%) — inverso. Rango BCN: 45-80 dB
+    ruido = datos.get("nivel_ruido_db") or 63.0
+    s_ruido = max(0.0, min(100.0, (80.0 - ruido) / 0.35))
+
+    # 4. Equipamientos (15%) — ya normalizado 0-100
+    equip = datos.get("score_equipamientos")
+    s_equip = max(0.0, min(100.0, float(equip))) if equip is not None else 55.0
+
+    # 5. Zonas verdes (10%) — Rango BCN: 0-8000 m²
+    verdes = datos.get("m2_zonas_verdes_cercanas") or 1200.0
+    s_verdes = min(100.0, max(0.0, verdes / 80.0))
+
+    # 6. Mercados y anclas (15%) — mercados 1km + eventos culturales
+    mercados = datos.get("mercados_municipales_1km") or 1
+    eventos = datos.get("eventos_culturales_500m") or 3
+    s_mercados = min(100.0, mercados * 30.0)
+    s_eventos = min(100.0, eventos * 15.0)
+    s_anclas = s_mercados * 0.6 + s_eventos * 0.4
+
+    # Ponderación final
+    score = (
+        s_vitalidad * 0.25 +
+        s_dinamismo * 0.20 +
+        s_ruido     * 0.15 +
+        s_equip     * 0.15 +
+        s_verdes    * 0.10 +
+        s_anclas    * 0.15
+    )
+    return min(100.0, max(0.0, score))
+
+
 def _score_manual(datos: dict, sector: dict) -> dict:
     """
     Scoring con pesos manuales. Fórmula:
@@ -146,9 +258,8 @@ def _score_manual(datos: dict, sector: dict) -> dict:
     lineas = datos.get("num_lineas_transporte") or 0
     s_trans = min(100.0, lineas * 5.0)
 
-    # SEGURIDAD — incidencias invertidas (menos = mejor). Rango BCN: 5-120/1000hab
-    incidencias = datos.get("incidencias_por_1000hab") or 35
-    s_seg = min(100.0, max(0.0, (120.0 - incidencias) / 1.15))
+    # SEGURIDAD — fórmula compuesta multivariable (v7)
+    s_seg = _calcular_score_seguridad(datos)
 
     # TURISMO — corregido por proximidad real al litoral BCN.
     # El campo score_turismo de variables_zona se agrega a nivel de barrio/distrito,
@@ -165,13 +276,8 @@ def _score_manual(datos: dict, sector: dict) -> dict:
             turismo_base = max(turismo_base, 55.0)   # zona marítima amplia
     s_turismo = min(100.0, max(0.0, turismo_base))
 
-    # ENTORNO COMERCIAL — % locales vacíos invertido + tasa de rotación
-    # None vs 0 FIX: usar is not None para distinguir dato ausente de cero legítimo
-    _v = datos.get("pct_locales_vacios")
-    vacios = _v if _v is not None else 0.15
-    _r = datos.get("tasa_rotacion_anual")
-    rotacion = _r if _r is not None else 0.18
-    s_entorno = max(0.0, 100.0 - vacios * 200.0 - rotacion * 100.0)
+    # ENTORNO COMERCIAL — fórmula compuesta multivariable (v8)
+    s_entorno = _calcular_score_entorno(datos)
 
     # ── Score global ponderado ────────────────────────────────────────────────
     dims = {
@@ -292,6 +398,13 @@ async def _get_datos_zona_completos(zona_id: str, sector: str) -> dict:
                 vz.vcity_flujo_peatonal, vz.renta_media_hogar,
                 vz.score_turismo, vz.pct_locales_vacios, vz.tasa_rotacion_anual,
                 vz.incidencias_por_1000hab, vz.ratio_locales_comerciales,
+                vz.hurtos_por_1000hab, vz.robatoris_por_1000hab,
+                vz.danys_por_1000hab, vz.incidencias_noche_pct,
+                vz.comisarias_1km, vz.dist_comisaria_m,
+                vz.seguridad_barri_score,
+                vz.nivel_ruido_db, vz.score_equipamientos,
+                vz.m2_zonas_verdes_cercanas, vz.licencias_nuevas_1a,
+                vz.mercados_municipales_1km, vz.eventos_culturales_500m,
                 cp.score_saturacion,
                 cdz.score_competencia_v2,
                 paz.precio_m2,

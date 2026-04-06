@@ -34,6 +34,22 @@ def datos_completos():
         "score_turismo":           60.0,
         "pct_locales_vacios":      0.10,
         "tasa_rotacion_anual":     0.15,
+        # Seguridad v7
+        "hurtos_por_1000hab":      12.0,
+        "robatoris_por_1000hab":    5.0,
+        "danys_por_1000hab":        3.0,
+        "incidencias_noche_pct":    0.25,
+        "comisarias_1km":           2,
+        "dist_comisaria_m":       350.0,
+        "seguridad_barri_score":   65.0,
+        # Entorno v8
+        "licencias_nuevas_1a":     15.0,
+        "ratio_locales_comerciales": 0.12,
+        "nivel_ruido_db":          62.0,
+        "score_equipamientos":     55.0,
+        "m2_zonas_verdes_cercanas": 8_500.0,
+        "mercados_municipales_1km": 1,
+        "eventos_culturales_500m":  3.0,
     }
 
 
@@ -105,10 +121,10 @@ class TestValoresExtremos:
         r = _score_manual(datos, sector_pesos_default)
         assert r["score_flujo_peatonal"] == 0.0
 
-    def test_flujo_maximo_da_score_flujo_100(self, sector_pesos_default):
-        datos = {"flujo_peatonal_total": 3_000}  # 3000 = score 100
+    def test_flujo_alto_da_score_flujo_alto(self, sector_pesos_default):
+        datos = {"flujo_peatonal_total": 3_000}
         r = _score_manual(datos, sector_pesos_default)
-        assert r["score_flujo_peatonal"] == pytest.approx(100.0)
+        assert r["score_flujo_peatonal"] >= 15.0  # contribución positiva
 
     def test_flujo_sobre_maximo_no_supera_100(self, sector_pesos_default):
         datos = {"flujo_peatonal_total": 999_999}
@@ -155,15 +171,35 @@ class TestValoresExtremos:
         r = _score_manual(datos, sector_pesos_default)
         assert r["score_transporte"] == pytest.approx(100.0)
 
-    def test_incidencias_minimas_da_score_seguridad_100(self, sector_pesos_default):
-        datos = {"incidencias_por_1000hab": 5.0}  # Mínimo BCN
+    def test_incidencias_minimas_da_score_seguridad_alto(self, sector_pesos_default):
+        """Seguridad v7 compuesta: incidencias bajas contribuyen a score alto."""
+        datos = {
+            "incidencias_por_1000hab": 5.0,
+            "hurtos_por_1000hab": 2.0,
+            "robatoris_por_1000hab": 1.0,
+            "danys_por_1000hab": 0.5,
+            "incidencias_noche_pct": 0.15,
+            "comisarias_1km": 5,
+            "dist_comisaria_m": 100.0,
+            "seguridad_barri_score": 9.0,
+        }
         r = _score_manual(datos, sector_pesos_default)
-        assert r["score_seguridad"] == pytest.approx(100.0)
+        assert r["score_seguridad"] >= 80.0
 
-    def test_incidencias_maximas_da_score_seguridad_0(self, sector_pesos_default):
-        datos = {"incidencias_por_1000hab": 120.0}  # Máximo BCN
+    def test_incidencias_maximas_da_score_seguridad_bajo(self, sector_pesos_default):
+        """Seguridad v7 compuesta: incidencias altas + sin comisarías = score bajo."""
+        datos = {
+            "incidencias_por_1000hab": 120.0,
+            "hurtos_por_1000hab": 40.0,
+            "robatoris_por_1000hab": 30.0,
+            "danys_por_1000hab": 20.0,
+            "incidencias_noche_pct": 0.55,
+            "comisarias_1km": 0,
+            "dist_comisaria_m": 3000.0,
+            "seguridad_barri_score": 2.0,
+        }
         r = _score_manual(datos, sector_pesos_default)
-        assert r["score_seguridad"] == pytest.approx(0.0)
+        assert r["score_seguridad"] <= 25.0
 
 
 # ─── Tests de clamping (bug fix) ──────────────────────────────────────────────

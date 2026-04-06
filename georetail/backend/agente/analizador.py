@@ -84,6 +84,9 @@ def _construir_prompt(z: dict, p: dict) -> str:
     comp_directo = [c["nombre"] for c in competidores if c.get("es_competencia_directa")]
     alerta_textos = [a["texto"] for a in alertas]
 
+    def _pct(val) -> str:
+        return f"{val * 100:.0f}%" if val is not None else "N/A"
+
     # Formatear tasa de locales vacíos de forma segura
     pct_vacios_raw = z.get("pct_locales_vacios")
     pct_vacios_str = f"{pct_vacios_raw * 100:.0f}%" if pct_vacios_raw is not None else "N/A"
@@ -135,6 +138,21 @@ DIRECT COMPETITION ({len(comp_directo)} competitors):
 
 POSITIVE SHAP FACTORS: {", ".join(top_pos) if top_pos else "Not available"}
 NEGATIVE SHAP FACTORS: {", ".join(top_neg) if top_neg else "Not available"}
+
+SAFETY PROFILE:
+- Crime rate: {z.get("incidencias_por_1000hab", "N/A")} incidents/1000 inhabitants
+- Thefts (hurts): {z.get("hurtos_por_1000hab", "N/A")}/1000 hab · Robberies: {z.get("robatoris_por_1000hab", "N/A")}/1000 hab · Property damage: {z.get("danys_por_1000hab", "N/A")}/1000 hab
+- Nighttime incidents: {_pct(z.get("incidencias_noche_pct"))} of total (20:00-06:00)
+- Police stations within 1km: {z.get("comisarias_1km", "N/A")} · Nearest: {z.get("dist_comisaria_m", "N/A")} m
+- IERMB neighbourhood safety perception: {z.get("seguridad_barri_score", "N/A")}/10
+
+COMMERCIAL ENVIRONMENT PROFILE:
+- Vacant premises: {pct_vacios_str} · Business turnover: {z.get("tasa_rotacion_anual", "N/A")}
+- New licenses (last year): {z.get("licencias_nuevas_1a", "N/A")} · Commercial density: {z.get("ratio_locales_comerciales", "N/A")}
+- Noise level: {z.get("nivel_ruido_db", "N/A")} dB · Green areas: {z.get("m2_zonas_verdes_cercanas", "N/A")} m²
+- Municipal markets within 1km: {z.get("mercados_municipales_1km", "N/A")}
+- Amenities score: {z.get("score_equipamientos", "N/A")}/100
+- Cultural venues nearby: {z.get("eventos_culturales_500m", "N/A")}
 
 ACTIVE ALERTS: {"; ".join(alerta_textos) if alerta_textos else "No alerts"}
 

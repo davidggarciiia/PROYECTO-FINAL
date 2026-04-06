@@ -71,6 +71,29 @@ export interface ScoresDimensiones {
   entorno_comercial?: number;
 }
 
+export interface SeguridadDetalle {
+  incidencias_por_1000hab?: number;
+  hurtos_por_1000hab?: number;
+  robatoris_por_1000hab?: number;
+  danys_por_1000hab?: number;
+  incidencias_noche_pct?: number;
+  comisarias_1km?: number;
+  dist_comisaria_m?: number;
+  seguridad_barri_score?: number;
+}
+
+export interface EntornoComercialDetalle {
+  pct_locales_vacios?: number;
+  tasa_rotacion_anual?: number;
+  licencias_nuevas_1a?: number;
+  ratio_locales_comerciales?: number;
+  nivel_ruido_db?: number;
+  score_equipamientos?: number;
+  m2_zonas_verdes_cercanas?: number;
+  mercados_municipales_1km?: number;
+  eventos_culturales_500m?: number;
+}
+
 export interface ZonaDetalle {
   zona_id: string;
   nombre: string;
@@ -93,6 +116,8 @@ export interface ZonaDetalle {
   pct_locales_vacios?: number;
   num_lineas_transporte?: number;
   num_paradas_transporte?: number;
+  seguridad_detalle?: SeguridadDetalle;
+  entorno_detalle?: EntornoComercialDetalle;
   competidores_cercanos: CompetidorCercano[];
   alertas: AlertaZona[];
   analisis_ia?: AnalisisIA;
@@ -200,9 +225,15 @@ export interface FinancieroResponse {
   alerta_alquiler: boolean;
 }
 
+export interface DevData {
+  zona_raw: Record<string, unknown>;
+  scores_raw: Record<string, unknown>;
+}
+
 export interface LocalDetalleResponse {
   zona: ZonaDetalle;
   financiero_preview?: Partial<FinancieroResponse>;
+  dev_data?: DevData;
 }
 
 export interface PrecioSegmento {

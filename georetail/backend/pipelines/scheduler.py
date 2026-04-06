@@ -82,6 +82,12 @@ def init_scheduler() -> None:
     # ── Parques AMB (v5: m2_zonas_verdes_cercanas) ────────────────────────────
     _scheduler.add_job(_run_parques,     CronTrigger(day=2,              hour=6, minute=0), id="parques",     replace_existing=True, **_JOB_DEFAULTS)
 
+    # ── Seguridad (v7: dimensión multivariable — GU + comisarías + IERMB) ────
+    _scheduler.add_job(_run_seguridad,   CronTrigger(day=1,              hour=7, minute=30), id="seguridad",  replace_existing=True, **_JOB_DEFAULTS)
+
+    # ── Entorno comercial (v8: mercats + soroll + equipaments) ────────────────
+    _scheduler.add_job(_run_entorno_comercial, CronTrigger(day=4, hour=6, minute=0), id="entorno_comercial", replace_existing=True, **_JOB_DEFAULTS)
+
     _scheduler.start()
     logger.info("APScheduler iniciado con %d jobs", len(_scheduler.get_jobs()))
 
@@ -263,3 +269,27 @@ async def _run_parques():
         logger.info("Pipeline parques AMB — %s", result)
     except Exception as e:
         logger.error("Pipeline parques error: %s", e)
+
+
+# ── Runner seguridad (v7) ────────────────────────────────────────────────────
+
+async def _run_seguridad():
+    """Mensual día 1, 07:30 — GU incidents + comisarías + IERMB → seguridad multivariable."""
+    try:
+        from pipelines.seguridad import ejecutar
+        result = await ejecutar()
+        logger.info("Pipeline seguridad — %s", result)
+    except Exception as e:
+        logger.error("Pipeline seguridad error: %s", e)
+
+
+# ── Runner entorno comercial (v8) ────────────────────────────────────────────
+
+async def _run_entorno_comercial():
+    """Mensual día 4, 06:00 — mercats + soroll + equipaments → entorno comercial multivariable."""
+    try:
+        from pipelines.entorno_comercial import ejecutar
+        result = await ejecutar()
+        logger.info("Pipeline entorno_comercial — %s", result)
+    except Exception as e:
+        logger.error("Pipeline entorno_comercial error: %s", e)
