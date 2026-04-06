@@ -35,10 +35,10 @@ export const api = {
       { method: "POST", body: JSON.stringify({ zona_id, session_id }) }
     ),
 
-  localDetalle: (zona_id: string, session_id: string) =>
+  localDetalle: (zona_id: string, session_id: string, dev = false) =>
     apiFetch<LocalDetalleResponse>("/api/local", {
       method: "POST",
-      body: JSON.stringify({ zona_id, session_id }),
+      body: JSON.stringify({ zona_id, session_id, dev }),
     }),
 
   financiero: (zona_id: string, session_id: string, overrides: Record<string, number> = {}) =>

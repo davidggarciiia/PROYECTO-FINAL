@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import type { ZonaPreview, LocalDetalleResponse, FinancieroResponse, CompetenciaDetalle } from "@/lib/types";
+import type { ZonaPreview, LocalDetalleResponse, FinancieroResponse, CompetenciaDetalle, SeguridadDetalle, EntornoComercialDetalle } from "@/lib/types";
 import { api } from "@/lib/api";
 import FinancialPanel from "./FinancialPanel";
 import CompetenciaPanel from "./CompetenciaPanel";
@@ -16,7 +16,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Tab = "analisis" | "competencia" | "financiero" | "legal";
+type Tab = "analisis" | "competencia" | "financiero" | "legal" | "dev";
 
 function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
   const r = (size / 2) - 6;
@@ -123,7 +123,7 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
 
       {/* ── Tabs ── */}
       <div className={styles.tabs}>
-        {(["analisis", "competencia", "financiero", "legal"] as Tab[]).map(t => (
+        {(["analisis", "competencia", "financiero", "legal", "dev"] as Tab[]).map(t => (
           <button
             key={t}
             className={`${styles.tab} ${tab === t ? styles.tabActive : ""}`}
@@ -133,6 +133,7 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
             {t === "competencia" && "Competencia"}
             {t === "financiero"  && "Financiero"}
             {t === "legal"       && "Legal"}
+            {t === "dev"         && "Dev"}
           </button>
         ))}
       </div>
@@ -350,6 +351,51 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ── Dev tab ── */}
+        {tab === "dev" && (
+          <div className={styles.tabPane}>
+            {z?.seguridad_detalle && (
+              <section className={styles.section}>
+                <h3 className={styles.sectionTitle}>Seguridad (v7) — Sub-scores</h3>
+                <div className={styles.devGrid}>
+                  {Object.entries(z.seguridad_detalle).map(([k, v]) => (
+                    <div key={k} className={styles.devRow}>
+                      <span className={styles.devKey}>{k}</span>
+                      <span className={styles.devVal}>{v != null ? String(v) : "—"}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+            {z?.entorno_detalle && (
+              <section className={styles.section}>
+                <h3 className={styles.sectionTitle}>Entorno Comercial (v8) — Sub-scores</h3>
+                <div className={styles.devGrid}>
+                  {Object.entries(z.entorno_detalle).map(([k, v]) => (
+                    <div key={k} className={styles.devRow}>
+                      <span className={styles.devKey}>{k}</span>
+                      <span className={styles.devVal}>{v != null ? String(v) : "—"}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+            {detalle?.dev_data && (
+              <section className={styles.section}>
+                <h3 className={styles.sectionTitle}>Raw Data</h3>
+                <pre className={styles.devPre}>
+                  {JSON.stringify(detalle.dev_data, null, 2)}
+                </pre>
+              </section>
+            )}
+            {!z?.seguridad_detalle && !z?.entorno_detalle && !detalle?.dev_data && (
+              <p style={{ opacity: 0.5, padding: 16 }}>
+                No hay datos de desarrollo disponibles. Solicita con dev=true.
+              </p>
+            )}
           </div>
         )}
       </div>

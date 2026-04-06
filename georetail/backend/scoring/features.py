@@ -1,4 +1,4 @@
-"""scoring/features.py — Vector de 36 features para XGBoost.
+"""scoring/features.py — Vector de 42 features para XGBoost.
 
 Cambio v2: añadidas dos features de granularidad geográfica de nivel zona:
   - dist_playa_m              → distancia PostGIS al litoral de Barcelona (metros)
@@ -43,8 +43,20 @@ al final (índices 33-35) escritas por pipelines/competencia.py desde Google Map
   - ratio_complementarios (índice 35) — ratio negocios complementarios / máximo esperado
                                         Proxy de sinergia sectorial en el radio 500m.
 
-NOTA: Los modelos entrenados con v1-v5.1 (21-33 features) fallarán al recibir 36 features
-y caerán al scorer manual. Relanzar scoring/train.py para entrenar en v6.
+Cambio v7 (seguridad multivariable): añadidas cinco features de seguridad al final
+(índices 36-40) escritas por pipelines/seguridad.py desde Open Data BCN CKAN:
+  - hurtos_por_1000hab     (índice 36) — hurts/carterisme normalizado por población
+  - robatoris_por_1000hab  (índice 37) — robatoris amb força/violència
+  - danys_por_1000hab      (índice 38) — danys a la propietat (vandalisme)
+  - incidencias_noche_pct  (índice 39) — fracció d'incidències en horari nocturn (20-06h)
+  - comisarias_1km         (índice 40) — nombre de comissaries de policia en radi 1km
+
+Cambio v8 (entorno comercial mejorado): añadida una feature de entorno al final
+(índice 41) escrita por pipelines/entorno_comercial.py desde Open Data BCN CKAN:
+  - mercados_municipales_1km (índice 41) — nombre de mercats municipals en radi 1km
+
+NOTA: Los modelos entrenados con v1-v6 (21-36 features) fallarán al recibir 42 features
+y caerán al scorer manual. Relanzar scoring/train.py para entrenar en v8.
 """
 from __future__ import annotations
 import logging
@@ -98,6 +110,14 @@ FEATURE_NAMES = [
     "score_aglomeracion",         # efecto cluster 0-100 (campana con óptimo sectorial)
     "pct_vulnerables",            # % competidores directos con rating<3.5 (oportunidad)
     "ratio_complementarios",      # negocios sinérgicos / máx esperado (sinergia 0-1)
+    # ── v7: seguridad multivariable (GU + comisarías) ────────────────────────
+    "hurtos_por_1000hab",         # hurts/carterisme per 1000 hab (GU BCN)
+    "robatoris_por_1000hab",      # robatoris amb força/violència per 1000 hab
+    "danys_por_1000hab",          # danys a la propietat per 1000 hab
+    "incidencias_noche_pct",      # fracció incidències 20:00-06:00 (0-1)
+    "comisarias_1km",             # nombre comissaries en radi 1km
+    # ── v8: entorno comercial mejorado (Open Data BCN mercats) ───────────────
+    "mercados_municipales_1km",   # mercats municipals en radi 1km
 ]
 
 # Medias de imputación calculadas sobre dataset de entrenamiento BCN
@@ -135,6 +155,14 @@ _MEDIAS = {
     "score_aglomeracion": 50.0,        # ~50 pts media BCN (zona con cluster moderado)
     "pct_vulnerables":    0.35,        # ~35% de competidores son vulnerables (media BCN)
     "ratio_complementarios": 0.40,     # ~40% del máximo de complementarios esperado
+    # v7 — seguridad multivariable (Open Data BCN CKAN + PostGIS comisarías)
+    "hurtos_por_1000hab": 18.0,
+    "robatoris_por_1000hab": 8.0,
+    "danys_por_1000hab": 5.0,
+    "incidencias_noche_pct": 0.30,
+    "comisarias_1km": 2,
+    # v8 — entorno comercial mejorado (Open Data BCN mercats municipals)
+    "mercados_municipales_1km": 1,
 }
 
 
@@ -222,6 +250,14 @@ def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
         "score_aglomeracion":       comp.get("cluster_score"),
         "pct_vulnerables":          comp.get("pct_vulnerables"),
         "ratio_complementarios":    comp.get("ratio_complementarios"),
+        # v7: seguridad multivariable — leídas de vz_entorno vía vista
+        "hurtos_por_1000hab":       vz.get("hurtos_por_1000hab"),
+        "robatoris_por_1000hab":    vz.get("robatoris_por_1000hab"),
+        "danys_por_1000hab":        vz.get("danys_por_1000hab"),
+        "incidencias_noche_pct":    vz.get("incidencias_noche_pct"),
+        "comisarias_1km":           vz.get("comisarias_1km"),
+        # v8: entorno comercial — mercats municipals en radi 1km
+        "mercados_municipales_1km": vz.get("mercados_municipales_1km"),
     }
     vec = [float(raw.get(f) if raw.get(f) is not None else _MEDIAS[f]) for f in FEATURE_NAMES]
     return np.array([vec], dtype=np.float32)

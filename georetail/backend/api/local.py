@@ -34,7 +34,8 @@ from pydantic import BaseModel
 
 from schemas.models import (
     LocalDetalleResponse, ZonaDetalle, ScoresDimensiones, AnalisisIA,
-    CompetidorCercano, AlertaZona, ColorZona,
+    CompetidorCercano, AlertaZona, ColorZona, SeguridadDetalle,
+    EntornoComercialDetalle,
 )
 from db.sesiones import get_sesion
 from db.zonas import get_zona_completa
@@ -122,6 +123,7 @@ class DetalleRequest(BaseModel):
     zona_id: str
     local_id: Optional[str] = None  # Para anclar el análisis a un local concreto
     session_id: str
+    dev: bool = False  # Si True, incluir datos crudos para DevPanel
 
 
 @router.post(
@@ -242,6 +244,31 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
         num_lineas_transporte=zona.get("num_lineas_transporte"),
         num_paradas_transporte=zona.get("num_paradas_transporte"),
 
+        # Seguridad v7 — desglose granular
+        seguridad_detalle=SeguridadDetalle(
+            incidencias_por_1000hab=zona.get("incidencias_por_1000hab"),
+            hurtos_por_1000hab=zona.get("hurtos_por_1000hab"),
+            robatoris_por_1000hab=zona.get("robatoris_por_1000hab"),
+            danys_por_1000hab=zona.get("danys_por_1000hab"),
+            incidencias_noche_pct=zona.get("incidencias_noche_pct"),
+            comisarias_1km=zona.get("comisarias_1km"),
+            dist_comisaria_m=zona.get("dist_comisaria_m"),
+            seguridad_barri_score=zona.get("seguridad_barri_score"),
+        ),
+
+        # Entorno comercial v8 — desglose granular
+        entorno_detalle=EntornoComercialDetalle(
+            pct_locales_vacios=zona.get("pct_locales_vacios"),
+            tasa_rotacion_anual=zona.get("tasa_rotacion_anual"),
+            licencias_nuevas_1a=zona.get("licencias_nuevas_1a"),
+            ratio_locales_comerciales=zona.get("ratio_locales_comerciales"),
+            nivel_ruido_db=zona.get("nivel_ruido_db"),
+            score_equipamientos=zona.get("score_equipamientos"),
+            m2_zonas_verdes_cercanas=zona.get("m2_zonas_verdes_cercanas"),
+            mercados_municipales_1km=zona.get("mercados_municipales_1km"),
+            eventos_culturales_500m=zona.get("eventos_culturales_500m"),
+        ),
+
         # Competidores
         competidores_cercanos=[
             CompetidorCercano(**c) for c in zona.get("competidores_cercanos", [])
@@ -258,7 +285,8 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
         ),
     )
 
-    return LocalDetalleResponse(zona=zona_detalle)
+    dev_data = _build_dev_data(zona, scores_data) if body.dev else None
+    return LocalDetalleResponse(zona=zona_detalle, dev_data=dev_data)
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -269,6 +297,17 @@ def _score_to_color(score: float) -> ColorZona:
     if score >= 50:
         return ColorZona.AMARILLO
     return ColorZona.ROJO
+
+
+def _build_dev_data(zona: dict, scores_data: dict) -> dict:
+    """Datos crudos para el DevPanel del frontend."""
+    return {
+        "zona_raw": {
+            k: v for k, v in zona.items()
+            if k not in ("competidores_cercanos",) and not callable(v)
+        },
+        "scores_raw": scores_data,
+    }
 
 
 def _scores_fallback(zona: dict) -> dict:

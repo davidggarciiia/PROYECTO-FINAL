@@ -167,6 +167,31 @@ class ScoreDetalle(BaseModel):
     entorno_comercial: Optional[float] = None
 
 
+class SeguridadDetalle(BaseModel):
+    """Desglose granular de la dimensión de seguridad (v7)."""
+    incidencias_por_1000hab: Optional[float] = None
+    hurtos_por_1000hab:      Optional[float] = None
+    robatoris_por_1000hab:   Optional[float] = None
+    danys_por_1000hab:       Optional[float] = None
+    incidencias_noche_pct:   Optional[float] = None
+    comisarias_1km:          Optional[int]   = None
+    dist_comisaria_m:        Optional[float] = None
+    seguridad_barri_score:   Optional[float] = None
+
+
+class EntornoComercialDetalle(BaseModel):
+    """Desglose granular de la dimensión de entorno comercial (v8)."""
+    pct_locales_vacios:         Optional[float] = None
+    tasa_rotacion_anual:        Optional[float] = None
+    licencias_nuevas_1a:        Optional[float] = None
+    ratio_locales_comerciales:  Optional[float] = None
+    nivel_ruido_db:             Optional[float] = None
+    score_equipamientos:        Optional[float] = None
+    m2_zonas_verdes_cercanas:   Optional[float] = None
+    mercados_municipales_1km:   Optional[int]   = None
+    eventos_culturales_500m:    Optional[float] = None
+
+
 class ShapExplicacion(BaseModel):
     """Explicación de un factor SHAP del modelo XGBoost."""
     feature:     str
@@ -256,6 +281,9 @@ class ZonaDetalle(BaseModel):
     pct_locales_vacios:     Optional[float] = None
     num_lineas_transporte:  Optional[int]   = None
     num_paradas_transporte: Optional[int]   = None
+
+    seguridad_detalle:     Optional[SeguridadDetalle] = None
+    entorno_detalle:       Optional[EntornoComercialDetalle] = None
 
     competidores_cercanos: list[CompetidorCercano] = []
     alertas:               list[AlertaZona]        = []
@@ -363,6 +391,7 @@ class LocalDetalleRequest(BaseModel):
 class LocalDetalleResponse(BaseModel):
     zona:               ZonaDetalle
     financiero_preview: Optional[dict] = None
+    dev_data:           Optional[dict] = None
 
 
 # ── Financiero ────────────────────────────────────────────────────────────────

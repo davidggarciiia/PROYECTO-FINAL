@@ -337,3 +337,42 @@
   border-color: var(--accent);
   color: var(--text);
 }
+
+/* ── Dev tab ── */
+.devGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+}
+.devRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.devRow:nth-child(odd) {
+  background: rgba(255,255,255,0.02);
+}
+.devKey {
+  color: var(--text-muted);
+  font-family: monospace;
+}
+.devVal {
+  color: var(--text);
+  font-weight: 600;
+  font-family: monospace;
+}
+.devPre {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
