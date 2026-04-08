@@ -179,6 +179,8 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
             sector_codigo=sector,
             idea_tags=sesion.get("perfil", {}).get("idea_tags") or [],
             descripcion_negocio=sesion.get("datos", {}).get("descripcion_original"),
+            perfil_negocio=sesion.get("perfil", {}).get("perfil_negocio") or {},
+            concepto_negocio=sesion.get("perfil", {}).get("concepto_negocio") or {},
         ),
 
         # Fuente: `alertas_zona` generadas por `nlp/alertas.py`

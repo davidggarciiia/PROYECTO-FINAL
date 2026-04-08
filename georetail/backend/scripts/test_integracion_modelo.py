@@ -160,18 +160,48 @@ async def test_scores_comparativos():
             "sector": "restauracion",
             "idea_tags": ["specialty_coffee", "clientela_local", "instagrammable"],
             "descripcion": "Cafetería de especialidad con microlotes y baristas especializados",
+            "perfil_negocio": {
+                "dependencia_flujo": 0.38,
+                "nivel_precio": 0.68,
+                "clientela_turismo": 0.15,
+                "clientela_vecindario": 0.72,
+                "horario_nocturno": 0.05,
+                "experiencial": 0.55,
+                "citas_previas": 0.05,
+                "sensibilidad_alquiler": 0.45,
+            },
         },
         {
             "nombre": "Cafetería express (zona de paso)",
             "sector": "restauracion",
             "idea_tags": ["alta_rotacion_clientes", "takeaway_delivery", "low_cost"],
             "descripcion": "Cafetería rápida para gente con prisa cerca del metro",
+            "perfil_negocio": {
+                "dependencia_flujo": 0.92,
+                "nivel_precio": 0.30,
+                "clientela_turismo": 0.32,
+                "clientela_vecindario": 0.30,
+                "horario_nocturno": 0.02,
+                "experiencial": 0.12,
+                "citas_previas": 0.00,
+                "sensibilidad_alquiler": 0.78,
+            },
         },
         {
             "nombre": "Cafetería dog-friendly (barrio residencial)",
             "sector": "restauracion",
             "idea_tags": ["dog_friendly", "clientela_local", "clientela_vecindario"],
             "descripcion": "Cafetería con perros bienvenidos, terraza y ambiente familiar",
+            "perfil_negocio": {
+                "dependencia_flujo": 0.35,
+                "nivel_precio": 0.52,
+                "clientela_turismo": 0.10,
+                "clientela_vecindario": 0.85,
+                "horario_nocturno": 0.05,
+                "experiencial": 0.42,
+                "citas_previas": 0.02,
+                "sensibilidad_alquiler": 0.55,
+            },
         },
     ]
 
@@ -183,6 +213,7 @@ async def test_scores_comparativos():
             concepto["sector"],
             idea_tags=concepto["idea_tags"],
             descripcion_negocio=concepto["descripcion"],
+            perfil_negocio=concepto["perfil_negocio"],
         )
         elapsed = (time.time() - t0) * 1000
 
@@ -217,7 +248,7 @@ async def test_score_afinidad():
     header("TEST 3 — score_afinidad_concepto (requiere BD + sentence-transformers)")
 
     try:
-        from scoring.motor import get_scores_zona
+        from scoring.motor import calcular_scores_batch, get_scores_zona
         from db.conexion import get_db
     except ImportError as e:
         fail(f"Import fallado: {e}")
@@ -236,6 +267,16 @@ async def test_score_afinidad():
         return False
 
     descripcion = "Cafetería de especialidad con perros bienvenidos en barrio residencial"
+    perfil_negocio = {
+        "dependencia_flujo": 0.35,
+        "nivel_precio": 0.62,
+        "clientela_turismo": 0.12,
+        "clientela_vecindario": 0.82,
+        "horario_nocturno": 0.05,
+        "experiencial": 0.48,
+        "citas_previas": 0.02,
+        "sensibilidad_alquiler": 0.50,
+    }
     info(f"Zona: {zona_nombre} ({zona_id})")
     info(f"Descripción: '{descripcion}'")
 
@@ -245,6 +286,7 @@ async def test_score_afinidad():
         sector_codigo="restauracion",
         idea_tags=["specialty_coffee", "dog_friendly", "clientela_local"],
         descripcion_negocio=descripcion,
+        perfil_negocio=perfil_negocio,
     )
     elapsed = (time.time() - t0) * 1000
 
@@ -265,6 +307,22 @@ async def test_score_afinidad():
     info("scores_dimension:")
     for dim, val in dims.items():
         info(f"    {dim:<25} {val}")
+
+    batch_result = await calcular_scores_batch(
+        [zona_id],
+        "restauracion",
+        idea_tags=["specialty_coffee", "dog_friendly", "clientela_local"],
+        descripcion_negocio=descripcion,
+        perfil_negocio=perfil_negocio,
+    )
+    if batch_result:
+        score_batch = batch_result[0].get("score_global")
+        score_detalle = result.get("score_global")
+        delta = abs(float(score_batch) - float(score_detalle))
+        if delta <= 0.1:
+            ok("Batch y detalle devuelven el mismo score final para la zona")
+        else:
+            warn(f"Batch/detalle divergen en {delta:.1f} puntos")
 
     ok("TEST 3 PASADO")
     return True

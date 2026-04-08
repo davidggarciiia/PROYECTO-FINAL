@@ -192,6 +192,7 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
         "sector":         validacion["sector_detectado"],
         "idea_tags":      validacion.get("idea_tags") or [],
         "perfil_negocio": validacion.get("perfil_negocio") or {},
+        "concepto_negocio": validacion.get("concepto_negocio") or {},
         "variables":      validacion["variables_conocidas"],
     }
 
@@ -216,6 +217,8 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
         sector_codigo,
         idea_tags=validacion.get("idea_tags") or [],
         descripcion_negocio=body.descripcion,
+        perfil_negocio=validacion.get("perfil_negocio") or {},
+        concepto_negocio=validacion.get("concepto_negocio") or {},
     )
 
     # Construir lookup de scores por zona_id
