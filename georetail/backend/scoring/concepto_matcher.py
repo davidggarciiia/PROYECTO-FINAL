@@ -1261,6 +1261,81 @@ CONCEPTOS_DB: dict[str, dict] = {
 }
 
 
+def score_zona_vs_ideal(zona_data: dict, zona_ideal: dict) -> float:
+    """
+    Calcula el encaje entre una zona concreta y un perfil ideal de zona.
+
+    Esta función es pura: no usa embeddings, ni matcher, ni I/O. Sirve para que
+    batch y detalle compartan exactamente la misma lógica de afinidad.
+    """
+    if not zona_ideal:
+        return 50.0
+
+    partial_scores: list[float] = []
+
+    if "renta_ideal" in zona_ideal:
+        renta_raw = zona_data.get("renta_media_hogar")
+        renta = 32000.0 if renta_raw is None else float(renta_raw)
+        renta_norm = max(0.0, min(1.0, (renta - 17000.0) / 43000.0))
+        diff = abs(renta_norm - float(zona_ideal["renta_ideal"]))
+        partial_scores.append(max(0.0, 100.0 - diff * 150.0))
+
+    if "turismo_ideal" in zona_ideal:
+        turismo_raw = zona_data.get("score_turismo")
+        turismo = 45.0 if turismo_raw is None else float(turismo_raw)
+        diff = abs(turismo - float(zona_ideal["turismo_ideal"]))
+        partial_scores.append(max(0.0, 100.0 - diff * 1.5))
+
+    if "flujo_min" in zona_ideal:
+        flujo_raw = zona_data.get("flujo_peatonal_total")
+        flujo = 0.0 if flujo_raw is None else float(flujo_raw)
+        flujo_min = max(float(zona_ideal["flujo_min"]), 1.0)
+        partial_scores.append(min(100.0, (flujo / flujo_min) * 100.0))
+
+    if "edad_rango" in zona_ideal:
+        edad_raw = zona_data.get("edad_media")
+        edad = 42.5 if edad_raw is None else float(edad_raw)
+        e_min, e_max = zona_ideal["edad_rango"]
+        e_min = float(e_min)
+        e_max = float(e_max)
+        if e_min <= edad <= e_max:
+            partial_scores.append(100.0)
+        else:
+            dist = min(abs(edad - e_min), abs(edad - e_max))
+            partial_scores.append(max(0.0, 100.0 - dist * 5.0))
+
+    if "ratio_comercial_min" in zona_ideal:
+        ratio_raw = zona_data.get("ratio_locales_comerciales")
+        ratio = 0.22 if ratio_raw is None else float(ratio_raw)
+        min_req = max(float(zona_ideal["ratio_comercial_min"]), 1e-6)
+        if ratio >= min_req:
+            partial_scores.append(100.0)
+        else:
+            partial_scores.append(max(0.0, min(100.0, (ratio / min_req) * 100.0)))
+
+    bonus_weight = float(zona_ideal.get("zonas_verdes_bonus", 0.0) or 0.0)
+    if bonus_weight > 0.0:
+        m2_verdes_raw = zona_data.get("m2_zonas_verdes_cercanas")
+        m2_verdes = 1200.0 if m2_verdes_raw is None else float(m2_verdes_raw)
+        score_v = min(100.0, max(0.0, (m2_verdes / 4000.0) * 100.0))
+        partial_scores.append(score_v * bonus_weight + 50.0 * (1.0 - bonus_weight))
+
+    if "seguridad_min" in zona_ideal:
+        incidencias_raw = zona_data.get("incidencias_por_1000hab")
+        incidencias = 35.0 if incidencias_raw is None else float(incidencias_raw)
+        seg_score = min(100.0, max(0.0, (120.0 - incidencias) / 1.15))
+        seg_min = max(float(zona_ideal["seguridad_min"]), 1e-6)
+        if seg_score >= seg_min:
+            partial_scores.append(100.0)
+        else:
+            partial_scores.append(max(0.0, min(100.0, (seg_score / seg_min) * 100.0)))
+
+    if not partial_scores:
+        return 50.0
+
+    return round(sum(partial_scores) / len(partial_scores), 1)
+
+
 # ─── Clase principal del matcher ───────────────────────────────────────────────
 
 class ConceptoMatcher:
@@ -1340,21 +1415,29 @@ class ConceptoMatcher:
         if not matches:
             return []
 
-        total_sim = sum(m["similarity"] for m in matches)
-        if total_sim == 0:
-            return []
+        try:
+            from scoring.concept_taxonomy import compilar_concepto_negocio
 
-        tag_scores: dict[str, float] = {}
-        for m in matches:
-            weight = m["similarity"] / total_sim
-            for tag in m.get("tags", []):
-                tag_scores[tag] = tag_scores.get(tag, 0.0) + weight
+            return compilar_concepto_negocio(
+                matcher_matches=matches,
+                max_visible_tags=12,
+            ).get("idea_tags", [])
+        except Exception:
+            total_sim = sum(m["similarity"] for m in matches)
+            if total_sim == 0:
+                return []
 
-        return [
-            tag for tag, score
-            in sorted(tag_scores.items(), key=lambda x: -x[1])
-            if score >= 0.25
-        ]
+            tag_scores: dict[str, float] = {}
+            for m in matches:
+                weight = m["similarity"] / total_sim
+                for tag in m.get("tags", []):
+                    tag_scores[tag] = tag_scores.get(tag, 0.0) + weight
+
+            return [
+                tag for tag, score
+                in sorted(tag_scores.items(), key=lambda x: -x[1])
+                if score >= 0.25
+            ]
 
     def blend_zona_ideal(self, matches: list[dict]) -> dict:
         """
@@ -1418,8 +1501,7 @@ class ConceptoMatcher:
           - seguridad_min:      100 si cumple; proporcional si no
         """
         zona_ideal = self.blend_zona_ideal(matches)
-        if not zona_ideal:
-            return 50.0
+        return score_zona_vs_ideal(zona_data, zona_ideal)
 
         partial_scores: list[float] = []
 

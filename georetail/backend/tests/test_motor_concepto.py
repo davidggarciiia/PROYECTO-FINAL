@@ -24,7 +24,35 @@ from scoring.motor import (
     _recalcular_global_con_afinidad,
     _format_scores_for_api,
     _PESO_AFINIDAD,
+    calcular_scores_batch,
 )
+
+
+class _FakeConn:
+    def __init__(self, fetch_results=None, fetchrow_results=None):
+        self._fetch_results = list(fetch_results or [])
+        self._fetchrow_results = list(fetchrow_results or [])
+
+    async def fetch(self, *args, **kwargs):
+        if self._fetch_results:
+            return self._fetch_results.pop(0)
+        return []
+
+    async def fetchrow(self, *args, **kwargs):
+        if self._fetchrow_results:
+            return self._fetchrow_results.pop(0)
+        return None
+
+
+class _FakeDB:
+    def __init__(self, conn):
+        self._conn = conn
+
+    async def __aenter__(self):
+        return self._conn
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -150,11 +178,10 @@ class TestRecalcularGlobal:
         result = _recalcular_global(scores_perfect, pesos_restauracion)
         assert result == pytest.approx(100.0, abs=0.1)
 
-    def test_scores_0_usan_fallback_50(self, pesos_restauracion):
+    def test_scores_0_se_conservan(self, pesos_restauracion):
         """
-        _recalcular_global usa `(scores.get(dim) or 50.0)` — los valores 0.0 y
-        None se reemplazan por 50 (neutro). Comportamiento intencionado para
-        evitar que datos ausentes empujen el score a 0.
+        Tras la correccion del motor, un 0.0 real debe preservarse.
+        Solo None representa ausencia de dato y cae a 50.0.
         """
         scores_zero = {k: 0.0 for k in [
             "score_flujo_peatonal", "score_demografia", "score_competencia",
@@ -162,8 +189,7 @@ class TestRecalcularGlobal:
             "score_turismo", "score_entorno_comercial",
         ]}
         result = _recalcular_global(scores_zero, pesos_restauracion)
-        # 0.0 es falsy → se usa 50.0 como fallback → resultado = 50.0
-        assert result == pytest.approx(50.0, abs=0.1)
+        assert result == pytest.approx(0.0, abs=0.1)
 
     def test_peso_flujo_alto_da_mas_peso_a_flujo(self):
         """Con peso_flujo=0.80, el score_flujo domina el global."""
@@ -268,6 +294,23 @@ class TestRecalcularGlobalConAfinidad:
         }
         result = _recalcular_global_con_afinidad(scores_extremos, pesos_restauracion, 100.0)
         assert 0.0 <= result <= 100.0
+
+    def test_xgboost_conserva_score_global_base(self, pesos_restauracion):
+        scores_xgb = {
+            "score_global": 77.0,
+            "score_flujo_peatonal": None,
+            "score_demografia": None,
+            "score_competencia": None,
+            "score_precio_alquiler": None,
+            "score_transporte": None,
+            "score_seguridad": None,
+            "score_turismo": None,
+            "score_entorno_comercial": None,
+            "modelo_version": "xgboost_v3",
+        }
+        result = _recalcular_global_con_afinidad(scores_xgb, pesos_restauracion, 90.0)
+        expected = round(77.0 * 0.88 + 90.0 * 0.12, 1)
+        assert result == pytest.approx(expected, abs=0.1)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -471,3 +514,121 @@ class TestInvariantesConcepto:
             assert total == pytest.approx(1.0, abs=0.01), (
                 f"Tags {tags}: los pesos ajustados suman {total}, no 1.0"
             )
+
+
+class TestBatchAfinidadConcepto:
+    @pytest.mark.asyncio
+    async def test_batch_aplica_score_afinidad_concepto(self, pesos_restauracion):
+        zona_data = {
+            "zona_id": "zona_001",
+            "renta_media_hogar": 40000,
+            "edad_media": 37,
+            "flujo_peatonal_total": 900,
+            "score_turismo": 18,
+            "ratio_locales_comerciales": 0.22,
+            "m2_zonas_verdes_cercanas": 2500,
+            "incidencias_por_1000hab": 20,
+        }
+        row_scorer = {
+            "score_global": 62.0,
+            "score_flujo_peatonal": 62.0,
+            "score_demografia": 60.0,
+            "score_competencia": 55.0,
+            "score_precio_alquiler": 63.0,
+            "score_transporte": 58.0,
+            "score_seguridad": 64.0,
+            "score_turismo": 45.0,
+            "score_entorno_comercial": 59.0,
+            "shap_values": {},
+            "modelo_version": "manual_v1",
+        }
+
+        conn = _FakeConn(fetch_results=[[], [zona_data]])
+        with patch("scoring.motor._get_pesos_sector", new=AsyncMock(return_value=pesos_restauracion)), \
+             patch("db.conexion.get_db", return_value=_FakeDB(conn)), \
+             patch("scoring.motor._scorer_batch", new=AsyncMock(return_value={"zona_001": row_scorer})):
+            result = await calcular_scores_batch(
+                ["zona_001"],
+                "restauracion",
+                idea_tags=["dog_friendly", "clientela_local"],
+                perfil_negocio={
+                    "dependencia_flujo": 0.35,
+                    "nivel_precio": 0.55,
+                    "clientela_turismo": 0.10,
+                    "clientela_vecindario": 0.85,
+                    "horario_nocturno": 0.05,
+                    "experiencial": 0.40,
+                    "citas_previas": 0.05,
+                    "sensibilidad_alquiler": 0.55,
+                },
+            )
+
+        assert result[0]["score_afinidad_concepto"] is not None
+        assert result[0]["score_global"] != pytest.approx(62.0)
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_y_cache_miss_devuelven_mismo_score_final(self, pesos_restauracion):
+        cached_row = {
+            "zona_id": "zona_001",
+            "score_global": 62.0,
+            "score_flujo_peatonal": 62.0,
+            "score_demografia": 60.0,
+            "score_competencia": 55.0,
+            "score_precio_alquiler": 63.0,
+            "score_transporte": 58.0,
+            "score_seguridad": 64.0,
+            "score_turismo": 45.0,
+            "score_entorno_comercial": 59.0,
+            "probabilidad_supervivencia": None,
+            "shap_values": {},
+            "modelo_version": "manual_v1",
+        }
+        affinity_row = {
+            "zona_id": "zona_001",
+            "renta_media_hogar": 40000,
+            "edad_media": 37,
+            "flujo_peatonal_total": 900,
+            "score_turismo": 18,
+            "ratio_locales_comerciales": 0.22,
+            "m2_zonas_verdes_cercanas": 2500,
+            "incidencias_por_1000hab": 20,
+        }
+        perfil = {
+            "dependencia_flujo": 0.35,
+            "nivel_precio": 0.55,
+            "clientela_turismo": 0.10,
+            "clientela_vecindario": 0.85,
+            "horario_nocturno": 0.05,
+            "experiencial": 0.40,
+            "citas_previas": 0.05,
+            "sensibilidad_alquiler": 0.55,
+        }
+
+        conn_cache = _FakeConn(fetch_results=[[cached_row], [affinity_row]])
+        with patch("scoring.motor._get_pesos_sector", new=AsyncMock(return_value=pesos_restauracion)), \
+             patch("db.conexion.get_db", return_value=_FakeDB(conn_cache)), \
+             patch("scoring.motor._scorer_batch", new=AsyncMock(return_value={})):
+            result_cache = await calcular_scores_batch(
+                ["zona_001"],
+                "restauracion",
+                idea_tags=["dog_friendly", "clientela_local"],
+                perfil_negocio=perfil,
+            )
+
+        conn_fresh = _FakeConn(fetch_results=[[], [affinity_row]])
+        scorer_payload = {k: v for k, v in cached_row.items() if k != "zona_id"}
+        with patch("scoring.motor._get_pesos_sector", new=AsyncMock(return_value=pesos_restauracion)), \
+             patch("db.conexion.get_db", return_value=_FakeDB(conn_fresh)), \
+             patch("scoring.motor._scorer_batch", new=AsyncMock(return_value={"zona_001": scorer_payload})):
+            result_fresh = await calcular_scores_batch(
+                ["zona_001"],
+                "restauracion",
+                idea_tags=["dog_friendly", "clientela_local"],
+                perfil_negocio=perfil,
+            )
+
+        assert result_cache[0]["score_global"] == pytest.approx(result_fresh[0]["score_global"], abs=0.1)
+        assert result_cache[0]["score_afinidad_concepto"] == pytest.approx(
+            result_fresh[0]["score_afinidad_concepto"],
+            abs=0.1,
+        )

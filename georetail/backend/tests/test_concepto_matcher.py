@@ -22,6 +22,7 @@ from scoring.concepto_matcher import (
     CONCEPTOS_DB,
     ConceptoMatcher,
     get_matcher,
+    score_zona_vs_ideal,
 )
 
 
@@ -322,6 +323,19 @@ class TestScoreAfinidadZona:
 # ════════════════════════════════════════════════════════════════════════════
 # 4. blend_tags
 # ════════════════════════════════════════════════════════════════════════════
+
+class TestScoreZonaVsIdeal:
+    def test_zona_ideal_vacia_devuelve_50(self, zona_con_parques):
+        assert score_zona_vs_ideal(zona_con_parques, {}) == pytest.approx(50.0)
+
+    def test_funcion_pura_discrimina_zonas_para_dog_friendly(
+        self, zona_con_parques, zona_sin_parques
+    ):
+        zona_ideal = CONCEPTOS_DB["cafeteria_con_perros"]["zona_ideal"]
+        score_parques = score_zona_vs_ideal(zona_con_parques, zona_ideal)
+        score_sin_parques = score_zona_vs_ideal(zona_sin_parques, zona_ideal)
+        assert score_parques > score_sin_parques
+
 
 class TestBlendTags:
     def test_tag_presente_en_todos_los_matches_siempre_incluido(self, matcher):

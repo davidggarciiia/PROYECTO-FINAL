@@ -1,26 +1,18 @@
 """
-scoring/motor.py — Interfaz pública del módulo de scoring.
+scoring/motor.py - Interfaz publica del modulo de scoring.
 
-Los endpoints de la API importan desde aquí. Este módulo delega en scorer.py.
+Los endpoints de la API importan desde aqui. Este modulo delega en scorer.py.
 
-Funciones públicas:
-  - calcular_scores_batch(zona_ids, sector_codigo) → usado por POST /api/buscar
-  - get_scores_zona(zona_id, sector_codigo)        → usado por POST /api/local
+Funciones publicas:
+  - calcular_scores_batch(zona_ids, sector_codigo) -> usado por POST /api/buscar
+  - get_scores_zona(zona_id, sector_codigo)        -> usado por POST /api/local
 
-Estrategia de caché:
-  - Se incluyen scores de cualquier versión (seed_v1 incluido).
-  - El score_global SIEMPRE se recalcula aplicando los pesos del sector sobre
-    las dimensiones almacenadas. Así el seed aporta diferenciación por zona
-    y los pesos del sector producen rankings distintos por tipo de negocio.
-  - Cuando llegan datos reales (model_version='manual_v1') el recálculo usa
-    esos datos en lugar del seed, sin cambiar ninguna lógica.
-
-Especificidad de concepto:
-  - idea_tags (del LLM) + ConceptoMatcher (embeddings semánticos) se combinan
-    para ajustar los pesos de scoring más allá del sector genérico.
-  - En el detalle de zona (get_scores_zona) se añade score_afinidad_concepto
-    como 9ª dimensión: mide cuánto encaja la zona con el concepto específico
-    (ej: dog-friendly café necesita parques cercanos, no zona turística).
+Estrategia de cache:
+  - Se incluyen scores de cualquier version (seed_v1 incluido).
+  - El score_global se recalcula solo cuando hay 8 dimensiones manuales
+    disponibles; los registros XGBoost o incompletos conservan su score base.
+  - La afinidad de concepto no se persiste en BD: se calcula en runtime para el
+    negocio concreto consultado y se aplica igual en batch y detalle.
 """
 from __future__ import annotations
 
@@ -28,14 +20,29 @@ import json
 import logging
 from typing import Optional
 
+from scoring.concept_taxonomy import (
+    aplicar_pesos_a_sector,
+    compilar_concepto_negocio,
+    idea_tags_visibles_desde_texto,
+    zona_ideal_desde_perfil,
+)
 from scoring.scorer import calcular_scores_batch as _scorer_batch
-from scoring.idea_tags import aplicar_idea_tags, extraer_tags_de_descripcion
 
 logger = logging.getLogger(__name__)
 
-# Peso de score_afinidad_concepto en score_global del detalle (api/local).
-# El resto de dimensiones se reduce proporcionalmente.
+# Peso de score_afinidad_concepto en score_global.
 _PESO_AFINIDAD = 0.12
+
+_DIMENSION_KEYS = (
+    "score_flujo_peatonal",
+    "score_demografia",
+    "score_competencia",
+    "score_precio_alquiler",
+    "score_transporte",
+    "score_seguridad",
+    "score_turismo",
+    "score_entorno_comercial",
+)
 
 
 async def calcular_scores_batch(
@@ -44,18 +51,15 @@ async def calcular_scores_batch(
     m2: Optional[float] = None,
     idea_tags: Optional[list[str]] = None,
     descripcion_negocio: Optional[str] = None,
+    perfil_negocio: Optional[dict] = None,
+    concepto_negocio: Optional[dict] = None,
 ) -> list[dict]:
     """
     Calcula el score de viabilidad para una lista de zonas.
 
-    Devuelve lista de dicts con zona_id + score_global + scores por dimensión,
-    ordenada por zona_id (el orden final lo hace api/buscar.py por score).
-
-    Especificidad de concepto:
-      1. idea_tags del LLM (señal primaria — más precisa)
-      2. Si hay descripcion_negocio, ConceptoMatcher encuentra conceptos
-         similares en la DB y enriquece los tags con señales adicionales
-      3. La unión se aplica sobre los pesos del sector vía aplicar_idea_tags
+    Devuelve lista de dicts con zona_id + score_global + scores por dimension.
+    Batch y detalle comparten la misma preparacion conceptual y la misma regla
+    de score final.
     """
     if not zona_ids:
         return []
@@ -63,17 +67,16 @@ async def calcular_scores_batch(
     try:
         from db.conexion import get_db
 
-        # Pesos base del sector
         pesos = await _get_pesos_sector(sector_codigo)
+        contexto = _preparar_contexto_concepto(
+            sector_codigo=sector_codigo,
+            concepto_negocio=concepto_negocio,
+            idea_tags_llm=idea_tags,
+            descripcion_negocio=descripcion_negocio,
+            perfil_negocio=perfil_negocio,
+        )
+        pesos_efectivos = _aplicar_pesos_concepto(pesos, contexto)
 
-        # ── Tags efectivos: LLM + matcher semántico ────────────────────────────
-        tags_efectivos = _combinar_tags(idea_tags, descripcion_negocio)
-        if tags_efectivos:
-            pesos = aplicar_idea_tags(pesos, tags_efectivos)
-            logger.debug("idea_tags efectivos (batch): %s", tags_efectivos)
-
-        # ── 1. Caché (incluye seed_v1) ─────────────────────────────────────────
-        # Tomamos el registro más reciente por zona, prefiriendo datos reales.
         async with get_db() as conn:
             rows = await conn.fetch(
                 """
@@ -99,45 +102,44 @@ async def calcular_scores_batch(
                          (sz.modelo_version != 'seed_v1') DESC,
                          sz.fecha_calculo DESC
                 """,
-                zona_ids, sector_codigo,
+                zona_ids,
+                sector_codigo,
             )
 
-        cached = {}
-        for r in rows:
-            d = dict(r)
-            d["score_global"] = _recalcular_global(d, pesos)
-            cached[d["zona_id"]] = d
+        resultados_por_zona = {dict(r)["zona_id"]: dict(r) for r in rows}
+        zonas_sin_cache = [zona_id for zona_id in zona_ids if zona_id not in resultados_por_zona]
 
-        if len(cached) == len(zona_ids):
-            return list(cached.values())
+        if zonas_sin_cache:
+            frescos = await _scorer_batch(zonas_sin_cache, sector_codigo)
+            for zona_id in zonas_sin_cache:
+                payload = frescos.get(zona_id)
+                resultados_por_zona[zona_id] = (
+                    {"zona_id": zona_id, **payload}
+                    if payload is not None
+                    else _build_fallback_row(zona_id)
+                )
 
-        # ── 2. Zonas sin caché → calcular desde cero ──────────────────────────
-        sin_cache = [z for z in zona_ids if z not in cached]
-        resultados = await _scorer_batch(sin_cache, sector_codigo)
-        calculados = [{"zona_id": k, **v} for k, v in resultados.items()]
+        datos_afinidad = {}
+        if contexto["zona_ideal"]:
+            datos_afinidad = await _cargar_datos_afinidad_zonas(zona_ids)
 
-        return list(cached.values()) + calculados
+        resultados_finales: list[dict] = []
+        for zona_id in zona_ids:
+            raw = dict(resultados_por_zona.get(zona_id) or _build_fallback_row(zona_id))
+            resultados_finales.append(
+                _aplicar_contexto_score(
+                    raw,
+                    pesos_efectivos,
+                    contexto["zona_ideal"],
+                    datos_afinidad.get(zona_id),
+                )
+            )
+
+        return resultados_finales
 
     except Exception as exc:
         logger.error("calcular_scores_batch error: %s", exc, exc_info=True)
-        return [
-            {
-                "zona_id":                     z,
-                "score_global":                50.0,
-                "score_flujo_peatonal":        50.0,
-                "score_demografia":            50.0,
-                "score_competencia":           50.0,
-                "score_precio_alquiler":       50.0,
-                "score_transporte":            50.0,
-                "score_seguridad":             50.0,
-                "score_turismo":               50.0,
-                "score_entorno_comercial":     50.0,
-                "probabilidad_supervivencia":  0.50,
-                "shap_values":                 {},
-                "modelo_version":              "fallback_error",
-            }
-            for z in zona_ids
-        ]
+        return [_build_fallback_row(zona_id, modelo_version="fallback_error") for zona_id in zona_ids]
 
 
 async def get_scores_zona(
@@ -145,24 +147,26 @@ async def get_scores_zona(
     sector_codigo: str,
     idea_tags: Optional[list[str]] = None,
     descripcion_negocio: Optional[str] = None,
+    perfil_negocio: Optional[dict] = None,
+    concepto_negocio: Optional[dict] = None,
 ) -> dict:
     """
     Devuelve el score detallado de una zona en el formato que espera api/local.py.
 
-    Además de las 8 dimensiones estándar, calcula score_afinidad_concepto (9ª
-    dimensión): cuánto encaja esta zona concreta con el concepto específico del
-    negocio (no con el sector genérico). Esta señal es valiosa en el detalle
-    pero demasiado costosa para el batch de búsqueda.
+    El detalle reutiliza exactamente la misma preparacion conceptual y el mismo
+    score final que el batch para evitar divergencias.
     """
     from db.conexion import get_db
 
     pesos = await _get_pesos_sector(sector_codigo)
-
-    # Tags efectivos: LLM + matcher semántico
-    tags_efectivos = _combinar_tags(idea_tags, descripcion_negocio)
-    if tags_efectivos:
-        pesos = aplicar_idea_tags(pesos, tags_efectivos)
-        logger.debug("idea_tags efectivos (detalle zona=%s): %s", zona_id, tags_efectivos)
+    contexto = _preparar_contexto_concepto(
+        sector_codigo=sector_codigo,
+        concepto_negocio=concepto_negocio,
+        idea_tags_llm=idea_tags,
+        descripcion_negocio=descripcion_negocio,
+        perfil_negocio=perfil_negocio,
+    )
+    pesos_efectivos = _aplicar_pesos_concepto(pesos, contexto)
 
     async with get_db() as conn:
         row = await conn.fetchrow(
@@ -176,177 +180,381 @@ async def get_scores_zona(
                      sz.fecha_calculo DESC
             LIMIT 1
             """,
-            zona_id, sector_codigo,
+            zona_id,
+            sector_codigo,
         )
 
-    raw = dict(row) if row else None
-
-    if raw is None:
-        resultados = await calcular_scores_batch([zona_id], sector_codigo,
-                                                 idea_tags=tags_efectivos)
-        raw = resultados[0] if resultados else {"zona_id": zona_id, "score_global": 50.0}
-
-    if raw:
-        raw["score_global"] = _recalcular_global(raw, pesos)
-
-    # ── Score de afinidad zona-concepto (9ª dimensión) ─────────────────────────
-    # Se calcula con ConceptoMatcher usando los datos actuales de la zona.
-    # Si el matcher no está disponible (sin sentence-transformers) se omite sin
-    # romper el flujo.
-    score_afinidad = await _calcular_score_afinidad(zona_id, descripcion_negocio,
-                                                     tags_efectivos)
-    if score_afinidad is not None:
-        raw["score_afinidad_concepto"] = score_afinidad
-        # Recalcular score_global incorporando la 9ª dimensión
-        raw["score_global"] = _recalcular_global_con_afinidad(
-            raw, pesos, score_afinidad
+    if row is None:
+        resultados = await calcular_scores_batch(
+            [zona_id],
+            sector_codigo,
+            idea_tags=idea_tags,
+            descripcion_negocio=descripcion_negocio,
+            perfil_negocio=perfil_negocio,
+            concepto_negocio=concepto_negocio,
         )
+        raw = resultados[0] if resultados else _build_fallback_row(zona_id)
+        return _format_scores_for_api(raw)
 
+    raw = dict(row)
+    datos_afinidad = {}
+    if contexto["zona_ideal"]:
+        datos_afinidad = await _cargar_datos_afinidad_zonas([zona_id])
+
+    raw = _aplicar_contexto_score(
+        raw,
+        pesos_efectivos,
+        contexto["zona_ideal"],
+        datos_afinidad.get(zona_id),
+    )
     return _format_scores_for_api(raw)
 
-
-# ─── Helpers privados ──────────────────────────────────────────────────────────
 
 def _combinar_tags(
     idea_tags_llm: Optional[list[str]],
     descripcion_negocio: Optional[str],
 ) -> list[str]:
-    """
-    Combina los tags del LLM con los tags inferidos por el ConceptoMatcher.
-
-    Estrategia:
-    - LLM tags son la fuente primaria (alta precisión).
-    - ConceptoMatcher enriquece con tags adicionales de los conceptos más
-      similares, siempre que su peso ponderado supere el umbral (ver blend_tags).
-    - La unión evita duplicados y respeta el máximo de tags razonables (~12).
-    """
-    base_tags = list(idea_tags_llm or [])
-
-    if not descripcion_negocio:
-        # Sin descripción, usar fallback de keywords si tampoco hay tags LLM
-        if not base_tags:
-            base_tags = extraer_tags_de_descripcion(None)
-        return base_tags
-
-    try:
-        from scoring.concepto_matcher import get_matcher
-        matcher = get_matcher()
-        matches = matcher.match(descripcion_negocio, top_k=4)
-        matcher_tags = matcher.blend_tags(matches)
-
-        # Unión: LLM tags tienen prioridad; matcher añade los que falten
-        combined = list(base_tags)
-        for t in matcher_tags:
-            if t not in combined:
-                combined.append(t)
-
-        return combined
-
-    except Exception as e:
-        logger.debug("ConceptoMatcher no disponible: %s — usando solo LLM tags", e)
-        return base_tags or extraer_tags_de_descripcion(descripcion_negocio)
+    contexto = _preparar_contexto_concepto(
+        sector_codigo="desconocido",
+        concepto_negocio=None,
+        idea_tags_llm=idea_tags_llm,
+        descripcion_negocio=descripcion_negocio,
+        perfil_negocio=None,
+    )
+    return contexto["tags_efectivos"]
 
 
 async def _calcular_score_afinidad(
     zona_id: str,
     descripcion_negocio: Optional[str],
     tags_efectivos: list[str],
+    perfil_negocio: Optional[dict] = None,
+    concepto_negocio: Optional[dict] = None,
 ) -> Optional[float]:
     """
-    Computa score_afinidad_concepto (0-100) para una zona específica.
+    Compatibilidad con tests y utilidades antiguas.
 
-    Requiere:
-    1. La descripción del negocio para el matching semántico.
-    2. Los datos actuales de la zona (variables_zona).
-
-    Devuelve None si no hay descripción o si el matcher falla.
+    Reutiliza la misma preparacion conceptual usada en batch y detalle.
     """
-    if not descripcion_negocio:
+    contexto = _preparar_contexto_concepto(
+        sector_codigo="desconocido",
+        concepto_negocio=concepto_negocio,
+        idea_tags_llm=tags_efectivos,
+        descripcion_negocio=descripcion_negocio,
+        perfil_negocio=perfil_negocio,
+    )
+    if not contexto["zona_ideal"]:
         return None
 
-    try:
-        from scoring.concepto_matcher import get_matcher
-        from db.conexion import get_db
-
-        matcher = get_matcher()
-        matches = matcher.match(descripcion_negocio, top_k=4)
-        if not matches:
-            return None
-
-        # Datos de la zona necesarios para la afinidad
-        async with get_db() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT
-                    vz.renta_media_hogar,
-                    vz.edad_media,
-                    vz.flujo_peatonal_total,
-                    vz.score_turismo,
-                    vz.ratio_locales_comerciales,
-                    vz.m2_zonas_verdes_cercanas,
-                    vz.incidencias_por_1000hab
-                FROM variables_zona vz
-                WHERE vz.zona_id = $1
-                ORDER BY vz.fecha DESC
-                LIMIT 1
-                """,
-                zona_id,
-            )
-
-        zona_data = dict(row) if row else {}
-        return matcher.score_afinidad_zona(zona_data, matches)
-
-    except Exception as e:
-        logger.debug("score_afinidad_concepto no disponible para zona=%s: %s", zona_id, e)
-        return None
+    datos = await _cargar_datos_afinidad_zonas([zona_id])
+    return _score_zona_vs_ideal(datos.get(zona_id) or {}, contexto["zona_ideal"])
 
 
 async def _get_pesos_sector(sector_codigo: str) -> dict:
     """Lee los pesos del sector desde la BD."""
     from db.conexion import get_db
+
     async with get_db() as conn:
         row = await conn.fetchrow(
-            "SELECT * FROM sectores WHERE codigo = $1", sector_codigo
+            "SELECT * FROM sectores WHERE codigo = $1",
+            sector_codigo,
         )
     return dict(row) if row else {}
+
+
+async def _cargar_datos_afinidad_zonas(zona_ids: list[str]) -> dict[str, dict]:
+    """Carga en batch las variables minimas necesarias para score_afinidad."""
+    if not zona_ids:
+        return {}
+
+    from db.conexion import get_db
+
+    async with get_db() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT DISTINCT ON (vz.zona_id)
+                   vz.zona_id,
+                   vz.renta_media_hogar,
+                   vz.edad_media,
+                   vz.flujo_peatonal_total,
+                   vz.score_turismo,
+                   vz.ratio_locales_comerciales,
+                   vz.m2_zonas_verdes_cercanas,
+                   vz.incidencias_por_1000hab
+            FROM variables_zona vz
+            WHERE vz.zona_id = ANY($1)
+            ORDER BY vz.zona_id, vz.fecha DESC
+            """,
+            zona_ids,
+        )
+    return {dict(row)["zona_id"]: dict(row) for row in rows}
+
+
+def _preparar_contexto_concepto(
+    sector_codigo: Optional[str],
+    concepto_negocio: Optional[dict],
+    idea_tags_llm: Optional[list[str]],
+    descripcion_negocio: Optional[str],
+    perfil_negocio: Optional[dict],
+) -> dict:
+    matches, _matcher = _resolver_matcher(descripcion_negocio)
+
+    if concepto_negocio and concepto_negocio.get("version") and concepto_negocio.get("perfil_negocio"):
+        compiled = concepto_negocio
+    else:
+        compiled = compilar_concepto_negocio(
+            sector=sector_codigo or (concepto_negocio or {}).get("sector"),
+            base_concepts=(concepto_negocio or {}).get("base_concepts"),
+            modifiers=(concepto_negocio or {}).get("modifiers"),
+            idea_tags=(concepto_negocio or {}).get("idea_tags") or idea_tags_llm or [],
+            perfil_hint=(concepto_negocio or {}).get("perfil_negocio") or perfil_negocio,
+            descripcion=descripcion_negocio,
+            matcher_matches=matches,
+            confidence=(concepto_negocio or {}).get("confidence_global"),
+            ambiguities=(concepto_negocio or {}).get("ambiguities"),
+            justificacion_breve=(concepto_negocio or {}).get("justificacion_breve"),
+        )
+
+    zona_ideal = compiled.get("zona_ideal") or _zona_ideal_desde_perfil(
+        compiled.get("perfil_negocio") or perfil_negocio
+    )
+    return {
+        "concepto_negocio": compiled,
+        "tags_efectivos": _normalizar_tags(compiled.get("idea_tags") or idea_tags_llm or []),
+        "matches": matches,
+        "zona_ideal": zona_ideal,
+    }
+
+
+def _resolver_matcher(descripcion_negocio: Optional[str]):
+    if not descripcion_negocio:
+        return [], None
+
+    try:
+        from scoring.concepto_matcher import get_matcher
+
+        matcher = get_matcher()
+        matches = matcher.match(descripcion_negocio, top_k=4)
+        return matches, matcher
+    except Exception as exc:
+        logger.debug("ConceptoMatcher no disponible: %s - usando taxonomia local", exc)
+        return [], None
+
+
+def _normalizar_tags(tags: Optional[list[str]]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+
+    for tag in tags or []:
+        if not isinstance(tag, str):
+            continue
+        clean = tag.strip()
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        result.append(clean)
+
+    return result
+
+
+def _zona_ideal_desde_perfil(perfil_negocio: Optional[dict]) -> dict:
+    return zona_ideal_desde_perfil(perfil_negocio)
+
+
+def _aplicar_pesos_concepto(pesos: dict, contexto: dict) -> dict:
+    concepto = contexto.get("concepto_negocio")
+    if not concepto:
+        return pesos
+
+    pesos_ajustados = aplicar_pesos_a_sector(pesos, concepto)
+    logger.debug("idea_tags efectivos: %s", contexto.get("tags_efectivos"))
+    return pesos_ajustados
+
+
+def _tiene_dimensiones_recalculables(scores: dict) -> bool:
+    return all(scores.get(dim) is not None for dim in _DIMENSION_KEYS)
+
+
+def _usa_score_base_original(scores: dict) -> bool:
+    modelo_version = str(scores.get("modelo_version") or "")
+    return modelo_version.startswith("xgboost_") or not _tiene_dimensiones_recalculables(scores)
+
+
+def _valor_score(scores: dict, dim: str, default: float = 50.0) -> float:
+    value = scores.get(dim)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _calcular_score_base(scores: dict, pesos: dict) -> float:
+    if _usa_score_base_original(scores):
+        raw = scores.get("score_global")
+        try:
+            return round(float(raw), 1)
+        except (TypeError, ValueError):
+            return 50.0
+    return _recalcular_global(scores, pesos)
+
+
+def _aplicar_contexto_score(
+    scores: dict,
+    pesos: dict,
+    zona_ideal: Optional[dict],
+    zona_data: Optional[dict],
+) -> dict:
+    base_score = _calcular_score_base(scores, pesos)
+    scores["score_global"] = base_score
+
+    if zona_ideal:
+        score_afinidad = _score_zona_vs_ideal(zona_data or {}, zona_ideal)
+        scores["score_afinidad_concepto"] = score_afinidad
+        scores["score_global"] = round(
+            base_score * (1.0 - _PESO_AFINIDAD) + score_afinidad * _PESO_AFINIDAD,
+            1,
+        )
+
+    return scores
+
+
+def _build_fallback_row(zona_id: str, modelo_version: str = "fallback_error") -> dict:
+    return {
+        "zona_id": zona_id,
+        "score_global": 50.0,
+        "score_flujo_peatonal": 50.0,
+        "score_demografia": 50.0,
+        "score_competencia": 50.0,
+        "score_precio_alquiler": 50.0,
+        "score_transporte": 50.0,
+        "score_seguridad": 50.0,
+        "score_turismo": 50.0,
+        "score_entorno_comercial": 50.0,
+        "probabilidad_supervivencia": 0.50,
+        "shap_values": {},
+        "modelo_version": modelo_version,
+    }
+
+
+def _score_zona_vs_ideal(zona_data: dict, zona_ideal: dict) -> float:
+    """
+    Intenta reutilizar la funcion pura compartida del matcher.
+
+    Si el modulo semantico no puede cargarse, usa una implementacion local
+    equivalente para no perder la afinidad derivada desde perfil_negocio.
+    """
+    try:
+        from scoring.concepto_matcher import score_zona_vs_ideal as _shared_score
+
+        return _shared_score(zona_data, zona_ideal)
+    except Exception:
+        return _score_zona_vs_ideal_local(zona_data, zona_ideal)
+
+
+def _score_zona_vs_ideal_local(zona_data: dict, zona_ideal: dict) -> float:
+    if not zona_ideal:
+        return 50.0
+
+    partial_scores: list[float] = []
+
+    if "renta_ideal" in zona_ideal:
+        renta_raw = zona_data.get("renta_media_hogar")
+        renta = 32000.0 if renta_raw is None else float(renta_raw)
+        renta_norm = max(0.0, min(1.0, (renta - 17000.0) / 43000.0))
+        diff = abs(renta_norm - float(zona_ideal["renta_ideal"]))
+        partial_scores.append(max(0.0, 100.0 - diff * 150.0))
+
+    if "turismo_ideal" in zona_ideal:
+        turismo_raw = zona_data.get("score_turismo")
+        turismo = 45.0 if turismo_raw is None else float(turismo_raw)
+        diff = abs(turismo - float(zona_ideal["turismo_ideal"]))
+        partial_scores.append(max(0.0, 100.0 - diff * 1.5))
+
+    if "flujo_min" in zona_ideal:
+        flujo_raw = zona_data.get("flujo_peatonal_total")
+        flujo = 0.0 if flujo_raw is None else float(flujo_raw)
+        flujo_min = max(float(zona_ideal["flujo_min"]), 1.0)
+        partial_scores.append(min(100.0, (flujo / flujo_min) * 100.0))
+
+    if "edad_rango" in zona_ideal:
+        edad_raw = zona_data.get("edad_media")
+        edad = 42.5 if edad_raw is None else float(edad_raw)
+        e_min, e_max = zona_ideal["edad_rango"]
+        e_min = float(e_min)
+        e_max = float(e_max)
+        if e_min <= edad <= e_max:
+            partial_scores.append(100.0)
+        else:
+            dist = min(abs(edad - e_min), abs(edad - e_max))
+            partial_scores.append(max(0.0, 100.0 - dist * 5.0))
+
+    if "ratio_comercial_min" in zona_ideal:
+        ratio_raw = zona_data.get("ratio_locales_comerciales")
+        ratio = 0.22 if ratio_raw is None else float(ratio_raw)
+        min_req = max(float(zona_ideal["ratio_comercial_min"]), 1e-6)
+        if ratio >= min_req:
+            partial_scores.append(100.0)
+        else:
+            partial_scores.append(max(0.0, min(100.0, (ratio / min_req) * 100.0)))
+
+    bonus_weight = float(zona_ideal.get("zonas_verdes_bonus", 0.0) or 0.0)
+    if bonus_weight > 0.0:
+        m2_verdes_raw = zona_data.get("m2_zonas_verdes_cercanas")
+        m2_verdes = 1200.0 if m2_verdes_raw is None else float(m2_verdes_raw)
+        score_v = min(100.0, max(0.0, (m2_verdes / 4000.0) * 100.0))
+        partial_scores.append(score_v * bonus_weight + 50.0 * (1.0 - bonus_weight))
+
+    if "seguridad_min" in zona_ideal:
+        incidencias_raw = zona_data.get("incidencias_por_1000hab")
+        incidencias = 35.0 if incidencias_raw is None else float(incidencias_raw)
+        seg_score = min(100.0, max(0.0, (120.0 - incidencias) / 1.15))
+        seg_min = max(float(zona_ideal["seguridad_min"]), 1e-6)
+        if seg_score >= seg_min:
+            partial_scores.append(100.0)
+        else:
+            partial_scores.append(max(0.0, min(100.0, (seg_score / seg_min) * 100.0)))
+
+    if not partial_scores:
+        return 50.0
+
+    return round(sum(partial_scores) / len(partial_scores), 1)
 
 
 def _recalcular_global(scores: dict, pesos: dict) -> float:
     """
     Recalcula score_global aplicando los pesos del sector sobre las 8 dimensiones.
 
-    - Zonas distintas puntúan distinto (las dimensiones varían por zona).
-    - Sectores/conceptos distintos producen rankings distintos (los pesos varían).
+    Solo los valores None usan fallback neutro. Un 0.0 real se preserva.
     """
     dims = {
-        "score_flujo_peatonal":    pesos.get("peso_flujo",        0.25),
-        "score_demografia":        pesos.get("peso_demo",         0.20),
-        "score_competencia":       pesos.get("peso_competencia",  0.15),
-        "score_precio_alquiler":   pesos.get("peso_precio",       0.15),
-        "score_transporte":        pesos.get("peso_transporte",   0.10),
-        "score_seguridad":         pesos.get("peso_seguridad",    0.05),
-        "score_turismo":           pesos.get("peso_turismo",      0.05),
-        "score_entorno_comercial": pesos.get("peso_entorno",      0.05),
+        "score_flujo_peatonal": pesos.get("peso_flujo", 0.25),
+        "score_demografia": pesos.get("peso_demo", 0.20),
+        "score_competencia": pesos.get("peso_competencia", 0.15),
+        "score_precio_alquiler": pesos.get("peso_precio", 0.15),
+        "score_transporte": pesos.get("peso_transporte", 0.10),
+        "score_seguridad": pesos.get("peso_seguridad", 0.05),
+        "score_turismo": pesos.get("peso_turismo", 0.05),
+        "score_entorno_comercial": pesos.get("peso_entorno", 0.05),
     }
-    total = sum(
-        (scores.get(dim) or 50.0) * peso
-        for dim, peso in dims.items()
-    )
+    total = sum(_valor_score(scores, dim) * peso for dim, peso in dims.items())
     return round(total, 1)
 
 
 def _recalcular_global_con_afinidad(
-    scores: dict, pesos: dict, score_afinidad: float
+    scores: dict,
+    pesos: dict,
+    score_afinidad: float,
 ) -> float:
     """
-    Recalcula score_global incorporando score_afinidad_concepto como 9ª dimensión.
+    Recalcula score_global incorporando score_afinidad_concepto como 9a dimension.
 
-    Las 8 dimensiones originales contribuyen con (1 - _PESO_AFINIDAD) del total,
-    y la afinidad aporta _PESO_AFINIDAD. Esto preserva la diferenciación interna
-    de las 8 dimensiones mientras añade la señal de concepto.
+    Si el registro no tiene dimensiones manuales completas, parte de su
+    score_global original; si las tiene, recalcula desde las 8 dimensiones.
     """
-    score_8dims = _recalcular_global(scores, pesos)
-    score_final = score_8dims * (1.0 - _PESO_AFINIDAD) + score_afinidad * _PESO_AFINIDAD
+    score_base = _calcular_score_base(scores, pesos)
+    score_final = score_base * (1.0 - _PESO_AFINIDAD) + score_afinidad * _PESO_AFINIDAD
     return round(score_final, 1)
 
 
@@ -367,27 +575,32 @@ def _format_scores_for_api(raw: dict) -> dict:
         for k, v in sorted(shap_raw.items(), key=lambda x: abs(x[1]), reverse=True)[:10]
     ] if shap_raw else []
 
-    prob = raw.get("probabilidad_supervivencia_3a") or raw.get("probabilidad_supervivencia")
+    prob = raw.get("probabilidad_supervivencia_3a")
+    if prob is None:
+        prob = raw.get("probabilidad_supervivencia")
 
     scores_dim = {
-        "flujo_peatonal":    raw.get("score_flujo_peatonal"),
-        "demografia":        raw.get("score_demografia"),
-        "competencia":       raw.get("score_competencia"),
-        "precio_alquiler":   raw.get("score_precio_alquiler"),
-        "transporte":        raw.get("score_transporte"),
-        "seguridad":         raw.get("score_seguridad"),
-        "turismo":           raw.get("score_turismo"),
+        "flujo_peatonal": raw.get("score_flujo_peatonal"),
+        "demografia": raw.get("score_demografia"),
+        "competencia": raw.get("score_competencia"),
+        "precio_alquiler": raw.get("score_precio_alquiler"),
+        "transporte": raw.get("score_transporte"),
+        "seguridad": raw.get("score_seguridad"),
+        "turismo": raw.get("score_turismo"),
         "entorno_comercial": raw.get("score_entorno_comercial"),
     }
 
-    # La 9ª dimensión solo aparece cuando se ha podido calcular
     afinidad = raw.get("score_afinidad_concepto")
     if afinidad is not None:
-        scores_dim["afinidad_concepto"] = round(afinidad, 1)
+        scores_dim["afinidad_concepto"] = round(float(afinidad), 1)
+
+    score_global = raw.get("score_global")
+    if score_global is None:
+        score_global = 50.0
 
     return {
-        "score_global":                  raw.get("score_global", 50.0),
-        "probabilidad_supervivencia_3a":  round(prob, 3) if prob is not None else None,
-        "scores_dimension":               scores_dim,
-        "explicaciones_shap":             explicaciones,
+        "score_global": round(float(score_global), 1),
+        "probabilidad_supervivencia_3a": round(float(prob), 3) if prob is not None else None,
+        "scores_dimension": scores_dim,
+        "explicaciones_shap": explicaciones,
     }

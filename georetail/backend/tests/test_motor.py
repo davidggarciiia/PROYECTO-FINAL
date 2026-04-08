@@ -17,6 +17,33 @@ from unittest.mock import AsyncMock, patch
 from scoring.motor import _format_scores_for_api, calcular_scores_batch
 
 
+class _FakeConn:
+    def __init__(self, fetch_results=None, fetchrow_results=None):
+        self._fetch_results = list(fetch_results or [])
+        self._fetchrow_results = list(fetchrow_results or [])
+
+    async def fetch(self, *args, **kwargs):
+        if self._fetch_results:
+            return self._fetch_results.pop(0)
+        return []
+
+    async def fetchrow(self, *args, **kwargs):
+        if self._fetchrow_results:
+            return self._fetchrow_results.pop(0)
+        return None
+
+
+class _FakeDB:
+    def __init__(self, conn):
+        self._conn = conn
+
+    async def __aenter__(self):
+        return self._conn
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
 # ─── Fixture base ──────────────────────────────────────────────────────────────
 
 @pytest.fixture
@@ -161,7 +188,10 @@ class TestCalcularScoresBatch:
                 "modelo_version": "test",
             }
         }
-        with patch("scoring.motor._scorer_batch", new=AsyncMock(return_value=mock_scores)):
+        conn = _FakeConn(fetch_results=[[]])
+        with patch("scoring.motor._get_pesos_sector", new=AsyncMock(return_value={})), \
+             patch("db.conexion.get_db", return_value=_FakeDB(conn)), \
+             patch("scoring.motor._scorer_batch", new=AsyncMock(return_value=mock_scores)):
             result = await calcular_scores_batch(["zona_001"], "restauracion")
         assert len(result) == 1
         assert result[0]["zona_id"] == "zona_001"
@@ -172,14 +202,20 @@ class TestCalcularScoresBatch:
             f"zona_{i:03d}": {"score_global": float(i * 10), "shap_values": {}}
             for i in range(5)
         }
-        with patch("scoring.motor._scorer_batch", new=AsyncMock(return_value=mock_scores)):
+        conn = _FakeConn(fetch_results=[[]])
+        with patch("scoring.motor._get_pesos_sector", new=AsyncMock(return_value={})), \
+             patch("db.conexion.get_db", return_value=_FakeDB(conn)), \
+             patch("scoring.motor._scorer_batch", new=AsyncMock(return_value=mock_scores)):
             result = await calcular_scores_batch(
                 [f"zona_{i:03d}" for i in range(5)], "restauracion"
             )
         assert len(result) == 5
 
     async def test_fallback_en_excepcion_devuelve_scores_neutros(self):
-        with patch("scoring.motor._scorer_batch",
+        conn = _FakeConn(fetch_results=[[]])
+        with patch("scoring.motor._get_pesos_sector", new=AsyncMock(return_value={})), \
+             patch("db.conexion.get_db", return_value=_FakeDB(conn)), \
+             patch("scoring.motor._scorer_batch",
                    new=AsyncMock(side_effect=Exception("DB error"))):
             result = await calcular_scores_batch(["zona_001", "zona_002"], "restauracion")
         assert len(result) == 2
@@ -188,7 +224,10 @@ class TestCalcularScoresBatch:
             assert r["modelo_version"] == "fallback_error"
 
     async def test_fallback_contiene_todas_las_claves(self):
-        with patch("scoring.motor._scorer_batch",
+        conn = _FakeConn(fetch_results=[[]])
+        with patch("scoring.motor._get_pesos_sector", new=AsyncMock(return_value={})), \
+             patch("db.conexion.get_db", return_value=_FakeDB(conn)), \
+             patch("scoring.motor._scorer_batch",
                    new=AsyncMock(side_effect=Exception("error"))):
             result = await calcular_scores_batch(["zona_x"], "restauracion")
         claves_esperadas = {
@@ -201,7 +240,10 @@ class TestCalcularScoresBatch:
 
     async def test_m2_opcional_no_afecta_resultado(self):
         mock_scores = {"zona_001": {"score_global": 70.0, "shap_values": {}}}
-        with patch("scoring.motor._scorer_batch", new=AsyncMock(return_value=mock_scores)):
+        conn = _FakeConn(fetch_results=[[], []])
+        with patch("scoring.motor._get_pesos_sector", new=AsyncMock(return_value={})), \
+             patch("db.conexion.get_db", return_value=_FakeDB(conn)), \
+             patch("scoring.motor._scorer_batch", new=AsyncMock(return_value=mock_scores)):
             result_sin_m2 = await calcular_scores_batch(["zona_001"], "restauracion")
             result_con_m2 = await calcular_scores_batch(["zona_001"], "restauracion", m2=80.0)
         assert result_sin_m2[0]["score_global"] == result_con_m2[0]["score_global"]

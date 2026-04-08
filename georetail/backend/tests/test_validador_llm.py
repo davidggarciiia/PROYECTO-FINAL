@@ -223,6 +223,35 @@ class TestPerfilNumerico:
             result = await validar_negocio("...", "sess_14")
         assert len(result["perfil_negocio"]) == 8
 
+    @pytest.mark.asyncio
+    async def test_idea_tags_invalidos_se_filtran_y_deduplican(self):
+        respuesta = _respuesta_llm_valida(
+            idea_tags=["dog_friendly", "dog_friendly", "tag_invalido", "", None],
+            perfil_numerico=None,
+        )
+        with _mock_completar(respuesta), _mock_traducir():
+            result = await validar_negocio("Cafe con perros", "sess_15")
+
+        assert result["idea_tags"] == ["dog_friendly"]
+
+    @pytest.mark.asyncio
+    async def test_perfil_numerico_parcial_se_mezcla_con_tags(self):
+        respuesta = _respuesta_llm_valida(
+            idea_tags=["dog_friendly", "clientela_local"],
+            perfil_numerico={
+                "nivel_precio": 0.65,
+                "experiencial": 0.55,
+                "clientela_turismo": None,
+            },
+        )
+        with _mock_completar(respuesta), _mock_traducir():
+            result = await validar_negocio("Cafe con perros", "sess_16")
+
+        p = result["perfil_negocio"]
+        assert p["nivel_precio"] == pytest.approx(0.65, abs=0.01)
+        assert p["experiencial"] == pytest.approx(0.55, abs=0.01)
+        assert p["clientela_vecindario"] > 0.65
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # 3. Estados del LLM → campos de retorno
