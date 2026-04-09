@@ -243,46 +243,59 @@
   font-weight: 600;
 }
 
-/* ── Sections ── */
-.section {
-  padding: 20px 0 16px;
+/* ── Accordions (analysis sections) ── */
+.accordion {
   border-top: 1px solid var(--border);
 }
-.section:first-child { border-top: none; padding-top: 4px; }
+.accordion:first-of-type {
+  border-top: none;
+}
 
-.sectionTitle {
+.accordionHeader {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 0;
+  box-sizing: border-box;
+}
+.accordionTitleWrap {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.accordionTitleWrap svg { color: var(--accent); flex-shrink: 0; }
+
+.accordionTitle {
+  font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--text);
-  margin-bottom: 14px;
-  padding: 6px 10px 6px 11px;
-  border-left: 3px solid var(--accent);
-  background: linear-gradient(90deg, rgba(99,102,241,0.07), transparent);
-  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  transition: color 0.15s;
 }
-.sectionTitle svg { color: var(--accent); flex-shrink: 0; }
+.accordionHeader:hover .accordionTitle { color: var(--accent); }
 
-.sectionTitleRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-.sectionTitleRow .sectionTitle {
-  margin-bottom: 0;
-  flex: 1;
+.accordionChevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.2s cubic-bezier(0.16,1,0.3,1);
 }
 
-.viewToggle {
+.accordionBody {
+  padding-bottom: 16px;
+  animation: fadeIn 0.18s ease;
+}
+
+/* ── View toggle (inside accordion body for scores) ── */
+.viewToggleRow {
   display: flex;
   gap: 3px;
-  flex-shrink: 0;
+  margin-bottom: 12px;
 }
 .viewBtn {
   display: flex;

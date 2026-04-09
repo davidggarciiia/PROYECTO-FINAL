@@ -376,23 +376,6 @@ export default function LegalPanel({ zona, sessionId }: Props) {
         </p>
       </section>
 
-      {/* ── Próximos pasos ── */}
-      <section className={styles.section}>
-        <h3 className={styles.sectionTitle}>
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Próximos pasos obligatorios
-        </h3>
-        <div className={styles.pasosList}>
-          {roadmap.proximos_pasos.map((paso, i) => (
-            <div key={i} className={styles.pasoItem}>
-              <span className={styles.pasoNum}>{i + 1}</span>
-              <span className={styles.pasoTexto}>{paso}</span>
-            </div>
-          ))}
-        </div>
-      </section>
 
     </div>
   );

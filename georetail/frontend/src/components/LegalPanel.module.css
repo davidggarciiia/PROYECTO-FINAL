@@ -51,13 +51,13 @@
   min-width: 0;
 }
 .heroTitle {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--text);
   line-height: 1.2;
 }
 .heroSub {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
   margin-top: 2px;
   white-space: nowrap;
@@ -97,16 +97,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--text);
   margin-bottom: 14px;
-  padding: 5px 10px 5px 11px;
-  border-left: 3px solid var(--accent);
-  background: linear-gradient(90deg, rgba(99,102,241,0.07), transparent);
-  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
 }
 .sectionTitle svg { color: var(--accent); flex-shrink: 0; }
 
@@ -146,13 +142,13 @@
 }
 .equipoInfo { flex: 1; min-width: 0; }
 .equipoNombre {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text);
   margin-bottom: 3px;
 }
 .equipoDesc {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
   line-height: 1.45;
 }
@@ -211,7 +207,7 @@
   gap: 2px;
 }
 .faseTitulo {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
   line-height: 1.3;
@@ -293,7 +289,7 @@
 }
 .tramiteTitulo {
   flex: 1;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
   line-height: 1.3;
@@ -351,7 +347,7 @@
   color: var(--text-muted);
 }
 .tramiteFieldValue {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text);
   line-height: 1.55;
 }
@@ -364,7 +360,7 @@
   margin: 0;
 }
 .tramiteDocList li {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text);
   line-height: 1.4;
   padding-left: 14px;
@@ -444,6 +440,7 @@
   color: var(--text);
   font-weight: 500;
   line-height: 1.35;
+  font-size: 13px;
 }
 .costeRowTotal .costeConcepto { font-weight: 700; color: var(--text); }
 .costeValor {
