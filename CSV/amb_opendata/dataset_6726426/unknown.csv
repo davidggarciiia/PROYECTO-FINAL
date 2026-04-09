@@ -1,0 +1,45 @@
+﻿Nom: Distribució de la població segons estrats de renda per municipis
+ID: 2073
+Descripció: Distribució de la població en funció de la renda per unitat de consum. Es divideix en tres estrats calculats a partir de la mediana espanyola.
+Unitats: Percentatge
+Font: INE: Atlas de distribución de renta de los hogares
+Variables implícites a la graella: Any: 2022
+Última actualització: 30-05-2025
+
+Nom Àmbit;Inferiors al 60% de la mediana;Entre el 60% i el 200% de la mediana;Superiors al 200% de la mediana
+Badalona;19,9;70,6;9,5
+Badia del Vallès;18,4;79,1;2,5
+Barberà del Vallès;10,9;78,6;10,5
+Barcelona;16,1;62,4;21,5
+Begues;9,0;61,6;29,4
+Castellbisbal;9,7;76,3;14,0
+Castelldefels;15,3;63,0;21,7
+Cerdanyola del Vallès;11,2;71,4;17,4
+Cervelló;10,0;70,7;19,3
+Corbera de Llobregat;11,6;69,9;18,5
+Cornellà de Llobregat;17,7;73,1;9,2
+Esplugues de Llobregat;13,9;69,4;16,7
+Gavà;13,7;71,5;14,8
+Hospitalet de Llobregat, l';23,8;69,3;6,9
+Molins de Rei;9,1;72,2;18,7
+Montcada i Reixac;17,7;73,5;8,8
+Montgat;10,4;71,2;18,4
+Pallejà;9,4;72,8;17,8
+Palma de Cervelló, la;10,2;68,2;21,6
+Papiol, el;11,1;73,3;15,6
+Prat de Llobregat, el;13,2;76,9;9,9
+Ripollet;16,3;76,5;7,2
+Sant Adrià de Besòs;24,1;69,2;6,7
+Sant Andreu de la Barca;12,2;78,4;9,4
+Sant Boi de Llobregat;14,1;76,6;9,3
+Sant Climent de Llobregat;7,7;77,0;15,3
+Sant Cugat del Vallès;8,5;51,1;40,4
+Sant Feliu de Llobregat;10,5;72,9;16,6
+Sant Joan Despí;10,2;71,2;18,6
+Sant Just Desvern;7,8;54,8;37,4
+Sant Vicenç dels Horts;13,2;78,4;8,4
+Santa Coloma de Cervelló;6,9;75,0;18,1
+Santa Coloma de Gramenet;24,8;70,7;4,5
+Tiana;6,7;57,6;35,7
+Torrelles de Llobregat;8,1;71,8;20,1
+Viladecans;12,4;77,1;10,5
