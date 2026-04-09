@@ -5,12 +5,13 @@ import type {
   CuestionarioResponse,
   LocalDetalleResponse,
   FinancieroResponse,
+  LegalRoadmapResponse,
 } from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔧 MOCK FLAG — cambiar a false para conectar con el backend real
 // ─────────────────────────────────────────────────────────────────────────────
-const USE_MOCK = false;
+const USE_MOCK = true;
 // ─────────────────────────────────────────────────────────────────────────────
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -154,6 +155,21 @@ export const api = {
         incluir_financiero: true,
         incluir_competencia: true,
       }),
+    });
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 🔧 LEGAL_USE_MOCK — cambiar a false para conectar con DeepSeek vía backend
+  // Independiente del USE_MOCK global para poder activar DeepSeek por separado
+  // ─────────────────────────────────────────────────────────────────────────────
+  legal: async (zona_id: string, session_id: string): Promise<LegalRoadmapResponse> => {
+    if (USE_MOCK) {
+      const { MOCK_LEGAL } = await import("./mock");
+      return mockFetch(MOCK_LEGAL, 1200);
+    }
+    return apiFetch<LegalRoadmapResponse>("/api/legal/roadmap", {
+      method: "POST",
+      body: JSON.stringify({ zona_id, session_id }),
     });
   },
 

@@ -8,6 +8,7 @@ import type {
     BuscarResponse,
     LocalDetalleResponse,
     FinancieroResponse,
+    LegalRoadmapResponse,
   } from "./types";
   
   /** Simula latencia de red */
@@ -354,6 +355,186 @@ import type {
     return meses;
   }
   
+  // ─── LEGAL ROADMAP ───────────────────────────────────────────────────────────
+
+  export const MOCK_LEGAL: LegalRoadmapResponse = {
+    tipo_negocio: "Restaurante / Bar",
+    distrito: "Eixample",
+    zona_restringida: true,
+    equipo_externo: [
+      {
+        nombre: "Gestoría / Asesoría Fiscal",
+        descripcion: "Alta de empresa, nóminas, IVA trimestral e IRPF. Sin ella el papeleo fiscal se vuelve inmanejable.",
+        coste_aprox: "50–80 €/mes",
+      },
+      {
+        nombre: "Arquitecto o Ingeniero Técnico",
+        descripcion: "Firma el Proyecto Técnico visado. Sin su firma el Ayuntamiento de Barcelona no tramita ningún permiso de apertura.",
+        coste_aprox: "1.800–4.500 € (proyecto completo)",
+      },
+      {
+        nombre: "Servicio de Prevención Ajeno",
+        descripcion: "Obligatorio desde el primer empleado (aunque sea media jornada). Incluye evaluación de riesgos y formación básica.",
+        coste_aprox: "300–600 €/año",
+      },
+    ],
+    fases: [
+      {
+        id: "viabilidad",
+        numero: 1,
+        titulo: "Viabilidad específica para tu local",
+        descripcion: "Antes de firmar el contrato de alquiler, confirma por escrito que el Ayuntamiento permite tu actividad en esa dirección exacta.",
+        tramites: [
+          {
+            numero: 1,
+            titulo: "Informe de Compatibilidad Urbanística",
+            nombre_oficial: "Informe urbanístic de compatibilitat / Informe previ d'activitats",
+            que_es: "Consulta obligatoria al Ayuntamiento para que confirmen por escrito si en tu calle y número exactos se permite el tipo de negocio que quieres montar. Es el documento más importante antes de firmar el contrato de alquiler.",
+            donde: "Ajuntament de Barcelona — Sede Electrónica",
+            documentos: ["Referencia Catastral del local (viene en el recibo del IBI o en la web del Catastro)"],
+            tiempo_estimado: "15–30 días",
+            enlace: "https://seuelectronica.ajuntament.barcelona.cat/es/tramits-telematics",
+            alerta: "⚠ ZONA RESTRINGIDA — Tu local está en una zona con Plan de Usos Restrictivo. El Ayuntamiento aplica aquí limitaciones especiales a la apertura de negocios de restauración para evitar la masificación. El proceso puede ser más lento y caro, y existe riesgo real de denegación si ya hay muchos locales del mismo tipo en un radio de 50–100 m.",
+          },
+        ],
+      },
+      {
+        id: "constitucion",
+        numero: 2,
+        titulo: "Constitución legal y fiscal",
+        descripcion: "El nacimiento oficial de la empresa. Hazlo antes de buscar local para tener el NIF listo.",
+        tramites: [
+          {
+            numero: 2,
+            titulo: "Alta en el Censo de Empresarios (Modelo 036/037)",
+            que_es: "Dar de alta tu empresa en Hacienda (AEAT) para obtener el NIF definitivo y asignar el código de actividad económica (IAE). Epígrafe IAE recomendado: 671 — Restaurantes.",
+            donde: "Sede Electrónica de la AEAT (normalmente lo tramita la gestoría)",
+            tiempo_estimado: "1–3 días hábiles",
+            enlace: "https://sede.agenciatributaria.gob.es/",
+          },
+          {
+            numero: 3,
+            titulo: "Alta como Autónomo (RETA) o constitución de S.L.",
+            que_es: "Autónomo: más fácil y barato, pero tu patrimonio personal responde ante deudas. Sociedad Limitada: más papeleo inicial (~600 €), pero tu responsabilidad se limita al capital de la empresa. Muy recomendado para restauración dado el riesgo operativo.",
+            donde: "Seguridad Social — Sede Electrónica (RETA) o Notaría + Registro Mercantil (S.L.)",
+            tiempo_estimado: "1 día (autónomo) / 2–4 semanas (S.L.)",
+            coste_estimado: "Cuota RETA desde 80 €/mes (tarifa plana si no has sido autónomo en los últimos 2 años)",
+            enlace: "https://sede.seg-social.gob.es/",
+          },
+        ],
+      },
+      {
+        id: "licencias",
+        numero: 3,
+        titulo: "Licencias de actividad y local",
+        descripcion: "El gran filtro burocrático. Aquí se concentra el mayor gasto técnico y el mayor tiempo de espera.",
+        tramites: [
+          {
+            numero: 4,
+            titulo: "Licencia Ambiental / Comunicación Previa de Actividad",
+            nombre_oficial: "Comunicació prèvia d'inici d'activitat o Llicència ambiental",
+            que_es: "Permiso municipal que autoriza el inicio de la actividad en el local. Para restauración es obligatoria la Llicència ambiental (Annexe III.2), más exigente que una simple comunicación previa. Requiere Proyecto Técnico visado con planos, estudio acústico, plan de evacuación y cumplimiento del CTE.",
+            donde: "Ajuntament de Barcelona — Portal de Tràmits",
+            documentos: [
+              "Proyecto Técnico visado por Arquitecto/Ingeniero",
+              "Planos a escala del local (planta, alzados, secciones)",
+              "Estudio acústico (obligatorio para actividades con música o cocina industrial)",
+              "Plan de Evacuación y cumplimiento CTE-SI",
+              "Certificado de instalación eléctrica (boletín)",
+              "Certificado de instalación de gas (si aplica)",
+            ],
+            tiempo_estimado: "2–4 meses",
+            coste_estimado: "Tasas municipales: 400–1.200 € según m² y actividad",
+            enlace: "https://seuelectronica.ajuntament.barcelona.cat/es/tramits-telematics",
+          },
+          {
+            numero: 5,
+            titulo: "Permisos Sectoriales Específicos — Sanidad y Seguridad",
+            que_es: "Permisos adicionales obligatorios para actividades de restauración: autorización sanitaria de cocina (Agència de Salut Pública de Barcelona), carné de manipulador de alimentos para todo el personal, y seguro de Responsabilidad Civil mínimo de 300.000 €.",
+            donde: "Agència de Salut Pública de Barcelona (ASPB) + aseguradora",
+            documentos: [
+              "Solicitud de autorización sanitaria de establecimiento alimentario",
+              "Plano de la zona de manipulación con superficies y materiales",
+              "Certificados de carné de manipulador de alimentos del personal",
+            ],
+            tiempo_estimado: "4–8 semanas",
+            coste_estimado: "Carné manipulador: ~30–50 €/persona. Seguro RC: 400–800 €/año",
+          },
+        ],
+      },
+      {
+        id: "operativa",
+        numero: 4,
+        titulo: "Puesta a punto operativa y legal",
+        descripcion: "Obligaciones legales del día a día que no pueden ignorarse desde el primer momento.",
+        tramites: [
+          {
+            numero: 6,
+            titulo: "Protección de Datos (RGPD / LOPD-GDD)",
+            que_es: "Si gestionas reservas, programa de fidelización, o newsletter, estás tratando datos personales de clientes. Necesitas política de privacidad visible, formularios de consentimiento y registro de actividades de tratamiento. Si usas cámaras de seguridad, hay obligaciones adicionales.",
+            donde: "Agencia Española de Protección de Datos (AEPD) — autogestión o con asesor",
+            tiempo_estimado: "1–2 semanas para preparar documentación",
+            enlace: "https://www.aepd.es/",
+          },
+          {
+            numero: 7,
+            titulo: "Comunicación de Apertura del Centro de Trabajo",
+            que_es: "Avisar a la Generalitat de que tienes un local con personas trabajando. Obligatorio aunque el único trabajador seas tú como autónomo.",
+            donde: "Canal Empresa — Generalitat de Catalunya",
+            tiempo_estimado: "Dentro de los 30 días siguientes al inicio de actividad",
+            enlace: "https://canalempresa.gencat.cat/es/tramit/que-vols-fer/obrir-un-centre-de-treball/",
+          },
+          {
+            numero: 8,
+            titulo: "Obligaciones específicas de Catalunya",
+            que_es: "Debes tener las Hojas Oficiales de Reclamación de la Generalitat (color amarillo/verde) a la vista del público. La carta/menú de precios debe estar disponible como mínimo en catalán. El rótulo exterior también debe incluir el catalán como lengua principal.",
+            donde: "Agència Catalana del Consum + Consorci de Normalització Lingüística",
+            tiempo_estimado: "Antes de la apertura",
+          },
+        ],
+      },
+      {
+        id: "checklist",
+        numero: 5,
+        titulo: "Checklist final de supervivencia",
+        descripcion: "Lo que tienes que hacer o tener listo en los primeros 30 días tras abrir.",
+        tramites: [
+          {
+            numero: 9,
+            titulo: "Impuestos trimestrales — Modelo 303 (IVA)",
+            que_es: "Tu gestoría presenta el IVA trimestral en abril, julio, octubre y enero. Reserva siempre el 10% de lo que factures (tipo reducido restauración) para no tener sorpresas al liquidar.",
+            donde: "Sede Electrónica AEAT (gestoría lo hace por ti)",
+            tiempo_estimado: "Plazo: 20 días naturales después de cada trimestre",
+          },
+          {
+            numero: 10,
+            titulo: "Inspección Municipal de Comprobación",
+            que_es: "El Ayuntamiento de Barcelona suele realizar una visita sorpresa entre 3 y 6 meses después de la apertura para verificar que las obras coinciden con el Proyecto Técnico visado. Ten siempre a mano en el local: Certificado Final de Obra, licencia de actividad, último boletín eléctrico y seguro RC.",
+            donde: "El inspector viene a ti — no hay que solicitarla",
+            alerta: "Si la inspección detecta incumplimientos, pueden ordenar el cierre cautelar del local hasta que se subsanen. Guarda todos los documentos originales en el local.",
+          },
+        ],
+      },
+    ],
+    costes_resumen: [
+      { concepto: "Gestoría (apertura + 1er año)", coste: "600 – 900 €" },
+      { concepto: "Proyecto Técnico visado (Arquitecto)", coste: "1.800 – 4.500 €" },
+      { concepto: "Tasas municipales (Licencia Actividad)", coste: "400 – 1.200 €" },
+      { concepto: "Legalización suministros (eléctrico / gas)", coste: "200 – 600 €" },
+      { concepto: "Seguro Responsabilidad Civil (anual)", coste: "400 – 800 €" },
+      { concepto: "Carné manipulador alimentos (por persona)", coste: "30 – 50 €" },
+      { concepto: "TOTAL APROXIMADO EN PAPELEO", coste: "3.500 – 8.000 €" },
+    ],
+    proximos_pasos: [
+      "Solicita el Informe de Compatibilidad Urbanística ANTES de firmar el alquiler.",
+      "Contrata un arquitecto técnico para valorar el Proyecto de Actividad.",
+      "Deja el alta en Hacienda (036) y en la Seguridad Social (RETA) para la gestoría.",
+      "Solicita autorización sanitaria en la ASPB con al menos 2 meses de antelación a la apertura.",
+      "Reserva un fondo de 4.000–8.000 € exclusivamente para burocracia y proyectos técnicos.",
+      "Guarda el Certificado Final de Obra y la licencia de actividad siempre en el local.",
+    ],
+  };
+
   export const MOCK_FINANCIERO: FinancieroResponse = {
     parametros: {
       ticket_medio: {
