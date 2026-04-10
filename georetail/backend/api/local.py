@@ -37,6 +37,7 @@ from schemas.models import (
     CompetidorCercano, AlertaZona, ColorZona, SeguridadDetalle,
     EntornoComercialDetalle,
 )
+from api._utils import score_to_color
 from db.sesiones import get_sesion
 from db.zonas import get_zona_completa
 from scoring.motor import get_scores_zona
@@ -111,7 +112,7 @@ async def local_preview(body: PreviewRequest) -> PreviewResponse:
         nombre=zona["nombre"],
         direccion=zona.get("direccion"),
         score_global=round(zona.get("score_global") or 50.0, 1),
-        color=_score_to_color(zona.get("score_global") or 50.0),
+        color=score_to_color(zona.get("score_global") or 50.0),
         alquiler_mensual=zona.get("alquiler_mensual"),
         m2=zona.get("m2"),
     )
@@ -293,14 +294,6 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-def _score_to_color(score: float) -> ColorZona:
-    if score > 75:
-        return ColorZona.VERDE
-    if score >= 50:
-        return ColorZona.AMARILLO
-    return ColorZona.ROJO
-
-
 def _build_dev_data(zona: dict, scores_data: dict) -> dict:
     """Datos crudos para el DevPanel del frontend."""
     return {
@@ -310,6 +303,7 @@ def _build_dev_data(zona: dict, scores_data: dict) -> dict:
         },
         "scores_raw": scores_data,
     }
+
 
 
 def _scores_fallback(zona: dict) -> dict:

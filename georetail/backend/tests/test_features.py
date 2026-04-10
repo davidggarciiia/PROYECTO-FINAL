@@ -2,10 +2,10 @@
 tests/test_features.py — Tests para scoring/features.py (función pura _build_array).
 
 _build_array es la única función sin I/O del módulo; construye el
-vector de 30 features para XGBoost (v4) a partir de dicts de datos de zona.
+vector de 33 features para XGBoost (v5.1) a partir de dicts de datos de zona.
 
 Cubre:
-  - Shape del array resultante (1 fila × 30 features)
+  - Shape del array resultante (1 fila × 33 features)
   - Dtype float32
   - Orden de features coincide con FEATURE_NAMES
   - Imputación con _MEDIAS cuando el dato es None/ausente
@@ -16,15 +16,18 @@ Cubre:
     google_review_count_medio, licencias_nuevas_1a, eventos_culturales_500m,
     booking_hoteles_500m
   - Feature v4 (índice 29): flujo_peatonal_score (fusión ponderada 4 fuentes)
+  - Features v5 (índices 30-31): pct_poblacio_25_44, delta_renta_3a
+  - Feature v5.1 (índice 32): nivel_estudios_alto_pct
 """
 import pytest
 import numpy as np
 
 from scoring.features import _build_array, FEATURE_NAMES, _MEDIAS
 
-# Número total de features en v4 (v3 + flujo_peatonal_score)
-N_FEATURES_V4 = 30
-N_FEATURES_V3 = N_FEATURES_V4  # alias de compatibilidad — tests usan la constante antigua
+# Número total de features en v6 (v5.1 + 3 competition features: score_aglomeracion, pct_vulnerables, ratio_complementarios)
+N_FEATURES_V5 = 36
+N_FEATURES_V4 = N_FEATURES_V5  # alias compatibilidad — v4 era 30, ahora v5.1=33
+N_FEATURES_V3 = N_FEATURES_V5  # alias de compatibilidad — tests usan la constante antigua
 
 
 # ─── Fixtures ──────────────────────────────────────────────────────────────────
@@ -134,10 +137,23 @@ class TestEstructuraArray:
         assert v3_features[0] == "airbnb_density_500m"
         assert v3_features[-1] == "booking_hoteles_500m"
 
-    def test_v4_flujo_score_es_el_ultimo_feature(self):
-        """La feature v4 flujo_peatonal_score debe ocupar el índice 29 (último)."""
+    def test_v4_flujo_score_es_indice_29(self):
+        """La feature v4 flujo_peatonal_score ocupa el índice 29."""
         assert FEATURE_NAMES[29] == "flujo_peatonal_score"
-        assert FEATURE_NAMES[-1] == "flujo_peatonal_score"
+
+    def test_v5_pct_poblacio_25_44_es_indice_30(self):
+        """La feature v5 pct_poblacio_25_44 ocupa el índice 30."""
+        assert FEATURE_NAMES[30] == "pct_poblacio_25_44"
+
+    def test_v5_delta_renta_3a_indice_31(self):
+        """La feature v5 delta_renta_3a ocupa el índice 31."""
+        assert FEATURE_NAMES[31] == "delta_renta_3a"
+
+    def test_v5_1_nivel_estudios_es_indice_32(self):
+        """La feature v5.1 nivel_estudios_alto_pct ocupa el índice 32; v6 añade 3 más."""
+        assert FEATURE_NAMES[32] == "nivel_estudios_alto_pct"
+        assert FEATURE_NAMES[35] == "ratio_complementarios"
+        assert FEATURE_NAMES[-1] == "ratio_complementarios"
 
 
 # ─── Tests de imputación con medias ──────────────────────────────────────────

@@ -73,7 +73,7 @@ async def calcular_score(zona_id: str, sector: str,
     return _score_manual(datos_zona, datos_sector)
 
 
-async def calcular_scores_batch(zona_ids: list[str], sector: str) -> dict[str, dict]:
+async def calcular_scores_batch(zona_ids: list[str], sector: str, idea_tags: list[str] | None = None) -> dict[str, dict]:
     """
     Calcula scores para múltiples zonas en batch.
     Usa queries batch para eficiencia.
@@ -93,7 +93,7 @@ async def calcular_scores_batch(zona_ids: list[str], sector: str) -> dict[str, d
     resultados = {}
     for zona_id in zona_ids:
         try:
-            datos = await _get_datos_zona_completos(zona_id, sector)
+            datos = await _get_datos_zona_completos(zona_id, sector, idea_tags=idea_tags)
             resultados[zona_id] = _score_manual(datos, datos_sector)
         except Exception as e:
             logger.warning("Score manual fallido zona=%s: %s", zona_id, e)
@@ -224,19 +224,35 @@ def _score_manual(datos: dict, sector: dict) -> dict:
     # ── Calcular scores por dimensión ─────────────────────────────────────────
     # Cada dimensión normaliza su(s) variable(s) a 0-100
 
-    # FLUJO PEATONAL — usa calcular_flujo_score (popular_times + vcity + ratio_locales)
+    # FLUJO PEATONAL — fusión ponderada; escala manual: 3000 p/día = score 100
     from scoring.flujo_peatonal import calcular_flujo_score
-    s_flujo = calcular_flujo_score(
-        popular_times_score=datos.get("flujo_popular_times_score"),
-        vcity_flujo=datos.get("vcity_flujo_peatonal"),
-        vianants_intensitat=datos.get("flujo_peatonal_total"),
-        ratio_locales=datos.get("ratio_locales_comerciales"),
-    )
+    _fp_total = datos.get("flujo_peatonal_total")
+    _fp_pt    = datos.get("flujo_popular_times_score")
+    _fp_vcity = datos.get("vcity_flujo_peatonal")
+    _fp_ratio = datos.get("ratio_locales_comerciales")
+    if any(x is not None for x in [_fp_total, _fp_pt, _fp_vcity, _fp_ratio]):
+        s_flujo = calcular_flujo_score(
+            popular_times_score=_fp_pt,
+            vcity_flujo=_fp_vcity,
+            vianants_intensitat=_fp_total,
+            ratio_locales=_fp_ratio,
+            vianants_max_barcelona=3000.0,
+        )
+    else:
+        s_flujo = 0.0
 
-    # DEMOGRAFÍA — renta media normalizada (17k-60k rango BCN)
-    _renta_raw = datos.get("renta_media_hogar")
-    renta = _renta_raw if _renta_raw is not None else 30000  # `or` sustituiría renta=0 legítima
-    s_demo = min(100.0, max(0.0, (renta - 17000) / 430.0))
+    # DEMOGRAFÍA — score enriquecido multi-variable (renta + tendencia + segmento + capital humano)
+    # Si hay idea_tags disponibles en datos, se usan para ajustar pesos.
+    # Fallback: fórmula simple si el módulo falla.
+    try:
+        from scoring.demografia_score import calcular_score_demografia
+        _demo_result = calcular_score_demografia(datos, idea_tags=datos.get("_idea_tags"))
+        s_demo = _demo_result["score_demografia"]
+    except Exception as _e:
+        logger.warning("Error en score demografía enriquecido: %s", _e)
+        _renta_raw = datos.get("renta_media_hogar")
+        renta = _renta_raw if _renta_raw is not None else 30000
+        s_demo = min(100.0, max(0.0, (renta - 17000) / 430.0))
 
     # COMPETENCIA — usa score_competencia_v2 (ya 0-100, mayor=mejor)
     # Fallback a v1 (invertir score_saturacion) si no hay datos v2
@@ -254,9 +270,15 @@ def _score_manual(datos: dict, sector: dict) -> dict:
     precio_m2 = _precio_raw if _precio_raw is not None else 20  # `or` trataría precio=0 como None
     s_precio = min(100.0, max(0.0, (45.0 - precio_m2) / 0.37))
 
-    # TRANSPORTE — número de líneas a 500m (0-20 líneas rango BCN)
-    lineas = datos.get("num_lineas_transporte") or 0
-    s_trans = min(100.0, lineas * 5.0)
+    # TRANSPORTE — score enriquecido multi-factor (calidad por tipo, decay distancia, frecuencia, bicing)
+    # Si hay score pre-calculado (del nuevo módulo transporte_score.py), usarlo directamente.
+    # Fallback: fórmula simple para compatibilidad.
+    _s_trans_calc = datos.get("score_transporte_calculado")
+    if _s_trans_calc is not None:
+        s_trans = float(_s_trans_calc)
+    else:
+        lineas = datos.get("num_lineas_transporte") or 0
+        s_trans = min(100.0, lineas * 5.0)
 
     # SEGURIDAD — fórmula compuesta multivariable (v7)
     s_seg = _calcular_score_seguridad(datos)
@@ -390,7 +412,7 @@ async def _get_datos_sector(sector: str) -> dict:
     return dict(row) if row else {}
 
 
-async def _get_datos_zona_completos(zona_id: str, sector: str) -> dict:
+async def _get_datos_zona_completos(zona_id: str, sector: str, idea_tags: list[str] | None = None) -> dict:
     async with get_db() as conn:
         row = await conn.fetchrow("""
             SELECT
@@ -442,7 +464,23 @@ async def _get_datos_zona_completos(zona_id: str, sector: str) -> dict:
             WHERE vz.zona_id=$1
             ORDER BY vz.fecha DESC LIMIT 1
         """, zona_id, sector)
-    return dict(row) if row else {}
+    result = dict(row) if row else {}
+
+    # Calcular score de transporte enriquecido (reemplaza el count simple)
+    try:
+        from scoring.transporte_score import calcular_score_transporte
+        trans_data = await calcular_score_transporte(zona_id, idea_tags=idea_tags)
+        result["score_transporte_calculado"] = trans_data["score_transporte"]
+        result["score_movilidad_activa"] = trans_data["score_movilidad_activa"]
+    except Exception as e:
+        logger.warning("Error en score transporte enriquecido zona=%s: %s", zona_id, e)
+
+    # Inyectar idea_tags en datos para que _score_manual pueda acceder a ellos
+    # (necesario para demografia_score y otros módulos que usan idea_tags en el cálculo)
+    if idea_tags:
+        result["_idea_tags"] = idea_tags
+
+    return result
 
 
 async def guardar_scores(zona_id: str, sector_id: int, scores: dict) -> None:

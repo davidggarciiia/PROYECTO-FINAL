@@ -219,6 +219,11 @@ async def _asignar_zonas() -> None:
     logger.info("Zonas asignadas a paradas de transporte")
 
 
+def _es_codigo_ortogonal(codigo: str) -> bool:
+    """True si el código de línea pertenece a la red ortogonal (H/V/D/X)."""
+    return bool(codigo) and codigo.upper()[0] in ('H', 'V', 'D', 'X')
+
+
 def _detectar_tipo(props: dict) -> str:
     nombre  = str(props.get("NOM_LINIA",           "")).lower()
     operador= str(props.get("NOM_OPERADOR",         "")).lower()
@@ -232,6 +237,10 @@ def _detectar_tipo(props: dict) -> str:
         return "fgc"
     if "rodalies" in familia or "cercanias" in nombre:
         return "rodalies"
+    # Detectar bus ortogonal (red H/V/D/X de Barcelona) — subtipo gestionado en transporte_score.py
+    codi = str(props.get("CODI_LINIA", ""))
+    if _es_codigo_ortogonal(codi):
+        return "bus"  # tipo='bus' en tabla, subtipo se detecta dinámicamente por código
     return "bus"
 
 

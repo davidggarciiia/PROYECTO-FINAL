@@ -66,8 +66,9 @@ def init_scheduler() -> None:
     _scheduler.add_job(_run_mercado_locales_vta, CronTrigger(day_of_week="wed", hour=2, minute=30), id="mercado_locales_vta", replace_existing=True, **_JOB_DEFAULTS)
     _scheduler.add_job(_run_mercado_viviendas,   CronTrigger(day="*/14", hour=1, minute=0),         id="mercado_viviendas",   replace_existing=True, **_JOB_DEFAULTS)
 
-    # ── Transporte público (TMB) ───────────────────────────────────────────────
+    # ── Transporte público (TMB + Bicing) ────────────────────────────────────
     _scheduler.add_job(_run_transporte, CronTrigger(day_of_week="sat", hour=1, minute=0), id="transporte", replace_existing=True, **_JOB_DEFAULTS)
+    _scheduler.add_job(_run_bicing,     CronTrigger(day_of_week="sat", hour=2, minute=0), id="bicing",     replace_existing=True, **_JOB_DEFAULTS)
 
     # ── Mantenimiento BD ──────────────────────────────────────────────────────
     _scheduler.add_job(_run_purgar_portales, CronTrigger(day=15, hour=0, minute=0), id="purgar_portales", replace_existing=True, **_JOB_DEFAULTS)
@@ -205,6 +206,15 @@ async def _run_transporte():
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline transporte error: %s", e)
+
+async def _run_bicing():
+    """Semanal sábado 02:00 — BSMSA GBFS → estaciones_bicing."""
+    try:
+        from pipelines.bicing import ejecutar
+        result = await ejecutar()
+        logger.info("Pipeline bicing — %s", result)
+    except Exception as e:
+        logger.error("Pipeline bicing error: %s", e)
 
 async def _run_purgar_portales():
     try:

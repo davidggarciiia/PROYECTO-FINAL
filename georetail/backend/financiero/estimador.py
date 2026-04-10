@@ -8,8 +8,6 @@ from __future__ import annotations
 import logging, math
 from dataclasses import dataclass, field
 from typing import Optional
-import numpy as np
-
 from db.conexion import get_db
 
 logger = logging.getLogger(__name__)

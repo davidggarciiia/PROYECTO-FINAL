@@ -188,7 +188,7 @@ async def test_descargar_csv_empty_returns_empty():
 
 def test_feature_names_length_v5():
     from scoring.features import FEATURE_NAMES
-    assert len(FEATURE_NAMES) == 32, f"Se esperaban 32 features v5, hay {len(FEATURE_NAMES)}"
+    assert len(FEATURE_NAMES) == 36, f"Se esperaban 36 features v6, hay {len(FEATURE_NAMES)}"
 
 
 def test_feature_names_pct_poblacio_index():
@@ -239,28 +239,34 @@ def test_build_array_imputes_missing_v5_features():
     # Stub de calcular_flujo_score para aislar la función
     _fake_flujo = MagicMock()
     _fake_flujo.calcular_flujo_score = MagicMock(return_value=45.0)
+    _orig = sys.modules.get("scoring.flujo_peatonal")
     sys.modules["scoring.flujo_peatonal"] = _fake_flujo
+    try:
+        vz = {
+            "flujo_peatonal_total": 1000,
+            "flujo_peatonal_manana": 350,
+            "flujo_peatonal_tarde": 420,
+            "flujo_peatonal_noche": 230,
+            "renta_media_hogar": 35000,
+            "edad_media": 40.0,
+            "pct_extranjeros": 0.20,
+            "densidad_hab_km2": 20000.0,
+            "ratio_locales_comerciales": 0.25,
+            # pct_poblacio_25_44 y delta_renta_3a ausentes → imputar
+        }
+        arr = _build_array(vz, {}, None, {}, {}, {})
+        assert arr.shape == (1, 36)
 
-    vz = {
-        "flujo_peatonal_total": 1000,
-        "flujo_peatonal_manana": 350,
-        "flujo_peatonal_tarde": 420,
-        "flujo_peatonal_noche": 230,
-        "renta_media_hogar": 35000,
-        "edad_media": 40.0,
-        "pct_extranjeros": 0.20,
-        "densidad_hab_km2": 20000.0,
-        "ratio_locales_comerciales": 0.25,
-        # pct_poblacio_25_44 y delta_renta_3a ausentes → imputar
-    }
-    arr = _build_array(vz, {}, None, {}, {}, {})
-    assert arr.shape == (1, 32)
-
-    from scoring.features import FEATURE_NAMES
-    idx_pct = FEATURE_NAMES.index("pct_poblacio_25_44")
-    idx_delta = FEATURE_NAMES.index("delta_renta_3a")
-    assert arr[0, idx_pct]   == pytest.approx(_MEDIAS["pct_poblacio_25_44"])
-    assert arr[0, idx_delta] == pytest.approx(_MEDIAS["delta_renta_3a"])
+        from scoring.features import FEATURE_NAMES
+        idx_pct = FEATURE_NAMES.index("pct_poblacio_25_44")
+        idx_delta = FEATURE_NAMES.index("delta_renta_3a")
+        assert arr[0, idx_pct]   == pytest.approx(_MEDIAS["pct_poblacio_25_44"])
+        assert arr[0, idx_delta] == pytest.approx(_MEDIAS["delta_renta_3a"])
+    finally:
+        if _orig is None:
+            sys.modules.pop("scoring.flujo_peatonal", None)
+        else:
+            sys.modules["scoring.flujo_peatonal"] = _orig
 
 
 def test_build_array_uses_real_v5_values():
@@ -269,21 +275,27 @@ def test_build_array_uses_real_v5_values():
 
     _fake_flujo = MagicMock()
     _fake_flujo.calcular_flujo_score = MagicMock(return_value=50.0)
+    _orig = sys.modules.get("scoring.flujo_peatonal")
     sys.modules["scoring.flujo_peatonal"] = _fake_flujo
+    try:
+        vz = {
+            "flujo_peatonal_total": 800,
+            "ratio_locales_comerciales": 0.18,
+            "pct_poblacio_25_44": 0.31,
+            "delta_renta_3a": 0.12,
+        }
+        arr = _build_array(vz, {}, None, {}, {}, {})
+        assert arr.shape == (1, 36)
 
-    vz = {
-        "flujo_peatonal_total": 800,
-        "ratio_locales_comerciales": 0.18,
-        "pct_poblacio_25_44": 0.31,
-        "delta_renta_3a": 0.12,
-    }
-    arr = _build_array(vz, {}, None, {}, {}, {})
-    assert arr.shape == (1, 32)
-
-    idx_pct   = FEATURE_NAMES.index("pct_poblacio_25_44")
-    idx_delta = FEATURE_NAMES.index("delta_renta_3a")
-    assert arr[0, idx_pct]   == pytest.approx(0.31)
-    assert arr[0, idx_delta] == pytest.approx(0.12)
+        idx_pct   = FEATURE_NAMES.index("pct_poblacio_25_44")
+        idx_delta = FEATURE_NAMES.index("delta_renta_3a")
+        assert arr[0, idx_pct]   == pytest.approx(0.31)
+        assert arr[0, idx_delta] == pytest.approx(0.12)
+    finally:
+        if _orig is None:
+            sys.modules.pop("scoring.flujo_peatonal", None)
+        else:
+            sys.modules["scoring.flujo_peatonal"] = _orig
 
 
 # ─────────────────────────────────────────────────────────────────────────────

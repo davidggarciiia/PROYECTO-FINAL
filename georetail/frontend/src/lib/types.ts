@@ -123,45 +123,6 @@ export interface ZonaDetalle {
   analisis_ia?: AnalisisIA;
 }
 
-export interface LocalDetalle {
-  zona_id: string;
-  local_id?: string;
-  nombre_zona: string;
-  barrio: string;
-  distrito: string;
-  score_global: number;
-  scores_dimension: ScoresDimensiones;
-  probabilidad_supervivencia_3a?: number;
-  explicaciones_shap: Array<{ feature: string; valor: number; descripcion?: string }>;
-  direccion?: string;
-  m2?: number;
-  planta?: string;
-  alquiler_mensual?: number;
-  disponible?: boolean;
-  competidores_cercanos: CompetidorCercano[];
-  alertas: AlertaZona[];
-  flujo_peatonal_dia: { manana: number; tarde: number; noche: number };
-  tiempo_transporte_centro_min?: number;
-  num_lineas_transporte?: number;
-  analisis_ia: string;
-  pros: string[];
-  contras: string[];
-  recomendacion_final: string;
-  info_legal: {
-    viabilidad: "viable" | "restringido" | "inviable";
-    alerta?: string;
-    licencias_necesarias: Array<{
-      nombre: string;
-      organismo: string;
-      coste_estimado?: string;
-      tiempo_semanas?: string;
-      notas?: string;
-    }>;
-    restriccion_zona?: { tipo: string; descripcion: string };
-    requisitos_local: string[];
-  };
-}
-
 // Búsqueda
 export interface BuscarRequest {
   descripcion: string;
@@ -177,18 +138,6 @@ export interface BuscarResponse {
   pregunta?: string;
   progreso_cuestionario?: number;
   motivo?: string;
-}
-
-export interface CuestionarioRequest {
-  session_id: string;
-  respuesta: string;
-}
-
-export interface CuestionarioResponse {
-  estado: string;
-  pregunta?: string;
-  progreso_pct: number;
-  trigger_busqueda: boolean;
 }
 
 // Financiero
