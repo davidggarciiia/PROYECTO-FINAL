@@ -23,9 +23,10 @@ from typing import Literal, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from schemas.models import ZonaResumen, ColorZona, EstadoBusqueda
+from api._utils import score_to_color
 from agente.validador import validar_negocio
 from scoring.motor import calcular_scores_batch
 from db.sesiones import crear_sesion, get_sesion, guardar_busqueda, actualizar_sesion
@@ -82,14 +83,6 @@ class BuscarResponse(BaseModel):
 
 # ─── Helper ───────────────────────────────────────────────────────────────────
 
-def _score_to_color(score: float) -> ColorZona:
-    if score > 75:
-        return ColorZona.VERDE
-    if score >= 50:
-        return ColorZona.AMARILLO
-    return ColorZona.ROJO
-
-
 def _build_zona_resumen(z: dict) -> ZonaResumen:
     """
     Convierte un dict fusionado (candidata + score) a ZonaResumen.
@@ -106,7 +99,7 @@ def _build_zona_resumen(z: dict) -> ZonaResumen:
         probabilidad_supervivencia_3a=round(prob, 2) if prob is not None else None,
         alquiler_estimado=z.get("alquiler_estimado") or z.get("alquiler_mensual"),
         m2_disponibles=z.get("m2_disponibles") or z.get("m2"),
-        color=_score_to_color(score),
+        color=score_to_color(score),
         lat=z["lat"],
         lng=z["lng"],
         resumen_ia=z.get("resumen_ia"),

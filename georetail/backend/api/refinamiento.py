@@ -32,6 +32,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from schemas.models import ZonaResumen, AccionRefinamiento, ColorZona
+from api._utils import score_to_color
 from agente.refinamiento import procesar_refinamiento
 from db.sesiones import get_sesion
 
@@ -190,7 +191,7 @@ async def refinamiento(body: RefinamientoRequest) -> RefinamientoResponse:
                 ),
                 alquiler_estimado=z.get("alquiler_estimado"),
                 m2_disponibles=z.get("m2_disponibles"),
-                color=_score_to_color(z["score_global"]),
+                color=score_to_color(z["score_global"]),
                 lat=z["lat"],
                 lng=z["lng"],
                 resumen_ia=z.get("resumen_ia", ""),
@@ -206,11 +207,3 @@ async def refinamiento(body: RefinamientoRequest) -> RefinamientoResponse:
     )
 
 
-# ─── Helper ───────────────────────────────────────────────────────────────────
-
-def _score_to_color(score: float) -> ColorZona:
-    if score > 75:
-        return ColorZona.VERDE
-    if score >= 50:
-        return ColorZona.AMARILLO
-    return ColorZona.ROJO

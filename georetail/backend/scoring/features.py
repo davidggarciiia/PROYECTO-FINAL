@@ -55,8 +55,17 @@ Cambio v8 (entorno comercial mejorado): añadida una feature de entorno al final
 (índice 41) escrita por pipelines/entorno_comercial.py desde Open Data BCN CKAN:
   - mercados_municipales_1km (índice 41) — nombre de mercats municipals en radi 1km
 
-NOTA: Los modelos entrenados con v1-v6 (21-36 features) fallarán al recibir 42 features
-y caerán al scorer manual. Relanzar scoring/train.py para entrenar en v8.
+Cambio v9 (transporte enriquecido + movilidad activa): añadidas tres features al final
+(índices 42-44) que capturan el score de calidad de transporte y la movilidad activa:
+  - score_transporte_calculado (índice 42) — score multi-factor de transporte (0-100)
+  - num_bicing_400m            (índice 43) — estaciones de Bicing en radio 400m
+  - tiene_carril_bici          (índice 44) — 1.0 si hay carril bici en 200m, 0.0 si no
+
+Cambio v10 (potencial de consumo): añadida una feature computada al final (índice 45):
+  - indice_potencial_consumo (índice 45) — densidad × pct_25_44 × poder_adquisitivo (0-100)
+
+NOTA: Los modelos entrenados con v1-v8 (42 features) fallarán al recibir 46 features
+y caerán al scorer manual. Relanzar scoring/train.py para entrenar en v10.
 """
 from __future__ import annotations
 import logging
@@ -118,6 +127,12 @@ FEATURE_NAMES = [
     "comisarias_1km",             # nombre comissaries en radi 1km
     # ── v8: entorno comercial mejorado (Open Data BCN mercats) ───────────────
     "mercados_municipales_1km",   # mercats municipals en radi 1km
+    # ── v9: transporte enriquecido + movilidad activa ─────────────────────────
+    "score_transporte_calculado",  # score multi-factor 0-100
+    "num_bicing_400m",             # estaciones Bicing en 400m
+    "tiene_carril_bici",           # 1.0 si carril bici en 200m, 0.0 si no
+    # ── v10: potencial de consumo (computed) ──────────────────────────────────
+    "indice_potencial_consumo",    # densidad × segmento_activo × renta (0-100, computed)
 ]
 
 # Medias de imputación calculadas sobre dataset de entrenamiento BCN
@@ -163,6 +178,12 @@ _MEDIAS = {
     "comisarias_1km": 2,
     # v8 — entorno comercial mejorado (Open Data BCN mercats municipals)
     "mercados_municipales_1km": 1,
+    # v9 — transporte enriquecido + movilidad activa
+    "score_transporte_calculado": 35.0,
+    "num_bicing_400m": 3.0,
+    "tiene_carril_bici": 0.6,
+    # v10 — potencial de consumo
+    "indice_potencial_consumo": 42.0,
 }
 
 
@@ -186,6 +207,17 @@ async def construir_features_batch(zona_ids: list[str], sector: str):
                            geos.get(zid, {}), turs.get(zid, {}))
         rows.append(arr[0])
     return np.array(rows, dtype=np.float32), zona_ids
+
+
+def _calcular_potencial_consumo_feature(vz: dict) -> float | None:
+    """Índice de potencial de consumo para el vector de features XGBoost."""
+    densidad  = vz.get("densidad_hab_km2")
+    pct_25_44 = vz.get("pct_poblacio_25_44")
+    renta     = vz.get("renta_media_hogar")
+    if densidad is None or pct_25_44 is None or renta is None:
+        return None
+    from scoring.demografia_score import calcular_potencial_consumo
+    return calcular_potencial_consumo(densidad, pct_25_44, renta)
 
 
 def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
@@ -258,6 +290,12 @@ def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
         "comisarias_1km":           vz.get("comisarias_1km"),
         # v8: entorno comercial — mercats municipals en radi 1km
         "mercados_municipales_1km": vz.get("mercados_municipales_1km"),
+        # v9: transporte enriquecido + movilidad activa
+        "score_transporte_calculado": trans.get("score_transporte_calculado"),
+        "num_bicing_400m":            trans.get("num_bicing"),
+        "tiene_carril_bici":          trans.get("tiene_carril"),
+        # v10: potencial de consumo (computed desde variables demo)
+        "indice_potencial_consumo": _calcular_potencial_consumo_feature(vz),
     }
     vec = [float(raw.get(f) if raw.get(f) is not None else _MEDIAS[f]) for f in FEATURE_NAMES]
     return np.array([vec], dtype=np.float32)
@@ -342,14 +380,55 @@ async def _precios(zids):
     return {r["zona_id"]: float(r["precio_m2"]) for r in rows}
 
 async def _trans(zid):
+    """Features de transporte: count básico (compatibilidad XGBoost) + bicing + carril bici."""
     async with _get_db()() as conn:
+        # Features básicos (mantener para compatibilidad con modelos v1-v6)
         r = await conn.fetchrow("""
-            SELECT COUNT(DISTINCT pl.linea_id)::int AS num_lineas, COUNT(DISTINCT pt.id)::int AS num_paradas
-            FROM paradas_transporte pt JOIN paradas_lineas pl ON pl.parada_id=pt.id
+            SELECT COUNT(DISTINCT pl.linea_id)::int AS num_lineas,
+                   COUNT(DISTINCT pt.id)::int       AS num_paradas
+            FROM paradas_transporte pt
+            JOIN paradas_lineas pl ON pl.parada_id=pt.id
             JOIN zonas z ON z.id=$1
             WHERE ST_DWithin(pt.geometria::geography, z.geometria::geography, 500)
         """, zid)
-    return {"num_lineas": r["num_lineas"] or 0, "num_paradas": r["num_paradas"] or 0} if r else {}
+
+        # Feature: estaciones Bicing en 400m
+        try:
+            bicing = await conn.fetchval("""
+                SELECT COUNT(*)::int
+                FROM estaciones_bicing eb
+                JOIN zonas z ON z.id=$1
+                WHERE ST_DWithin(
+                    eb.geometria::geography,
+                    ST_Centroid(z.geometria)::geography,
+                    400
+                )
+            """, zid)
+        except Exception:
+            bicing = None
+
+        # Feature: carril bici en 200m
+        try:
+            carril = await conn.fetchval("""
+                SELECT EXISTS(
+                    SELECT 1 FROM carriles_bici cb
+                    JOIN zonas z ON z.id=$1
+                    WHERE ST_DWithin(
+                        cb.geometria::geography,
+                        ST_Centroid(z.geometria)::geography,
+                        200
+                    )
+                )::boolean
+            """, zid)
+        except Exception:
+            carril = None
+
+    return {
+        "num_lineas":   r["num_lineas"]  or 0 if r else 0,
+        "num_paradas":  r["num_paradas"] or 0 if r else 0,
+        "num_bicing":   bicing,
+        "tiene_carril": float(carril) if carril is not None else None,
+    }
 
 async def _transs(zids):
     import asyncio

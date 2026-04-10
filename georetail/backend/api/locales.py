@@ -27,7 +27,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from schemas.models import LocalListItem, FiltrosDisponibles, ColorZona
-from api.buscar import _score_to_color
+from api._utils import score_to_color
 from db.sesiones import get_sesion
 from db.zonas import get_zonas_sesion
 
@@ -210,7 +210,7 @@ async def get_locales(
             barrio=z["barrio"],
             distrito=z["distrito"],
             score_global=round(z["score_global"], 1),
-            color=_score_to_color(z["score_global"]),
+            color=score_to_color(z["score_global"]),
             alquiler_mensual=z.get("alquiler_mensual"),
             m2=z.get("m2"),
             disponible=z.get("disponible"),
