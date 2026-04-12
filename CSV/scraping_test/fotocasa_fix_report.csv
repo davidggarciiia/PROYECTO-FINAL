@@ -1,2 +1,0 @@
-scraper,estado,fix_aplicado,archivo,detalles
-fotocasa,FIXED,Headers Cloudflare mejorados + Google Referer + sec-ch-ua,pipelines/scraping/fotocasa_scraper.py,"_headers_chrome() refactorizado: pagina=0 usa Referer=google.es (tráfico orgánico) + Sec-Fetch-Site=cross-site; pagina=1 usa Referer=fotocasa.es/es/; añadido Sec-CH-UA + Sec-CH-UA-Mobile + Sec-CH-UA-Platform en todos los casos; _session_warming() hace 2 visitas: homepage con Google referer + sección alquiler"

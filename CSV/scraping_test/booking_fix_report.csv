@@ -1,2 +1,0 @@
-scraper,estado,fix_aplicado,archivo,detalles
-booking,FIXED,Playwright fallback para JS challenge (HTTP 202),pipelines/scraping/booking_scraper.py + pipelines/booking.py,"BookingScraper.scrape_barcelona_playwright() añadido: usa playwright.async_api con headless=True + stealth headers + warmup de homepage; booking.py/_booking_api_alojamientos() intenta curl_cffi primero y si devuelve vacío llama a scrape_barcelona_playwright() automáticamente; resultados normalizados al formato dict de alojamientos"
