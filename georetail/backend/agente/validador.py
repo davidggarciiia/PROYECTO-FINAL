@@ -67,11 +67,13 @@ async def validar_negocio(descripcion: str, session_id: str) -> dict:
     motivo_en = parsed.get("motivo_rechazo")
     motivo_es = await traducir(motivo_en, session_id) if motivo_en else None
 
+    tags_visibles_llm = _normalizar_tags_visibles(parsed.get("idea_tags"))
+
     concepto_negocio = compilar_concepto_negocio(
         sector=parsed.get("sector"),
         base_concepts=parsed.get("base_concepts"),
         modifiers=parsed.get("modifiers"),
-        idea_tags=_normalizar_tags_visibles(parsed.get("idea_tags")),
+        idea_tags=tags_visibles_llm,
         perfil_hint=parsed.get("perfil_numerico") if isinstance(parsed.get("perfil_numerico"), dict) else None,
         descripcion=descripcion_safe,
         confidence=parsed.get("confidence"),
@@ -86,7 +88,7 @@ async def validar_negocio(descripcion: str, session_id: str) -> dict:
         "motivo": motivo_es if estado == "error_tipo_negocio" else None,
         "informacion_suficiente": parsed.get("info_suficiente", False),
         "sector_detectado": concepto_negocio.get("sector") or parsed.get("sector") or "desconocido",
-        "idea_tags": concepto_negocio.get("idea_tags") or [],
+        "idea_tags": tags_visibles_llm or concepto_negocio.get("idea_tags") or [],
         "perfil_negocio": concepto_negocio.get("perfil_negocio") or {},
         "concepto_negocio": concepto_negocio,
         "variables_conocidas": parsed.get("variables_extraidas") or {},

@@ -190,7 +190,7 @@ async def test_descargar_csv_empty_returns_empty():
 
 def test_feature_names_length_v5():
     from scoring.features import FEATURE_NAMES
-    assert len(FEATURE_NAMES) == 53, f"Se esperaban 53 features en el vector actual, hay {len(FEATURE_NAMES)}"
+    assert len(FEATURE_NAMES) == 63, f"Se esperaban 63 features en el vector actual, hay {len(FEATURE_NAMES)}"
 
 
 def test_feature_names_pct_poblacio_index():

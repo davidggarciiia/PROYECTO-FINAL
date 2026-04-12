@@ -86,6 +86,25 @@ desde negocios_historico + llicencies + variables_zona:
   - renta_variacion_3a      (índice 56) — % variación de renta últimos 3 años
   - hhi_sectorial           (índice 57) — concentración sectorial (0=diverso, 1=monopolio)
 
+Cambio v14 (temporalidad BCN): añadidas cinco features estacionales modelables
+al final (índices 58-62):
+  - seasonality_summer_lift
+  - seasonality_christmas_lift
+  - seasonality_rebajas_lift
+  - seasonality_volatility
+  - seasonality_peak_concentration
+
+Cambio v15 (temporalidad semanal/live): añadidas siete features temporales
+adicionales al final (índices 63-69). Se usan en score/explicación y solo
+entran al modelo cuando el gate temporal estricto las aprueba:
+  - weekend_lift
+  - sunday_lift
+  - weekday_midday_share
+  - weekend_evening_share
+  - late_night_share
+  - holiday_proxy_score
+  - temporal_confianza
+
 NOTA: Los modelos antiguos se recortan por nombre de feature desde train/evaluate/scorer.
 """
 from __future__ import annotations
@@ -176,6 +195,20 @@ FEATURE_NAMES = [
     "tasa_supervivencia_3a",     # % negocios supervivieron ≥3 años
     "renta_variacion_3a",        # % variación renta 3 años (proxy gentrificación)
     "hhi_sectorial",             # concentración sectorial 0-1
+    # —— v14: temporalidad BCN (estacionalidad estructural) ——
+    "seasonality_summer_lift",
+    "seasonality_christmas_lift",
+    "seasonality_rebajas_lift",
+    "seasonality_volatility",
+    "seasonality_peak_concentration",
+    # —— v15: temporalidad semanal/live (gated para train) ——
+    "weekend_lift",
+    "sunday_lift",
+    "weekday_midday_share",
+    "weekend_evening_share",
+    "late_night_share",
+    "holiday_proxy_score",
+    "temporal_confianza",
 ]
 
 # Medias base de imputación. Las del batch BCN pueden sobreescribirse desde
@@ -241,6 +274,20 @@ _BASE_MEDIAS = {
     "tasa_supervivencia_3a":      0.52,  # ~52% supervivencia media BCN
     "renta_variacion_3a":         0.04,  # ~4% variación renta 3 años (media BCN)
     "hhi_sectorial":              0.28,  # diversidad moderada (media BCN)
+    # v14 — temporalidad BCN
+    "seasonality_summer_lift":        1.02,
+    "seasonality_christmas_lift":     1.01,
+    "seasonality_rebajas_lift":       1.00,
+    "seasonality_volatility":         0.18,
+    "seasonality_peak_concentration": 1.35,
+    # v15 — temporalidad semanal/live
+    "weekend_lift":                   1.02,
+    "sunday_lift":                    0.96,
+    "weekday_midday_share":           0.16,
+    "weekend_evening_share":          0.13,
+    "late_night_share":               0.08,
+    "holiday_proxy_score":            48.0,
+    "temporal_confianza":             0.25,
 }
 
 
@@ -394,6 +441,18 @@ def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
         "personas_solas": vz.get("personas_solas"),
         "renta_media_uc": vz.get("renta_media_uc"),
         "renta_mediana_uc": vz.get("renta_mediana_uc"),
+        "seasonality_summer_lift": vz.get("seasonality_summer_lift"),
+        "seasonality_christmas_lift": vz.get("seasonality_christmas_lift"),
+        "seasonality_rebajas_lift": vz.get("seasonality_rebajas_lift"),
+        "seasonality_volatility": vz.get("seasonality_volatility"),
+        "seasonality_peak_concentration": vz.get("seasonality_peak_concentration"),
+        "weekend_lift": vz.get("weekend_lift"),
+        "sunday_lift": vz.get("sunday_lift"),
+        "weekday_midday_share": vz.get("weekday_midday_share"),
+        "weekend_evening_share": vz.get("weekend_evening_share"),
+        "late_night_share": vz.get("late_night_share"),
+        "holiday_proxy_score": vz.get("holiday_proxy_score"),
+        "temporal_confianza": vz.get("temporal_confianza"),
     }
     vec = [float(raw.get(f) if raw.get(f) is not None else _MEDIAS[f]) for f in FEATURE_NAMES]
     return np.array([vec], dtype=np.float32)
@@ -521,11 +580,21 @@ async def _trans(zid):
         except Exception:
             carril = None
 
+    score_transporte = None
+    try:
+        from scoring.dimensiones.transporte import calcular_score_transporte  # noqa: PLC0415
+
+        transporte = await calcular_score_transporte(zid)
+        score_transporte = transporte.get("score_transporte")
+    except Exception:
+        score_transporte = None
+
     return {
         "num_lineas":   r["num_lineas"]  or 0 if r else 0,
         "num_paradas":  r["num_paradas"] or 0 if r else 0,
         "num_bicing":   bicing,
         "tiene_carril": float(carril) if carril is not None else None,
+        "score_transporte_calculado": score_transporte,
     }
 
 async def _transs(zids):

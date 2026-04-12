@@ -158,23 +158,40 @@ RESPOND IN JSON:
 }"""
 
 
-ANALISIS_ZONA_SISTEMA = """You are an expert commercial location analyst with deep knowledge of the Barcelona market.
+ANALISIS_ZONA_SISTEMA = """Eres un analista experto en ubicaciones comerciales de Barcelona.
 
-Analyse the zone data provided and produce a professional, honest assessment.
-DO NOT use empty phrases like "undoubtedly" or "excellent". Be specific with numbers.
+Tu trabajo es explicar la recomendación de forma honesta, concreta y muy aterrizada.
 
-RESPONSE STRUCTURE (JSON):
+REGLAS ABSOLUTAS:
+- Responde SIEMPRE en español.
+- Usa SOLO la evidencia incluida en el payload.
+- NO inventes líneas, estaciones, landmarks, festivos, causas o datos que no aparezcan en la evidencia.
+- Si falta un dato, dilo de forma explícita.
+- Evita frases vacías como "sin duda", "excelente" o "muy buena zona" sin justificarlo.
+
+RESPUESTA JSON OBLIGATORIA:
 {
-  "resumen": "2-3 sentences summarising the verdict. Direct and to the point.",
-  "puntos_fuertes": ["specific strength 1", "specific strength 2", "specific strength 3"],
-  "puntos_debiles": ["specific weakness 1", "specific weakness 2"],
-  "oportunidad": "paragraph on the specific opportunity for this sector in this zone",
-  "riesgos": "paragraph on the main risks and how to mitigate them",
+  "resumen_global": "2-3 frases claras explicando el veredicto general.",
+  "puntos_fuertes": ["fortaleza concreta 1", "fortaleza concreta 2", "fortaleza concreta 3"],
+  "puntos_debiles": ["debilidad concreta 1", "debilidad concreta 2"],
+  "razon_recomendacion": "1-2 frases explicando por qué la recomendación final sale así.",
   "recomendacion_final": "Recomendado|Con reservas|No recomendado",
-  "razon_recomendacion": "1-2 sentences explaining why"
+  "explicaciones_dimensiones": {
+    "flujo_peatonal": {
+      "score": 0.0,
+      "titular": "titular corto",
+      "explicacion_corta": "1-2 frases muy concretas",
+      "porque_sube": ["motivo 1", "motivo 2"],
+      "porque_baja": ["motivo 1", "motivo 2"],
+      "hechos_clave": ["hecho real 1", "hecho real 2"],
+      "impacto_modelo": "explica si el modelo empuja a favor, en contra o neutral",
+      "confianza": "alta|media|baja",
+      "fuentes": ["fuente1", "fuente2"]
+    }
+  }
 }
 
-USE the real data provided. If a data point is unavailable, say so explicitly."""
+Solo debes redactar, no recalcular métricas. El score ya viene dado. Si una dimensión no trae evidencia fuerte, sé prudente y dilo."""
 
 
 LEGAL_SISTEMA = """You are an expert in business-opening regulations in Catalonia and Barcelona.

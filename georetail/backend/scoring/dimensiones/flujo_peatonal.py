@@ -298,3 +298,138 @@ def flujo_peatonal_explain(
         "sources":           sources,
         "sources_available": n_disponibles,
     }
+
+
+def calcular_fit_temporal(
+    row: dict,
+    idea_tags: Optional[list[str]] = None,
+    perfil_negocio: Optional[dict] = None,
+) -> dict:
+    """
+    Ajuste temporal explicable para la dimensión de flujo.
+
+    No sustituye al flujo base; mide si la zona encaja con el patrón temporal
+    que necesita el negocio: oficina, fin de semana, noche o actividad estable.
+    """
+    tags = set(idea_tags or [])
+    perfil = perfil_negocio or {}
+
+    weekend_lift = _as_float(row.get("weekend_lift"))
+    weekday_midday_share = _as_float(row.get("weekday_midday_share"))
+    weekend_evening_share = _as_float(row.get("weekend_evening_share"))
+    late_night_share = _as_float(row.get("late_night_share"))
+    holiday_proxy_score = _as_float(row.get("holiday_proxy_score"))
+    volatility = _as_float(row.get("seasonality_volatility"))
+    summer_lift = _as_float(row.get("seasonality_summer_lift"))
+    christmas_lift = _as_float(row.get("seasonality_christmas_lift"))
+    confidence = _as_float(row.get("temporal_confianza")) or 0.0
+
+    if confidence <= 0:
+        return {"score_fit_temporal": 50.0, "confianza": 0.0, "modo": "sin_cobertura"}
+
+    wants_weekend = bool(tags & {"weekend_peak", "orientado_turismo", "seasonal_peak"})
+    wants_office = bool(tags & {"office_peak", "horario_diurno_comercial", "weekday_peak"})
+    wants_night = bool(tags & {"late_night", "horario_nocturno"})
+    wants_stability = float(perfil.get("clientela_vecindario", 0.0) or 0.0) >= 0.7
+
+    components: list[tuple[float, float]] = []
+    mode = "estable"
+
+    if wants_weekend:
+        mode = "weekend_peak"
+        if weekend_lift is not None:
+            components.append((0.45, _clip01((weekend_lift - 0.70) / 0.80)))
+        if weekend_evening_share is not None:
+            components.append((0.25, _clip01(weekend_evening_share / 0.35)))
+        if holiday_proxy_score is not None:
+            components.append((0.20, _clip01(holiday_proxy_score / 100.0)))
+        if volatility is not None:
+            components.append((0.10, 1.0 - _clip01(volatility / 0.45)))
+    elif wants_office:
+        mode = "office_peak"
+        if weekday_midday_share is not None:
+            components.append((0.55, _clip01(weekday_midday_share / 0.30)))
+        if weekend_lift is not None:
+            components.append((0.20, 1.0 - _clip01((weekend_lift - 0.85) / 0.60)))
+        if volatility is not None:
+            components.append((0.25, 1.0 - _clip01(volatility / 0.40)))
+    elif wants_night:
+        mode = "late_night"
+        if late_night_share is not None:
+            components.append((0.45, _clip01(late_night_share / 0.18)))
+        if weekend_evening_share is not None:
+            components.append((0.30, _clip01(weekend_evening_share / 0.35)))
+        if holiday_proxy_score is not None:
+            components.append((0.25, _clip01(holiday_proxy_score / 100.0)))
+    else:
+        mode = "estable" if wants_stability else "generalista"
+        if volatility is not None:
+            components.append((0.40, 1.0 - _clip01(volatility / 0.45)))
+        if weekend_lift is not None:
+            components.append((0.20, _clip01((weekend_lift - 0.60) / 0.80)))
+        if summer_lift is not None:
+            components.append((0.20, _clip01(summer_lift / 1.20)))
+        if christmas_lift is not None:
+            components.append((0.20, _clip01(christmas_lift / 1.20)))
+
+    if not components:
+        return {"score_fit_temporal": 50.0, "confianza": confidence, "modo": mode}
+
+    total_weight = sum(weight for weight, _ in components)
+    score = sum(weight * value for weight, value in components) / max(total_weight, 1e-6)
+    return {
+        "score_fit_temporal": round(score * 100.0, 1),
+        "confianza": round(confidence, 3),
+        "modo": mode,
+    }
+
+
+def calcular_flujo_con_temporalidad(
+    *,
+    row: dict,
+    idea_tags: Optional[list[str]] = None,
+    perfil_negocio: Optional[dict] = None,
+    popular_times_score: Optional[float],
+    vcity_flujo: Optional[float],
+    vianants_intensitat: Optional[float],
+    ratio_locales: Optional[float],
+    vcity_max_barcelona: float = VCITY_MAX_BARCELONA,
+    vianants_max_barcelona: float = VIANANTS_MAX_BARCELONA,
+) -> dict:
+    """
+    Devuelve el score final de flujo integrando la capa temporal cuando existe.
+    """
+    score_base = calcular_flujo_score(
+        popular_times_score=popular_times_score,
+        vcity_flujo=vcity_flujo,
+        vianants_intensitat=vianants_intensitat,
+        ratio_locales=ratio_locales,
+        vcity_max_barcelona=vcity_max_barcelona,
+        vianants_max_barcelona=vianants_max_barcelona,
+    )
+    temporal = calcular_fit_temporal(row, idea_tags=idea_tags, perfil_negocio=perfil_negocio)
+    confianza = temporal["confianza"]
+    if confianza < 0.35:
+        score_final = score_base
+    else:
+        score_final = score_base * 0.75 + temporal["score_fit_temporal"] * 0.25
+    return {
+        "score_flujo": round(float(min(100.0, max(0.0, score_final))), 1),
+        "score_flujo_base": round(float(score_base), 1),
+        "score_fit_temporal": temporal["score_fit_temporal"],
+        "temporal_confianza": confianza,
+        "temporal_mode": temporal["modo"],
+    }
+
+
+def _as_float(value: object) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _clip01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))

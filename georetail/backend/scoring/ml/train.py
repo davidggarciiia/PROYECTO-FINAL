@@ -41,6 +41,8 @@ from scoring.infra.governance import (
     build_model_feature_names,
     default_active_demography_features,
     load_active_demography_features_from_artifact,
+    load_active_temporal_features_from_artifact,
+    load_temporal_feature_gates,
     slice_feature_matrix,
 )
 from scoring.ml.evaluate import evaluar_modelo, imprimir_reporte
@@ -81,6 +83,8 @@ async def entrenar_modelo(
     promover_si_supera: bool = True,
     demografia_feature_names: Optional[Sequence[str]] = None,
     demografia_features_path: Optional[str] = None,
+    temporal_feature_names: Optional[Sequence[str]] = None,
+    temporal_features_path: Optional[str] = None,
 ) -> dict:
     """
     Entrena un modelo XGBoost y opcionalmente lo promueve a activo.
@@ -119,7 +123,38 @@ async def entrenar_modelo(
     else:
         active_demography_features = default_active_demography_features()
 
-    model_feature_names = build_model_feature_names(active_demography_features)
+    temporal_gate: dict = {}
+    if temporal_features_path:
+        temporal_gate = load_temporal_feature_gates(temporal_features_path)
+        active_temporal_features = load_active_temporal_features_from_artifact(
+            temporal_features_path
+        )
+        overall_gate = temporal_gate.get("overall_gate") or {}
+        if (
+            overall_gate.get("status") != "pass"
+            or not bool(overall_gate.get("accepted"))
+        ):
+            motivo = (
+                "Gate temporal estricto no superado; el modelo se mantiene sin cambios. "
+                f"Detalles: {overall_gate or 'sin artifact válido'}"
+            )
+            logger.warning(motivo)
+            return {
+                "guardado": False,
+                "auc_cv": None,
+                "pr_auc_cv": None,
+                "motivo": motivo,
+                "temporal_gate": overall_gate,
+            }
+    elif temporal_feature_names is not None:
+        active_temporal_features = list(temporal_feature_names)
+    else:
+        active_temporal_features = []
+
+    model_feature_names = build_model_feature_names(
+        active_demography_features,
+        active_temporal_features,
+    )
     X = slice_feature_matrix(X, FEATURE_NAMES, model_feature_names)
 
     # ── Balancear clases ──────────────────────────────────────────────────────
@@ -209,6 +244,7 @@ async def entrenar_modelo(
             "n_samples": len(X),
             "n_positivos": n_pos,
             "n_negativos": n_neg,
+            "temporal_feature_names": list(active_temporal_features),
         },
         importancia=importancia,
         ruta=str(ruta),
@@ -238,6 +274,8 @@ async def entrenar_modelo(
         "importancia": importancia,
         "model_feature_names": model_feature_names,
         "demografia_feature_names": active_demography_features,
+        "temporal_feature_names": active_temporal_features,
+        "temporal_gate": temporal_gate.get("overall_gate") if temporal_gate else None,
         "elapsed_s":   elapsed,
     }
 
@@ -370,6 +408,11 @@ async def _main() -> None:
         default=None,
         help="Ruta al artifact demography_feature_decisions.json del readiness demografico.",
     )
+    parser.add_argument(
+        "--temporal-features-path",
+        default=None,
+        help="Ruta al artifact temporal_feature_gates.json del readiness temporal estricto.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -387,6 +430,7 @@ async def _main() -> None:
         min_auc=args.min_auc,
         promover_si_supera=not args.no_promover,
         demografia_features_path=args.demografia_features_path,
+        temporal_features_path=args.temporal_features_path,
     )
     imprimir_reporte(resultado)
 

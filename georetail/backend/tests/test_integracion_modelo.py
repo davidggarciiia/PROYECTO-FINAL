@@ -35,7 +35,7 @@ from scoring.dimensiones.flujo_peatonal import PESOS_BASE
 
 class TestFeatureNamesEstructura:
     def test_longitud_actual_del_vector(self):
-        assert len(FEATURE_NAMES) == 53
+        assert len(FEATURE_NAMES) == 70
 
     def test_no_duplicados(self):
         assert len(FEATURE_NAMES) == len(set(FEATURE_NAMES))
@@ -100,6 +100,12 @@ class TestPosicionesPorVersion:
         assert FEATURE_NAMES[50] == "personas_solas"
         assert FEATURE_NAMES[51] == "renta_media_uc"
         assert FEATURE_NAMES[52] == "renta_mediana_uc"
+
+    def test_temporalidad_indices(self):
+        assert FEATURE_NAMES[58] == "seasonality_summer_lift"
+        assert FEATURE_NAMES[62] == "seasonality_peak_concentration"
+        assert FEATURE_NAMES[63] == "weekend_lift"
+        assert FEATURE_NAMES[69] == "temporal_confianza"
 
     def test_v3_features_indices_23_a_28(self):
         """Los 6 features v3 ocupan índices 23-28."""

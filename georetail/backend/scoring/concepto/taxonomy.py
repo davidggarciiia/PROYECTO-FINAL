@@ -597,8 +597,9 @@ RICH_MODIFIER_OVERRIDES = {
     "audience.tourist_first": {
         "visible_tag": "orientado_turismo",
         "aliases": ["turistas", "tourist oriented", "tourism first"],
-        "profile": {"clientela_turismo": 0.88, "clientela_vecindario": 0.18},
+        "profile": {"clientela_turismo": 0.98, "clientela_vecindario": 0.08, "dependencia_flujo": 0.78},
         "zone_ideal": {"turismo_ideal": 72.0},
+        "score_bias": {"score_turismo": 3.0, "score_demografia": 0.25},
         "visible_priority": 0.92,
     },
     "audience.young_adults": {

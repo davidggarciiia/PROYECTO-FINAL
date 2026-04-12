@@ -155,6 +155,30 @@ class AnalisisIA(BaseModel):
     razon_recomendacion: str = ""
 
 
+class ImpactoModeloDimension(BaseModel):
+    contribucion: float = 0.0
+    tendencia: str = "neutral"
+    top_features: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ExplicacionDimension(BaseModel):
+    score: Optional[float] = None
+    titular: str = ""
+    explicacion_corta: str = ""
+    porque_sube: list[str] = Field(default_factory=list)
+    porque_baja: list[str] = Field(default_factory=list)
+    hechos_clave: list[str] = Field(default_factory=list)
+    impacto_modelo: str = ""
+    confianza: str = "media"
+    fuentes: list[str] = Field(default_factory=list)
+
+
+class AnalisisIADetallado(AnalisisIA):
+    resumen_global: str = ""
+    explicaciones_dimensiones: dict[str, ExplicacionDimension] = Field(default_factory=dict)
+    impacto_modelo_por_dimension: dict[str, ImpactoModeloDimension] = Field(default_factory=dict)
+
+
 class ScoreDetalle(BaseModel):
     """Scores desglosados por dimensión."""
     flujo_peatonal:    Optional[float] = None
@@ -251,6 +275,7 @@ class ScoresDimensiones(BaseModel):
     seguridad:         Optional[float] = None
     turismo:           Optional[float] = None
     entorno_comercial: Optional[float] = None
+    dinamismo:         Optional[float] = None
 
 
 class ZonaDetalle(BaseModel):
@@ -287,7 +312,10 @@ class ZonaDetalle(BaseModel):
 
     competidores_cercanos: list[CompetidorCercano] = []
     alertas:               list[AlertaZona]        = []
-    analisis_ia:           Optional[AnalisisIA]    = None
+    analisis_ia:           Optional[AnalisisIADetallado]    = None
+    explicaciones_dimensiones: dict[str, ExplicacionDimension] = Field(default_factory=dict)
+    impacto_modelo_por_dimension: dict[str, ImpactoModeloDimension] = Field(default_factory=dict)
+    resumen_global_llm: Optional[str] = None
 
 
 class LocalDetalle(BaseModel):

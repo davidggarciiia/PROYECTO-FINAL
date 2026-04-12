@@ -20,6 +20,7 @@ import json
 import logging
 from typing import Optional
 
+from scoring.explainability import group_shap_by_dimension
 from scoring.concepto.taxonomy import (
     aplicar_pesos_a_sector,
     compilar_concepto_negocio,
@@ -198,6 +199,18 @@ async def get_scores_zona(
         return _format_scores_for_api(raw)
 
     raw = dict(row)
+    # Solo recalcular si el registro no tiene NINGUNA dimensión manual (registro xgboost puro sin enriquecer)
+    if all(raw.get(dim) is None for dim in _DIMENSION_KEYS):
+        resultados = await calcular_scores_batch(
+            [zona_id],
+            sector_codigo,
+            idea_tags=idea_tags,
+            descripcion_negocio=descripcion_negocio,
+            perfil_negocio=perfil_negocio,
+            concepto_negocio=concepto_negocio,
+        )
+        raw = resultados[0] if resultados else _build_fallback_row(zona_id)
+
     datos_afinidad = {}
     if contexto["zona_ideal"]:
         datos_afinidad = await _cargar_datos_afinidad_zonas([zona_id])
@@ -332,7 +345,7 @@ def _resolver_matcher(descripcion_negocio: Optional[str]):
         return [], None
 
     try:
-        from scoring.concepto.matcher import get_matcher
+        from scoring.concepto_matcher import get_matcher
 
         matcher = get_matcher()
         matches = matcher.match(descripcion_negocio, top_k=4)
@@ -575,6 +588,7 @@ def _format_scores_for_api(raw: dict) -> dict:
         {"feature": k, "valor": round(float(v), 3)}
         for k, v in sorted(shap_raw.items(), key=lambda x: abs(x[1]), reverse=True)[:10]
     ] if shap_raw else []
+    impacto_modelo = group_shap_by_dimension(shap_raw) if shap_raw else {}
 
     prob = raw.get("probabilidad_supervivencia_3a")
     if prob is None:
@@ -604,4 +618,7 @@ def _format_scores_for_api(raw: dict) -> dict:
         "probabilidad_supervivencia_3a": round(float(prob), 3) if prob is not None else None,
         "scores_dimension": scores_dim,
         "explicaciones_shap": explicaciones,
+        "impacto_modelo_por_dimension": impacto_modelo,
+        "shap_values": shap_raw or {},
+        "modelo_version": raw.get("modelo_version"),
     }
