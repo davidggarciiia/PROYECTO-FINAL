@@ -205,6 +205,7 @@ def _calcular_score_transit(filas: list) -> tuple[float, dict]:
     tipos_calidad_alta: set[str] = set()
     tipos_baja_calidad: set[str] = set()
     tipos_unicos: set[str] = set()
+    top_lineas: list[dict] = []
 
     for fila in filas:
         tipo = fila["tipo"] or "bus"
@@ -231,6 +232,16 @@ def _calcular_score_transit(filas: list) -> tuple[float, dict]:
 
         aporte = calidad * factor_dist * factor_freq
         score_ponderado += aporte
+        top_lineas.append(
+            {
+                "codigo": codigo,
+                "tipo": tipo,
+                "subtipo": subtipo,
+                "distancia_m": round(float(dist_min_m), 1),
+                "frecuencia_media_min": round(float(freq), 1) if freq is not None else None,
+                "aporte": round(float(aporte), 4),
+            }
+        )
 
         if calidad >= _UMBRAL_CALIDAD_ALTA:
             tipos_calidad_alta.add(subtipo)
@@ -255,6 +266,7 @@ def _calcular_score_transit(filas: list) -> tuple[float, dict]:
         "tipos_calidad_alta": sorted(tipos_calidad_alta),
         "bonus_intermodal": bonus_intermodal,
         "penalizacion_dependencia": penalizacion,
+        "top_lineas": sorted(top_lineas, key=lambda row: row["aporte"], reverse=True)[:5],
     }
     return round(score_transit, 1), detalles
 

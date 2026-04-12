@@ -33,7 +33,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from schemas.models import (
-    LocalDetalleResponse, ZonaDetalle, ScoresDimensiones, AnalisisIA,
+    LocalDetalleResponse, ZonaDetalle, ScoresDimensiones, AnalisisIADetallado,
     CompetidorCercano, AlertaZona, ColorZona, SeguridadDetalle,
     EntornoComercialDetalle,
 )
@@ -41,6 +41,7 @@ from api._utils import score_to_color
 from db.sesiones import get_sesion
 from db.zonas import get_zona_completa
 from scoring.motor import get_scores_zona
+from scoring.explainability import build_llm_grounding_payload
 from nlp.alertas import get_alertas_zona
 from agente.analisis import generar_analisis_zona
 
@@ -171,7 +172,6 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
     (
         scores_data,
         alertas_raw,
-        analisis_data,
     ) = await asyncio.gather(
         # Fuente: `scores_zona` JSONB con shap_values y scores por dimensión
         # Calculado por pipeline semanal (`pipelines/scores.py`) con XGBoost v1
@@ -188,11 +188,6 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
         # Pipeline diario: embeddings de reseñas (Google/Foursquare/Yelp) → clasificación
         get_alertas_zona(zona_id=body.zona_id),
 
-        # Fuente: Claude Sonnet (llm_router) en tiempo real
-        # Prompt en `agente/prompts/analisis_zona.txt`
-        # Incluye datos de zona, scores y perfil del usuario para personalizar
-        generar_analisis_zona(zona=zona, perfil=sesion.get("perfil", {}), session_id=body.session_id),
-
         return_exceptions=True,  # No cancelar todo si una falla
     )
 
@@ -206,12 +201,32 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
         logger.error("Error get_alertas_zona %s: %s", body.zona_id, alertas_raw)
         alertas_raw = []
 
-    if isinstance(analisis_data, Exception):
-        logger.error("Error generar_analisis_zona %s: %s", body.zona_id, analisis_data)
+    perfil = sesion.get("perfil", {}) or {}
+    zona["alertas"] = alertas_raw
+    llm_grounding = build_llm_grounding_payload(zona, scores_data, perfil)
+    zona_llm = {
+        **zona,
+        "llm_grounding": llm_grounding,
+    }
+
+    try:
+        analisis_data = await generar_analisis_zona(
+            zona=zona_llm,
+            perfil=perfil,
+            session_id=body.session_id,
+        )
+    except Exception as exc:
+        logger.error("Error generar_analisis_zona %s: %s", body.zona_id, exc)
         analisis_data = {
             "texto": "Análisis no disponible temporalmente.",
             "pros": [],
             "contras": [],
+            "resumen_global": "Análisis no disponible temporalmente.",
+            "puntos_fuertes": [],
+            "puntos_debiles": [],
+            "razon_recomendacion": "No se pudo generar la explicación en este momento.",
+            "recomendacion_final": "Con reservas",
+            "explicaciones_dimensiones": {},
         }
 
     # ── Construir respuesta ───────────────────────────────────────────────────
@@ -236,6 +251,11 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
         score_global=round(score_global, 1),
         scores_dimensiones=ScoresDimensiones(**scores_data["scores_dimension"]),
         probabilidad_supervivencia=round(prob, 3) if prob is not None else None,
+        shap_values=scores_data.get("shap_values"),
+        modelo_version=scores_data.get("modelo_version"),
+        explicaciones_dimensiones=analisis_data.get("explicaciones_dimensiones", {}),
+        impacto_modelo_por_dimension=scores_data.get("impacto_modelo_por_dimension", {}),
+        resumen_global_llm=analisis_data.get("resumen_global") or analisis_data.get("texto"),
 
         # Variables demográficas y entorno
         flujo_peatonal_dia=zona.get("flujo_peatonal_dia"),
@@ -281,20 +301,25 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
         alertas=[AlertaZona(**a) for a in alertas_raw],
 
         # Análisis IA — Claude Sonnet en tiempo real
-        analisis_ia=AnalisisIA(
+        analisis_ia=AnalisisIADetallado(
             resumen=analisis_data.get("texto", ""),
-            puntos_fuertes=analisis_data.get("pros", []),
-            puntos_debiles=analisis_data.get("contras", []),
+            resumen_global=analisis_data.get("resumen_global", analisis_data.get("texto", "")),
+            puntos_fuertes=analisis_data.get("puntos_fuertes", analisis_data.get("pros", [])),
+            puntos_debiles=analisis_data.get("puntos_debiles", analisis_data.get("contras", [])),
+            recomendacion_final=analisis_data.get("recomendacion_final", "Con reservas"),
+            razon_recomendacion=analisis_data.get("razon_recomendacion", ""),
+            explicaciones_dimensiones=analisis_data.get("explicaciones_dimensiones", {}),
+            impacto_modelo_por_dimension=scores_data.get("impacto_modelo_por_dimension", {}),
         ),
     )
 
-    dev_data = _build_dev_data(zona, scores_data) if body.dev else None
+    dev_data = _build_dev_data(zona, scores_data, analisis_data, llm_grounding) if body.dev else None
     return LocalDetalleResponse(zona=zona_detalle, dev_data=dev_data)
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-def _build_dev_data(zona: dict, scores_data: dict) -> dict:
+def _build_dev_data(zona: dict, scores_data: dict, analisis_data: dict | None = None, llm_grounding: dict | None = None) -> dict:
     """Datos crudos para el DevPanel del frontend."""
     return {
         "zona_raw": {
@@ -302,6 +327,8 @@ def _build_dev_data(zona: dict, scores_data: dict) -> dict:
             if k not in ("competidores_cercanos",) and not callable(v)
         },
         "scores_raw": scores_data,
+        "llm_grounding": llm_grounding or {},
+        "analisis_raw": analisis_data or {},
     }
 
 
@@ -328,6 +355,9 @@ def _scores_fallback(zona: dict) -> dict:
             "entorno_comercial": 50.0,
         },
         "explicaciones_shap": [],
+        "impacto_modelo_por_dimension": {},
+        "shap_values": {},
+        "modelo_version": "fallback",
     }
 
 

@@ -145,16 +145,22 @@ class TestFeatureNamesEstructura:
         assert FEATURE_NAMES[31] == "delta_renta_3a"
 
     def test_batch_demografia_bcn_va_al_final(self):
-        assert FEATURE_NAMES[-7] == "gini"
-        assert FEATURE_NAMES[-6] == "p80_p20"
-        assert FEATURE_NAMES[-5] == "tamano_hogar"
-        assert FEATURE_NAMES[-4] == "hogares_con_menores"
-        assert FEATURE_NAMES[-3] == "personas_solas"
-        assert FEATURE_NAMES[-2] == "renta_media_uc"
-        assert FEATURE_NAMES[-1] == "renta_mediana_uc"
+        assert FEATURE_NAMES[46] == "gini"
+        assert FEATURE_NAMES[47] == "p80_p20"
+        assert FEATURE_NAMES[48] == "tamano_hogar"
+        assert FEATURE_NAMES[49] == "hogares_con_menores"
+        assert FEATURE_NAMES[50] == "personas_solas"
+        assert FEATURE_NAMES[51] == "renta_media_uc"
+        assert FEATURE_NAMES[52] == "renta_mediana_uc"
 
     def test_posicion_v5_1_nivel_estudios(self):
         assert FEATURE_NAMES[32] == "nivel_estudios_alto_pct"
+
+    def test_posiciones_temporales(self):
+        assert FEATURE_NAMES[58] == "seasonality_summer_lift"
+        assert FEATURE_NAMES[62] == "seasonality_peak_concentration"
+        assert FEATURE_NAMES[63] == "weekend_lift"
+        assert FEATURE_NAMES[69] == "temporal_confianza"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

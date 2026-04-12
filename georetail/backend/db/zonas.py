@@ -109,6 +109,13 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
                     vz.flujo_peatonal_noche, vz.flujo_peatonal_total,
                     vz.flujo_popular_times_score,
                     vz.vcity_flujo_peatonal,
+                    vz.weekend_lift, vz.sunday_lift,
+                    vz.weekday_midday_share, vz.weekend_evening_share,
+                    vz.late_night_share, vz.holiday_proxy_score,
+                    vz.temporal_confianza,
+                    vz.seasonality_summer_lift, vz.seasonality_christmas_lift,
+                    vz.seasonality_rebajas_lift, vz.seasonality_volatility,
+                    vz.seasonality_peak_concentration,
                     vz.renta_media_hogar, vz.edad_media, vz.pct_extranjeros,
                     vz.score_turismo, vz.num_negocios_activos,
                     vz.pct_locales_vacios, vz.nivel_ruido_db,
@@ -125,6 +132,9 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
                     vz.densidad_hab_km2, vz.poblacion,
                     vz.pct_poblacio_25_44, vz.delta_renta_3a,
                     vz.nivel_estudios_alto_pct,
+                    vz.gini, vz.p80_p20, vz.tamano_hogar,
+                    vz.hogares_con_menores, vz.personas_solas,
+                    vz.renta_media_uc, vz.renta_mediana_uc,
                     vz.licencias_nuevas_1a, vz.eventos_culturales_500m,
                     vz.mercados_municipales_1km,
                     sz.score_global, sz.score_flujo_peatonal, sz.score_demografia,
@@ -190,6 +200,92 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
             """, zona_id)
             result["num_lineas_transporte"] = trans["num_lineas"] if trans else 0
             result["num_paradas_transporte"] = trans["num_paradas"] if trans else 0
+
+            lineas = await conn.fetch(
+                """
+                SELECT
+                    lt.codigo,
+                    lt.tipo,
+                    MIN(ST_Distance(
+                        pt.geometria::geography,
+                        ST_Centroid(z.geometria)::geography
+                    ))::int AS distancia_m,
+                    AVG(ft.frecuencia_min)::float AS frecuencia_media_min
+                FROM zonas z
+                JOIN paradas_transporte pt
+                  ON ST_DWithin(pt.geometria::geography, ST_Centroid(z.geometria)::geography, 500)
+                JOIN paradas_lineas pl ON pl.parada_id = pt.id
+                JOIN lineas_transporte lt ON lt.id = pl.linea_id
+                LEFT JOIN frecuencias_transporte ft
+                  ON ft.linea_id = lt.id
+                 AND ft.dia_tipo = 'laborable'
+                 AND ft.franja = 'manana'
+                WHERE z.id = $1
+                GROUP BY lt.codigo, lt.tipo
+                ORDER BY distancia_m ASC, frecuencia_media_min ASC NULLS LAST, lt.codigo
+                LIMIT 8
+                """,
+                zona_id,
+            )
+            result["transporte_lineas_cercanas"] = [dict(row) for row in lineas]
+
+            try:
+                bicing = await conn.fetchval(
+                    """
+                    SELECT COUNT(*)::int
+                    FROM estaciones_bicing eb
+                    JOIN zonas z ON z.id = $1
+                    WHERE ST_DWithin(
+                        eb.geometria::geography,
+                        ST_Centroid(z.geometria)::geography,
+                        400
+                    )
+                    """,
+                    zona_id,
+                )
+            except Exception:
+                bicing = None
+            result["num_bicing_400m"] = bicing
+
+            try:
+                carril = await conn.fetchval(
+                    """
+                    SELECT EXISTS(
+                        SELECT 1
+                        FROM carriles_bici cb
+                        JOIN zonas z ON z.id = $1
+                        WHERE ST_DWithin(
+                            cb.geometria::geography,
+                            ST_Centroid(z.geometria)::geography,
+                            200
+                        )
+                    )::boolean
+                    """,
+                    zona_id,
+                )
+            except Exception:
+                carril = None
+            result["tiene_carril_bici"] = carril
+
+            try:
+                festive_ratio = await conn.fetchval(
+                    """
+                    SELECT
+                        AVG(CASE WHEN ft.dia_tipo = 'festivo' THEN 1.0 / NULLIF(ft.frecuencia_min, 0) END)
+                        /
+                        NULLIF(AVG(CASE WHEN ft.dia_tipo = 'laborable' THEN 1.0 / NULLIF(ft.frecuencia_min, 0) END), 0)
+                    FROM zonas z
+                    JOIN paradas_transporte pt
+                      ON ST_DWithin(pt.geometria::geography, ST_Centroid(z.geometria)::geography, 500)
+                    JOIN paradas_lineas pl ON pl.parada_id = pt.id
+                    JOIN frecuencias_transporte ft ON ft.linea_id = pl.linea_id
+                    WHERE z.id = $1
+                    """,
+                    zona_id,
+                )
+            except Exception:
+                festive_ratio = None
+            result["transporte_festivo_ratio"] = festive_ratio
 
             # Alertas NLP activas
             alertas = await conn.fetch(

@@ -572,6 +572,18 @@ async def _construir_features_historicas_detalladas(
                 vz.personas_solas,
                 vz.renta_media_uc,
                 vz.renta_mediana_uc,
+                vz.seasonality_summer_lift,
+                vz.seasonality_christmas_lift,
+                vz.seasonality_rebajas_lift,
+                vz.seasonality_volatility,
+                vz.seasonality_peak_concentration,
+                vz.weekend_lift,
+                vz.sunday_lift,
+                vz.weekday_midday_share,
+                vz.weekend_evening_share,
+                vz.late_night_share,
+                vz.holiday_proxy_score,
+                vz.temporal_confianza,
                 ST_Distance(
                     ST_Centroid(z.geometria)::geography,
                     ST_GeomFromText(
@@ -704,6 +716,18 @@ async def _construir_features_historicas_detalladas(
             "personas_solas": vz.get("personas_solas"),
             "renta_media_uc": vz.get("renta_media_uc"),
             "renta_mediana_uc": vz.get("renta_mediana_uc"),
+            "seasonality_summer_lift": vz.get("seasonality_summer_lift"),
+            "seasonality_christmas_lift": vz.get("seasonality_christmas_lift"),
+            "seasonality_rebajas_lift": vz.get("seasonality_rebajas_lift"),
+            "seasonality_volatility": vz.get("seasonality_volatility"),
+            "seasonality_peak_concentration": vz.get("seasonality_peak_concentration"),
+            "weekend_lift": vz.get("weekend_lift"),
+            "sunday_lift": vz.get("sunday_lift"),
+            "weekday_midday_share": vz.get("weekday_midday_share"),
+            "weekend_evening_share": vz.get("weekend_evening_share"),
+            "late_night_share": vz.get("late_night_share"),
+            "holiday_proxy_score": vz.get("holiday_proxy_score"),
+            "temporal_confianza": vz.get("temporal_confianza"),
         }
         raw["indice_potencial_consumo"] = (
             None

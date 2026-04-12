@@ -16,6 +16,9 @@ READINESS_ROOT = CSV_ROOT / "_meta" / "demografia_readiness"
 LATEST_ROOT = READINESS_ROOT / "latest"
 DEFAULT_SOURCE_DECISIONS_PATH = LATEST_ROOT / "source_decisions.json"
 DEFAULT_FEATURE_DECISIONS_PATH = LATEST_ROOT / "demography_feature_decisions.json"
+TEMPORAL_READINESS_ROOT = CSV_ROOT / "_meta" / "temporal_readiness"
+TEMPORAL_LATEST_ROOT = TEMPORAL_READINESS_ROOT / "latest"
+DEFAULT_TEMPORAL_GATES_PATH = TEMPORAL_LATEST_ROOT / "temporal_feature_gates.json"
 
 DEMOGRAFIA_MODEL_CORE_FEATURES: tuple[str, ...] = (
     "renta_media_hogar",
@@ -31,6 +34,31 @@ DEMOGRAFIA_DEFAULT_ACTIVE_FEATURES: tuple[str, ...] = (
     *DEMOGRAFIA_MODEL_CORE_FEATURES,
     "indice_potencial_consumo",
 )
+
+TEMPORAL_SEASONAL_FEATURES: tuple[str, ...] = (
+    "seasonality_summer_lift",
+    "seasonality_christmas_lift",
+    "seasonality_rebajas_lift",
+    "seasonality_volatility",
+    "seasonality_peak_concentration",
+)
+
+TEMPORAL_WEEKLY_FEATURES: tuple[str, ...] = (
+    "weekend_lift",
+    "sunday_lift",
+    "weekday_midday_share",
+    "weekend_evening_share",
+    "late_night_share",
+    "holiday_proxy_score",
+    "temporal_confianza",
+)
+
+TEMPORAL_MODELABLE_FEATURES: tuple[str, ...] = (
+    *TEMPORAL_SEASONAL_FEATURES,
+    *TEMPORAL_WEEKLY_FEATURES,
+)
+
+TEMPORAL_LEGACY_ACTIVE_FEATURES: tuple[str, ...] = TEMPORAL_SEASONAL_FEATURES
 
 DEMOGRAFIA_BATCH_BCN1_FEATURES: tuple[str, ...] = (
     "gini",
@@ -169,6 +197,12 @@ def default_active_demography_features() -> list[str]:
     return list(DEMOGRAFIA_DEFAULT_ACTIVE_FEATURES)
 
 
+def default_active_temporal_features(*, legacy_compatible: bool = True) -> list[str]:
+    if legacy_compatible:
+        return list(TEMPORAL_LEGACY_ACTIVE_FEATURES)
+    return []
+
+
 def select_active_demography_features(
     requested: Optional[Sequence[str]] = None,
 ) -> list[str]:
@@ -183,14 +217,41 @@ def select_active_demography_features(
     ]
 
 
+def select_active_temporal_features(
+    requested: Optional[Sequence[str]] = None,
+    *,
+    legacy_compatible: bool = True,
+) -> list[str]:
+    if requested is None:
+        return default_active_temporal_features(legacy_compatible=legacy_compatible)
+
+    requested_set = {str(value) for value in requested}
+    return [
+        feature
+        for feature in TEMPORAL_MODELABLE_FEATURES
+        if feature in requested_set
+    ]
+
+
 def build_model_feature_names(
     active_demography_features: Optional[Sequence[str]] = None,
+    active_temporal_features: Optional[Sequence[str]] = None,
 ) -> list[str]:
     active = set(select_active_demography_features(active_demography_features))
+    active_temporal = set(
+        select_active_temporal_features(active_temporal_features)
+    )
     return [
         feature
         for feature in FEATURE_NAMES
-        if feature not in DEMOGRAFIA_MODELABLE_FEATURES or feature in active
+        if (
+            feature not in DEMOGRAFIA_MODELABLE_FEATURES
+            or feature in active
+        )
+        and (
+            feature not in TEMPORAL_MODELABLE_FEATURES
+            or feature in active_temporal
+        )
     ]
 
 
@@ -229,11 +290,32 @@ def coerce_json_list(value: Any) -> list[str]:
     return []
 
 
+def coerce_json_mapping(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return decoded if isinstance(decoded, dict) else {}
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
 def get_model_feature_names_from_record(record: Mapping[str, Any] | None) -> list[str]:
     if not record:
         return build_model_feature_names()
+    metricas = coerce_json_mapping(record.get("metricas"))
+    temporal_feature_names: Optional[list[str]]
+    if "temporal_feature_names" in record:
+        temporal_feature_names = coerce_json_list(record.get("temporal_feature_names"))
+    elif "temporal_feature_names" in metricas:
+        temporal_feature_names = coerce_json_list(metricas.get("temporal_feature_names"))
+    else:
+        temporal_feature_names = None
     return build_model_feature_names(
-        coerce_json_list(record.get("demografia_feature_names"))
+        coerce_json_list(record.get("demografia_feature_names")),
+        temporal_feature_names,
     )
 
 
@@ -283,3 +365,24 @@ def load_active_demography_features_from_artifact(
     active = payload.get("active_demography_features")
     selected = select_active_demography_features(coerce_json_list(active))
     return selected or default_active_demography_features()
+
+
+def load_temporal_feature_gates(
+    path: Optional[Path | str] = None,
+) -> dict[str, Any]:
+    gate_path = Path(path) if path else DEFAULT_TEMPORAL_GATES_PATH
+    if not gate_path.exists():
+        return {}
+    return load_json_file(gate_path)
+
+
+def load_active_temporal_features_from_artifact(
+    path: Optional[Path | str] = None,
+) -> list[str]:
+    payload = load_temporal_feature_gates(path)
+    active = payload.get("active_temporal_features")
+    selected = select_active_temporal_features(
+        coerce_json_list(active),
+        legacy_compatible=False,
+    )
+    return selected

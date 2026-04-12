@@ -11,6 +11,7 @@ El scorer produce:
   - shap_values (XGBoost) o None
 """
 from __future__ import annotations
+import asyncio
 import json, logging, os
 from typing import Optional
 import numpy as np
@@ -95,15 +96,47 @@ async def calcular_scores_batch(zona_ids: list[str], sector: str, idea_tags: lis
     if _xgb_model is not None:
         try:
             X, ids = await construir_features_batch(zona_ids, sector)
-            return await _scores_xgboost_batch(X, ids, sector)
+            resultados_xgb = await _scores_xgboost_batch(X, ids, sector)
+
+            # Cargar datos manuales en paralelo — un gather en lugar de N awaits secuenciales
+            datos_lista = await asyncio.gather(
+                *[
+                    _get_datos_zona_completos(zid, sector, idea_tags=idea_tags, perfil_negocio=perfil_negocio)
+                    for zid in ids
+                ],
+                return_exceptions=True,
+            )
+            resultados: dict[str, dict] = {}
+            for zona_id, datos in zip(ids, datos_lista):
+                if isinstance(datos, Exception):
+                    logger.warning("_get_datos_zona_completos fallido zona=%s: %s", zona_id, datos)
+                    datos = {}
+                manual = _score_manual(datos, datos_sector)
+                resultados[zona_id] = {
+                    **manual,
+                    **resultados_xgb.get(zona_id, {}),
+                    "score_global": resultados_xgb.get(zona_id, {}).get("score_global", manual.get("score_global")),
+                    "probabilidad_supervivencia": resultados_xgb.get(zona_id, {}).get("probabilidad_supervivencia"),
+                    "shap_values": resultados_xgb.get(zona_id, {}).get("shap_values"),
+                    "modelo_version": resultados_xgb.get(zona_id, {}).get("modelo_version"),
+                }
+            return resultados
         except Exception as e:
             logger.error("Error XGBoost batch: %s — fallback a pesos manuales", e)
 
-    # Fallback manual: queries individuales
+    # Fallback manual: cargar en paralelo también
+    datos_lista = await asyncio.gather(
+        *[
+            _get_datos_zona_completos(zid, sector, idea_tags=idea_tags, perfil_negocio=perfil_negocio)
+            for zid in zona_ids
+        ],
+        return_exceptions=True,
+    )
     resultados = {}
-    for zona_id in zona_ids:
+    for zona_id, datos in zip(zona_ids, datos_lista):
         try:
-            datos = await _get_datos_zona_completos(zona_id, sector, idea_tags=idea_tags, perfil_negocio=perfil_negocio)
+            if isinstance(datos, Exception):
+                raise datos
             resultados[zona_id] = _score_manual(datos, datos_sector)
         except Exception as e:
             logger.warning("Score manual fallido zona=%s: %s", zona_id, e)
@@ -237,19 +270,23 @@ def _score_manual(datos: dict, sector: dict) -> dict:
     # Cada dimensión normaliza su(s) variable(s) a 0-100
 
     # FLUJO PEATONAL — fusión ponderada; escala manual: 3000 p/día = score 100
-    from scoring.dimensiones.flujo_peatonal import calcular_flujo_score
+    from scoring.dimensiones.flujo_peatonal import calcular_flujo_con_temporalidad
     _fp_total = datos.get("flujo_peatonal_total")
     _fp_pt    = datos.get("flujo_popular_times_score")
     _fp_vcity = datos.get("vcity_flujo_peatonal")
     _fp_ratio = datos.get("ratio_locales_comerciales")
     if any(x is not None for x in [_fp_total, _fp_pt, _fp_vcity, _fp_ratio]):
-        s_flujo = calcular_flujo_score(
+        _flujo_result = calcular_flujo_con_temporalidad(
+            row=datos,
+            idea_tags=datos.get("_idea_tags"),
+            perfil_negocio=perfil_negocio,
             popular_times_score=_fp_pt,
             vcity_flujo=_fp_vcity,
             vianants_intensitat=_fp_total,
             ratio_locales=_fp_ratio,
             vianants_max_barcelona=3000.0,
         )
+        s_flujo = _flujo_result["score_flujo"]
     else:
         s_flujo = 0.0
 
@@ -384,18 +421,11 @@ async def _score_xgboost(zona_id: str, sector: str, datos: dict) -> dict:
 
     # Score global: prob de supervivencia → escala 0-100
     score_global = min(100.0, prob * 100.0)
+    manual = _score_manual(datos, await _get_datos_sector(sector))
 
     return {
+        **manual,
         "score_global":             round(score_global, 1),
-        "score_flujo_peatonal":     None,
-        "score_demografia":         None,
-        "score_competencia":        None,
-        "score_precio_alquiler":    None,
-        "score_transporte":         None,
-        "score_seguridad":          None,
-        "score_turismo":            None,
-        "score_entorno_comercial":  None,
-        "score_dinamismo":          None,
         "probabilidad_supervivencia": round(prob, 3),
         "shap_values":              shap,
         "modelo_version":           f"xgboost_{_xgb_version}",
@@ -539,7 +569,12 @@ async def _get_datos_zona_completos(zona_id: str, sector: str, idea_tags: list[s
         from scoring.dimensiones.transporte import calcular_score_transporte
         trans_data = await calcular_score_transporte(zona_id, idea_tags=idea_tags, perfil_negocio=perfil_negocio)
         result["score_transporte_calculado"] = trans_data["score_transporte"]
+        result["score_transit"] = trans_data["score_transit"]
         result["score_movilidad_activa"] = trans_data["score_movilidad_activa"]
+        result["transporte_detalles"] = trans_data.get("detalles") or {}
+        result["num_bicing_400m"] = trans_data.get("detalles", {}).get("num_bicing_400m")
+        result["tiene_carril_bici"] = trans_data.get("detalles", {}).get("tiene_carril_bici")
+        result["transporte_lineas_cercanas"] = trans_data.get("detalles", {}).get("top_lineas") or []
     except Exception as e:
         logger.warning("Error en score transporte enriquecido zona=%s: %s", zona_id, e)
 

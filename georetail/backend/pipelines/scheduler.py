@@ -6,6 +6,7 @@ Frecuencias (ver arquitectura.md):
   aforaments:          Diario 04:00
   vianants:            Mensual día 10, 05:00  ← peatones reales (sobreescribe aforaments)
   vcity:               Mensual día 12, 04:00  ← flujo peatonal BSC (VCity, anual)
+  temporalidad:        Mensual día 13, 05:00  ← fines de semana, festivos y estacionalidad
   precios:             Semanal lunes 05:00
   scores:              Semanal martes 06:00
   demografia:          Mensual día 1, 07:00
@@ -55,6 +56,7 @@ def init_scheduler() -> None:
     _scheduler.add_job(_run_vianants,   CronTrigger(day=10, hour=5, minute=0),        id="vianants",    replace_existing=True, **_JOB_DEFAULTS)
     # VCity BSC flujo peatonal (mensual día 12, 04:00) — datos móvil+GPS, anuales
     _scheduler.add_job(_run_vcity,      CronTrigger(day=12, hour=4, minute=0),        id="vcity",       replace_existing=True, **_JOB_DEFAULTS)
+    _scheduler.add_job(_run_temporalidad, CronTrigger(day=13, hour=5, minute=0),      id="temporalidad", replace_existing=True, **_JOB_DEFAULTS)
     _scheduler.add_job(_run_precios,    CronTrigger(day_of_week="mon", hour=5),        id="precios",     replace_existing=True, **_JOB_DEFAULTS)
     _scheduler.add_job(_run_scores,     CronTrigger(day_of_week="tue", hour=6),        id="scores",      replace_existing=True, **_JOB_DEFAULTS)
     _scheduler.add_job(_run_demografia, CronTrigger(day=1, hour=7),                    id="demografia",  replace_existing=True, **_JOB_DEFAULTS)
@@ -142,6 +144,19 @@ async def _run_vcity():
         logger.info("Pipeline vcity — %s", result)
     except Exception as e:
         logger.error("Pipeline vcity error: %s", e)
+
+async def _run_temporalidad():
+    """
+    Mensual día 13, 05:00 — capa temporal BCN.
+    Calcula lifts de fin de semana, dayparts y estacionalidad una vez
+    aforaments, vianants, vcity y popular_times ya están actualizados.
+    """
+    try:
+        from pipelines.peatonal.temporalidad import ejecutar
+        result = await ejecutar()
+        logger.info("Pipeline temporalidad — %s", result)
+    except Exception as e:
+        logger.error("Pipeline temporalidad error: %s", e)
 
 async def _run_precios():
     try:

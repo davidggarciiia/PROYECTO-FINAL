@@ -150,13 +150,17 @@ class TestEstructuraArray:
         assert FEATURE_NAMES[31] == "delta_renta_3a"
 
     def test_v5_1_nivel_estudios_es_indice_32(self):
-        """La feature v5.1 nivel_estudios_alto_pct ocupa el índice 32; v6 añade 3 más."""
+        """Mantiene índices estables para v5-v14."""
         assert FEATURE_NAMES[32] == "nivel_estudios_alto_pct"
         assert FEATURE_NAMES[35] == "ratio_complementarios"
-        assert FEATURE_NAMES[-7] == "gini"
-        assert FEATURE_NAMES[-3] == "personas_solas"
-        assert FEATURE_NAMES[-2] == "renta_media_uc"
-        assert FEATURE_NAMES[-1] == "renta_mediana_uc"
+        assert FEATURE_NAMES[46] == "gini"
+        assert FEATURE_NAMES[50] == "personas_solas"
+        assert FEATURE_NAMES[51] == "renta_media_uc"
+        assert FEATURE_NAMES[52] == "renta_mediana_uc"
+        assert FEATURE_NAMES[58] == "seasonality_summer_lift"
+        assert FEATURE_NAMES[62] == "seasonality_peak_concentration"
+        assert FEATURE_NAMES[63] == "weekend_lift"
+        assert FEATURE_NAMES[69] == "temporal_confianza"
 
 
 # ─── Tests de imputación con medias ──────────────────────────────────────────
