@@ -227,3 +227,48 @@ export interface CompetenciaDetalle {
   fuente: string;
   datos_calculados: boolean;
 }
+
+// ── Legal Roadmap (Álvaro — LegalPanel) ──────────────────────────────────────
+
+export interface ProfesionalExterno {
+  nombre: string;
+  descripcion: string;
+  coste_aprox: string;
+}
+
+export interface TramiteLegal {
+  numero: number;
+  titulo: string;
+  nombre_oficial?: string;
+  que_es: string;
+  donde: string;
+  documentos?: string[];
+  tiempo_estimado?: string;
+  coste_estimado?: string;
+  enlace?: string;
+  alerta?: string;
+}
+
+export interface FaseRoadmap {
+  id: string;
+  numero: number;
+  titulo: string;
+  descripcion?: string;
+  tramites: TramiteLegal[];
+}
+
+export interface CosteRoadmap {
+  concepto: string;
+  coste: string;
+}
+
+export interface LegalRoadmapResponse {
+  tipo_negocio: string;
+  distrito: string;
+  zona_restringida: boolean;
+  restriccion_detalle?: string;
+  equipo_externo: ProfesionalExterno[];
+  fases: FaseRoadmap[];
+  costes_resumen: CosteRoadmap[];
+  proximos_pasos: string[];
+}

@@ -26,8 +26,8 @@ Cambio v5 (demografía avanzada): añadidas dos features demográficas al final
 (índices 30-31) escritas por pipelines/demografia.py desde CKAN + IERMB:
   - pct_poblacio_25_44  (índice 30) — % de población 25-44 años (consumidores activos)
                                       Fuente: padrón BCN quinquenal CKAN
-  - delta_renta_3a      (índice 31) — % variación renta disponible 2019→2022 por distrito
-                                      Proxy de gentrificación / dinamismo económico
+  - delta_renta_3a      (índice 31) — DEPRECATED v13: alias a renta_variacion_3a (dinamismo_zonal)
+                                      Mantenido en FEATURE_NAMES por compatibilidad de modelos.
 
 Cambio v5.1 (capital humano): añadida feature de educación al final (índice 32)
 escrita por pipelines/demografia.py._fetch_nivel_estudis() desde padrón BCN:
@@ -76,6 +76,15 @@ Cambio v12 (renta por unidad de consumo): añadidas dos features demográficas
 espaciales al final (índices 51-52):
   - renta_media_uc
   - renta_mediana_uc
+
+Cambio v13 (dinamismo comercial histórico): añadidas cinco features de trayectoria
+temporal al final (índices 53-57) escritas por pipelines/comercio/dinamismo.py
+desde negocios_historico + llicencies + variables_zona:
+  - score_dinamismo_zona    (índice 53) — score de dinamismo 0-10 calculado por el pipeline
+  - ratio_apertura_cierre_1a (índice 54) — ratio apertura/cierre licencias último año
+  - tasa_supervivencia_3a   (índice 55) — % negocios supervivieron ≥3 años en la zona
+  - renta_variacion_3a      (índice 56) — % variación de renta últimos 3 años
+  - hhi_sectorial           (índice 57) — concentración sectorial (0=diverso, 1=monopolio)
 
 NOTA: Los modelos antiguos se recortan por nombre de feature desde train/evaluate/scorer.
 """
@@ -129,7 +138,7 @@ FEATURE_NAMES = [
     "flujo_peatonal_score",       # fusión 0-100 (v4)
     # ── v5: demografía avanzada (CKAN + IERMB) ────────────────────────────────
     "pct_poblacio_25_44",         # % población 25-44 años (consumidores activos)
-    "delta_renta_3a",             # % variación renta 2019→2022 (proxy gentrificación)
+    "delta_renta_3a",             # DEPRECATED v13 — alias a renta_variacion_3a; compat modelos v5-v12
     # ── v5.1: capital humano (padrón BCN educación) ───────────────────────────
     # Calculado por _fetch_nivel_estudis() en pipelines/demografia.py desde
     # dataset pad_mdes / pad_mdnv_estudis. Correlaciona con renta y ticket medio.
@@ -161,6 +170,12 @@ FEATURE_NAMES = [
     "personas_solas",
     "renta_media_uc",
     "renta_mediana_uc",
+    # ── v13: dinamismo comercial histórico (negocios_historico + llicencies) ──
+    "score_dinamismo_zona",      # score de trayectoria 0-10 (pipeline mensual)
+    "ratio_apertura_cierre_1a",  # apertura/cierre de licencias último año
+    "tasa_supervivencia_3a",     # % negocios supervivieron ≥3 años
+    "renta_variacion_3a",        # % variación renta 3 años (proxy gentrificación)
+    "hhi_sectorial",             # concentración sectorial 0-1
 ]
 
 # Medias base de imputación. Las del batch BCN pueden sobreescribirse desde
@@ -192,7 +207,7 @@ _BASE_MEDIAS = {
     "vcity_flujo_peatonal": 18_000.0,  # ~18 000 peatones/día media BCN (raw, normalizar)
     # v5 — demografía avanzada (padrón BCN quinquenal + renda IRPF histórica)
     "pct_poblacio_25_44": 0.28,        # ~28% de población 25-44 en BCN (media por barrio)
-    "delta_renta_3a": 0.08,            # ~8% variación renta 2019→2022 (media distritos BCN)
+    "delta_renta_3a": 0.04,            # v13: alias a renta_variacion_3a (~4% variación renta rolling 3a media BCN)
     # v5.1 — capital humano (padrón BCN dataset educación)
     "nivel_estudios_alto_pct": 0.35,   # ~35% con estudios universitarios/postgrado (media BCN)
     # v6 — competencia avanzada (Google Maps → competencia_detalle_zona)
@@ -220,6 +235,12 @@ _BASE_MEDIAS = {
     "personas_solas": 0.16,
     "renta_media_uc": 17000.0,
     "renta_mediana_uc": 14500.0,
+    # v13 — dinamismo comercial histórico
+    "score_dinamismo_zona":       5.0,   # media BCN: zona neutra
+    "ratio_apertura_cierre_1a":   1.0,   # equilibrio apertura/cierre
+    "tasa_supervivencia_3a":      0.52,  # ~52% supervivencia media BCN
+    "renta_variacion_3a":         0.04,  # ~4% variación renta 3 años (media BCN)
+    "hhi_sectorial":              0.28,  # diversidad moderada (media BCN)
 }
 
 
@@ -341,7 +362,8 @@ def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
         "flujo_peatonal_score":      _flujo_score,
         # v5: demografía avanzada — leídas directamente de vz_demografia vía vista
         "pct_poblacio_25_44":        vz.get("pct_poblacio_25_44"),
-        "delta_renta_3a":            vz.get("delta_renta_3a"),
+        # v13: prefer renta_variacion_3a (dinamismo_zonal); fallback to legacy column
+        "delta_renta_3a":            vz.get("renta_variacion_3a") or vz.get("delta_renta_3a"),
         # v5.1: capital humano — fracción con estudios universitarios/postgrado
         "nivel_estudios_alto_pct":   vz.get("nivel_estudios_alto_pct"),
         # v6: competencia avanzada — leídas de competencia_detalle_zona vía comp dict

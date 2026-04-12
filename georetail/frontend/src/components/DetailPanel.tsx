@@ -5,6 +5,7 @@ import type { ZonaPreview, LocalDetalleResponse, FinancieroResponse, Competencia
 import { api } from "@/lib/api";
 import FinancialPanel from "./FinancialPanel";
 import CompetenciaPanel from "./CompetenciaPanel";
+import LegalPanel from "./LegalPanel";
 import ScoreBars from "./ScoreBars";
 import styles from "./DetailPanel.module.css";
 
@@ -330,28 +331,7 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
 
         {/* ── Legal tab ── */}
         {tab === "legal" && (
-          <div className={styles.tabPane}>
-            <div className={styles.legalCard}>
-              <div className={styles.legalIcon}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 3L2 7l10 4 10-4-10-4zM2 17l10 4 10-4M2 12l10 4 10-4" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>
-              <p className={styles.legalText}>
-                Consulta los requisitos legales completos para tu sector con el Ayuntamiento de Barcelona y verifica el Plan de Usos de la zona.
-              </p>
-              <div className={styles.legalInfo}>
-                <div className={styles.legalRow}>
-                  <span>Uso comercial</span>
-                  <span className="badge badge-verde">Verificable</span>
-                </div>
-                <div className={styles.legalRow}>
-                  <span>Actividades clasificadas</span>
-                  <span className="badge badge-amarillo">Consultar IVU</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <LegalPanel zona={zona} sessionId={sessionId} />
         )}
 
         {/* ── Dev tab ── */}
