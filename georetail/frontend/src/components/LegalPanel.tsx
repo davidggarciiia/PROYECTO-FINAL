@@ -198,6 +198,13 @@ export default function LegalPanel({ zona, sessionId }: Props) {
   const [error, setError] = useState(false);
   const hasFetched = useRef(false);
 
+  // Reset guard cuando cambia la zona — evita que se muestre el roadmap de otra zona
+  useEffect(() => {
+    hasFetched.current = false;
+    setRoadmap(null);
+    setError(false);
+  }, [zona.zona_id]);
+
   const load = useCallback(async () => {
     if (hasFetched.current) return;
     hasFetched.current = true;
@@ -293,6 +300,17 @@ export default function LegalPanel({ zona, sessionId }: Props) {
         </div>
       </div>
 
+      {/* ── Restricción de zona ── */}
+      {roadmap.zona_restringida && roadmap.restriccion_detalle && (
+        <div className={styles.restriccionAlert}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 2 }}>
+            <path d="M7 1.5l5.5 10H1.5L7 1.5z" stroke="var(--red)" strokeWidth="1.3" strokeLinejoin="round" />
+            <path d="M7 6v2.5M7 10.5h.01" stroke="var(--red)" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          <p className={styles.restriccionText}>{roadmap.restriccion_detalle}</p>
+        </div>
+      )}
+
       {/* ── Equipo externo ── */}
       <section className={styles.section}>
         <h3 className={styles.sectionTitle}>
@@ -376,6 +394,25 @@ export default function LegalPanel({ zona, sessionId }: Props) {
         </p>
       </section>
 
+      {/* ── Próximos pasos ── */}
+      {roadmap.proximos_pasos && roadmap.proximos_pasos.length > 0 && (
+        <section className={styles.section}>
+          <h3 className={styles.sectionTitle}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2 6h8M7 3l3 3-3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Próximos pasos
+          </h3>
+          <ol className={styles.proximosPasosList}>
+            {roadmap.proximos_pasos.map((paso, i) => (
+              <li key={i} className={styles.proximosPasosItem}>
+                <span className={styles.proximosPasosNum}>{i + 1}</span>
+                <span>{paso}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
     </div>
   );
