@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from scoring.flujo_peatonal import (
+from scoring.dimensiones.flujo_peatonal import (
     PESOS_BASE,
     VCITY_MAX_BARCELONA,
     VIANANTS_MAX_BARCELONA,
@@ -92,7 +92,7 @@ def test_sin_ninguna_fuente_devuelve_fallback():
 
 def test_pesos_suman_100_sin_una_fuente():
     """Con 3 fuentes activas, la suma de pesos redistribuidos es 1.0."""
-    from scoring.flujo_peatonal import PESOS_BASE
+    from scoring.dimensiones.flujo_peatonal import PESOS_BASE
 
     disponibles = {k: v for k, v in PESOS_BASE.items() if k != "vcity"}
     peso_total = sum(disponibles.values())

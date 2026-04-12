@@ -29,13 +29,13 @@ import pytest
 
 from scoring.scorer import _score_manual
 from scoring.features import FEATURE_NAMES, _MEDIAS, _build_array
-from scoring.flujo_peatonal import (
+from scoring.dimensiones.flujo_peatonal import (
     PESOS_BASE,
     VCITY_MAX_BARCELONA,
     VIANANTS_MAX_BARCELONA,
     calcular_flujo_score,
 )
-from pipelines.demografia import _extract_iermb_bcn_value, _parse_float, _parse_renda_csv
+from pipelines.demografia.demografia import _extract_iermb_bcn_value, _parse_float, _parse_renda_csv
 
 
 # ── Clase 1: None vs 0 — semántica correcta ───────────────────────────────────
@@ -198,11 +198,11 @@ class TestMediasFinitas:
 
 class TestFracionesFlujo:
     def test_fracciones_suman_1_cuando_hay_total(self):
-        from pipelines.aforaments import _FRAC_MANANA, _FRAC_TARDE, _FRAC_NOCHE
+        from pipelines.peatonal.aforaments import _FRAC_MANANA, _FRAC_TARDE, _FRAC_NOCHE
         assert abs(_FRAC_MANANA + _FRAC_TARDE + _FRAC_NOCHE - 1.0) < 1e-9
 
     def test_fracciones_positivas(self):
-        from pipelines.aforaments import _FRAC_MANANA, _FRAC_TARDE, _FRAC_NOCHE
+        from pipelines.peatonal.aforaments import _FRAC_MANANA, _FRAC_TARDE, _FRAC_NOCHE
         assert _FRAC_MANANA > 0
         assert _FRAC_TARDE > 0
         assert _FRAC_NOCHE > 0
@@ -210,7 +210,7 @@ class TestFracionesFlujo:
     def test_fracciones_feature_flujo_suman_uno_con_total(self):
         """Si hay flujo total, manana+tarde+noche deben reconstruir el total."""
         flujo_total = 1200.0
-        from pipelines.aforaments import _FRAC_MANANA, _FRAC_TARDE, _FRAC_NOCHE
+        from pipelines.peatonal.aforaments import _FRAC_MANANA, _FRAC_TARDE, _FRAC_NOCHE
         manana = flujo_total * _FRAC_MANANA
         tarde  = flujo_total * _FRAC_TARDE
         noche  = flujo_total * _FRAC_NOCHE

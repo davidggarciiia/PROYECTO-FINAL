@@ -275,7 +275,7 @@ async def _booking_api_alojamientos() -> list[dict]:
 
     # Intentar primero el BookingScraper (curl_cffi) y si falla, Playwright
     try:
-        from pipelines.scraping.booking_scraper import BookingScraper
+        from pipelines.inmobiliario.scraping.booking_scraper import BookingScraper
         async with BookingScraper() as scraper:
             hoteles = await scraper.scrape_barcelona(max_pages=5)
             if not hoteles:

@@ -34,6 +34,7 @@ from typing import Optional
 
 import httpx
 from db.conexion import get_db
+from scoring.infra.governance import load_source_decisions, source_is_approved
 
 # D3: número de reintentos para llamadas HTTP externas (CKAN, IERMB)
 _HTTP_RETRIES = 3
@@ -72,8 +73,43 @@ async def ejecutar() -> dict:
     eid = await _init()
     ok = 0
     try:
-        ok += await _poblar_renta()
-        ok += await _poblar_padro()
+        local_backfill_error: Exception | None = None
+        try:
+            from pipelines.demografia.demografia_backfill import ejecutar_backfill  # noqa: PLC0415
+
+            result = await ejecutar_backfill(scope="full", years_mode="latest")
+            ok += int(result.get("rows_written") or 0)
+            logger.info(
+                "Demografia local OK: scope=%s rows_written=%s support_datasets=%s",
+                result.get("scope"),
+                result.get("rows_written"),
+                result.get("citywide_support_datasets"),
+            )
+        except Exception as exc:
+            local_backfill_error = exc
+            logger.warning(
+                "Backfill local de demografia fallo; activando fallback online: %s",
+                exc,
+            )
+
+        if local_backfill_error is not None:
+            decisions = load_source_decisions()
+
+            if _fuente_aprobada(decisions, "renda-disponible-llars-bcn"):
+                ok += await _poblar_renta()
+            else:
+                logger.info("Saltando renta demografica: dataset no aprobado por readiness")
+
+            if _fuente_aprobada(
+                decisions,
+                "pad_mdbas_edat-q",
+                "pad_mdbas_niv-educa-esta_sexe",
+                "pad_mdb_nacionalitat-g_edat-q_sexe",
+            ):
+                ok += await _poblar_padro()
+            else:
+                logger.info("Saltando padro demografico: datasets no aprobados por readiness")
+
         ok += await _poblar_seguretat_iermb()
         await _fin(eid, ok, "ok")
         return {"registros": ok}
@@ -81,6 +117,17 @@ async def ejecutar() -> dict:
         logger.error("Pipeline demografia error: %s", e)
         await _fin(eid, ok, "error", str(e))
         raise
+
+
+def _fuente_aprobada(decisions: dict[str, dict], *dataset_ids: str) -> bool:
+    if not decisions:
+        return True
+
+    presentes = [dataset_id for dataset_id in dataset_ids if dataset_id in decisions]
+    if not presentes:
+        return True
+
+    return any(source_is_approved(dataset_id, decisions) for dataset_id in presentes)
 
 
 # ── Renta disponible (CSV BCN Open Data) ──────────────────────────────────────

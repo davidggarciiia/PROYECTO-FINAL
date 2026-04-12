@@ -28,14 +28,14 @@ import pytest
 
 from scoring.features import FEATURE_NAMES, _MEDIAS, _build_array
 from scoring.scorer import _score_manual, _score_neutro
-from scoring.flujo_peatonal import PESOS_BASE
+from scoring.dimensiones.flujo_peatonal import PESOS_BASE
 
 
 # ── Clase 1: FEATURE_NAMES estructura ────────────────────────────────────────
 
 class TestFeatureNamesEstructura:
-    def test_exactamente_33_features(self):
-        assert len(FEATURE_NAMES) == 33
+    def test_longitud_actual_del_vector(self):
+        assert len(FEATURE_NAMES) == 53
 
     def test_no_duplicados(self):
         assert len(FEATURE_NAMES) == len(set(FEATURE_NAMES))
@@ -91,6 +91,15 @@ class TestPosicionesPorVersion:
     def test_nivel_estudios_alto_pct_indice_32(self):
         """v5.1: nivel_estudios_alto_pct en índice 32."""
         assert FEATURE_NAMES[32] == "nivel_estudios_alto_pct"
+
+    def test_batch_demografia_bcn1_al_final(self):
+        assert FEATURE_NAMES[46] == "gini"
+        assert FEATURE_NAMES[47] == "p80_p20"
+        assert FEATURE_NAMES[48] == "tamano_hogar"
+        assert FEATURE_NAMES[49] == "hogares_con_menores"
+        assert FEATURE_NAMES[50] == "personas_solas"
+        assert FEATURE_NAMES[51] == "renta_media_uc"
+        assert FEATURE_NAMES[52] == "renta_mediana_uc"
 
     def test_v3_features_indices_23_a_28(self):
         """Los 6 features v3 ocupan índices 23-28."""
@@ -196,7 +205,7 @@ class TestBuildArraySinBD:
             "booking_hoteles_500m": 2.0,
         }
         arr = _build_array(self._vz_completo(), comp, precio, trans, geo, tur)
-        assert arr.shape == (1, 33)
+        assert arr.shape == (1, len(FEATURE_NAMES))
 
     def test_dtype_float32(self):
         arr = _build_array({}, {}, None, {}, {}, {})
@@ -325,19 +334,19 @@ class TestSchedulerJobs:
 
 class TestEjecutarCoroutines:
     def test_aforaments_ejecutar_es_coroutine(self):
-        from pipelines.aforaments import ejecutar
+        from pipelines.peatonal.aforaments import ejecutar
         assert asyncio.iscoroutinefunction(ejecutar)
 
     def test_demografia_ejecutar_es_coroutine(self):
-        from pipelines.demografia import ejecutar
+        from pipelines.demografia.demografia import ejecutar
         assert asyncio.iscoroutinefunction(ejecutar)
 
     def test_parques_ejecutar_es_coroutine(self):
-        from pipelines.parques import ejecutar
+        from pipelines.entorno.parques import ejecutar
         assert asyncio.iscoroutinefunction(ejecutar)
 
     def test_parques_alias_actualizar_es_coroutine(self):
-        from pipelines.parques import actualizar_parques_amb
+        from pipelines.entorno.parques import actualizar_parques_amb
         assert asyncio.iscoroutinefunction(actualizar_parques_amb)
 
 

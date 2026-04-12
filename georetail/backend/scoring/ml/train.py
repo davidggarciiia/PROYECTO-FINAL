@@ -14,7 +14,7 @@ Uso desde CLI:
     python -m scoring.train --sector todos --min-auc 0.72
 
 Uso programático (desde pipelines/scores.py en el scheduler semanal):
-    from scoring.train import entrenar_modelo
+    from scoring.ml.train import entrenar_modelo
     resultado = await entrenar_modelo(sector="restauracion")
 """
 
@@ -28,7 +28,7 @@ import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import numpy as np
 import xgboost as xgb
@@ -36,8 +36,14 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import roc_auc_score, average_precision_score
 
 from db.conexion import get_db
-from scoring.dataset import construir_dataset, resumen_dataset
-from scoring.evaluate import evaluar_modelo, imprimir_reporte
+from scoring.ml.dataset import construir_dataset, resumen_dataset
+from scoring.infra.governance import (
+    build_model_feature_names,
+    default_active_demography_features,
+    load_active_demography_features_from_artifact,
+    slice_feature_matrix,
+)
+from scoring.ml.evaluate import evaluar_modelo, imprimir_reporte
 from scoring.features import FEATURE_NAMES
 
 logger = logging.getLogger(__name__)
@@ -73,6 +79,8 @@ async def entrenar_modelo(
     params: Optional[dict] = None,
     min_auc: float = _MIN_AUC_PARA_PROMOVER,
     promover_si_supera: bool = True,
+    demografia_feature_names: Optional[Sequence[str]] = None,
+    demografia_features_path: Optional[str] = None,
 ) -> dict:
     """
     Entrena un modelo XGBoost y opcionalmente lo promueve a activo.
@@ -101,6 +109,18 @@ async def entrenar_modelo(
 
     # ── Construir dataset ─────────────────────────────────────────────────────
     X, y, meta = await construir_dataset(sector=sector)
+
+    if demografia_features_path:
+        active_demography_features = load_active_demography_features_from_artifact(
+            demografia_features_path
+        )
+    elif demografia_feature_names is not None:
+        active_demography_features = list(demografia_feature_names)
+    else:
+        active_demography_features = default_active_demography_features()
+
+    model_feature_names = build_model_feature_names(active_demography_features)
+    X = slice_feature_matrix(X, FEATURE_NAMES, model_feature_names)
 
     # ── Balancear clases ──────────────────────────────────────────────────────
     # XGBoost usa scale_pos_weight para compensar el desbalanceo.
@@ -175,7 +195,7 @@ async def entrenar_modelo(
     logger.info("Modelo guardado en %s", ruta)
 
     # ── Feature importance (ganancia) ─────────────────────────────────────────
-    importancia = _calcular_importancia(modelo_final)
+    importancia = _calcular_importancia(modelo_final, model_feature_names)
 
     # ── Registrar en BD ───────────────────────────────────────────────────────
     await _registrar_version(
@@ -192,6 +212,7 @@ async def entrenar_modelo(
         },
         importancia=importancia,
         ruta=str(ruta),
+        demografia_feature_names=active_demography_features,
     )
 
     # ── Promover a activo si supera al modelo actual ──────────────────────────
@@ -215,6 +236,8 @@ async def entrenar_modelo(
         "promovido":   promovido,
         "ruta_modelo": str(ruta),
         "importancia": importancia,
+        "model_feature_names": model_feature_names,
+        "demografia_feature_names": active_demography_features,
         "elapsed_s":   elapsed,
     }
 
@@ -228,13 +251,16 @@ def _generar_version(sector: Optional[str]) -> str:
     return f"{sufijo}_v3_{ts}"
 
 
-def _calcular_importancia(modelo: xgb.XGBClassifier) -> dict[str, float]:
+def _calcular_importancia(
+    modelo: xgb.XGBClassifier,
+    feature_names: Sequence[str],
+) -> dict[str, float]:
     """Feature importance por ganancia (más interpretable que frecuencia)."""
     importances = modelo.get_booster().get_score(importance_type="gain")
     total = sum(importances.values()) or 1.0
     return {
         feat: round(importances.get(f"f{i}", 0.0) / total, 4)
-        for i, feat in enumerate(FEATURE_NAMES)
+        for i, feat in enumerate(feature_names)
     }
 
 
@@ -245,14 +271,24 @@ async def _registrar_version(
     metricas: dict,
     importancia: dict,
     ruta: str,
+    demografia_feature_names: Sequence[str],
 ) -> None:
     """Inserta la nueva versión en `modelos_versiones`."""
     async with get_db() as conn:
         await conn.execute(
             """
             INSERT INTO modelos_versiones
-                (version, sector, params, metricas, importancia_features, ruta_disco, activo)
-            VALUES ($1, $2, $3, $4, $5, $6, FALSE)
+                (
+                    version,
+                    sector,
+                    params,
+                    metricas,
+                    importancia_features,
+                    ruta_disco,
+                    demografia_feature_names,
+                    activo
+                )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
             ON CONFLICT (version) DO NOTHING
             """,
             version,
@@ -261,6 +297,7 @@ async def _registrar_version(
             json.dumps(metricas),
             json.dumps(importancia),
             ruta,
+            json.dumps(list(demografia_feature_names)),
         )
     logger.info("Versión %s registrada en modelos_versiones", version)
 
@@ -328,6 +365,11 @@ async def _main() -> None:
                         help="No promover a activo aunque supere al actual")
     parser.add_argument("--resumen", action="store_true",
                         help="Solo mostrar resumen del dataset, sin entrenar")
+    parser.add_argument(
+        "--demografia-features-path",
+        default=None,
+        help="Ruta al artifact demography_feature_decisions.json del readiness demografico.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -344,6 +386,7 @@ async def _main() -> None:
         sector=args.sector,
         min_auc=args.min_auc,
         promover_si_supera=not args.no_promover,
+        demografia_features_path=args.demografia_features_path,
     )
     imprimir_reporte(resultado)
 

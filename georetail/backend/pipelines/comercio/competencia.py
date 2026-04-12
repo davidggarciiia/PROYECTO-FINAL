@@ -31,7 +31,7 @@ import httpx
 
 from db.conexion import get_db
 from routers.places_router import buscar_negocios_cercanos
-from scoring.competencia import (
+from scoring.dimensiones.competencia import (
     NegocioCompetidor,
     SECTORES_COMPETIDORES,
     SECTORES_COMPLEMENTARIOS,

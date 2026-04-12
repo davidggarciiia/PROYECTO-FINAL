@@ -167,7 +167,7 @@ def _planificar_busquedas(zonas: list[dict], sectores: list[str]) -> list[dict]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def _ejecutar_scraping(busquedas: list[dict]) -> int:
-    from pipelines.scraping.gosom_client import GosomClient, GosomServiceUnavailable
+    from pipelines.inmobiliario.scraping.gosom_client import GosomClient, GosomServiceUnavailable
 
     gosom = GosomClient()
     if not gosom.is_available():

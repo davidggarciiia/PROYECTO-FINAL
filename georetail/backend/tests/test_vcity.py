@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_lat_lng_to_tile():
-    from pipelines.vcity import lat_lng_to_tile
+    from pipelines.peatonal.vcity import lat_lng_to_tile
     # Barcelona center ~41.3879, 2.1699
     # At zoom 15 (2^15 = 32768 tiles per axis):
     #   x = int((2.1699 + 180) / 360 * 32768) = int(16581.something) → 16581
@@ -23,7 +23,7 @@ def test_lat_lng_to_tile():
 
 def test_lat_lng_to_tile_known_values():
     """Cross-check against known tile coordinates for Barcelona."""
-    from pipelines.vcity import lat_lng_to_tile
+    from pipelines.peatonal.vcity import lat_lng_to_tile
     # At zoom 15, Barcelona center should be around tile (16745, 12644)
     x, y = lat_lng_to_tile(41.3879, 2.1699, zoom=15)
     assert isinstance(x, int)
@@ -34,7 +34,7 @@ def test_lat_lng_to_tile_known_values():
 
 
 def test_lat_lng_to_tile_zoom_0():
-    from pipelines.vcity import lat_lng_to_tile
+    from pipelines.peatonal.vcity import lat_lng_to_tile
     # At zoom 0 the whole world is a single tile (0, 0)
     x, y = lat_lng_to_tile(41.3879, 2.1699, zoom=0)
     assert x == 0
@@ -42,7 +42,7 @@ def test_lat_lng_to_tile_zoom_0():
 
 
 def test_lat_lng_to_tile_zoom_1():
-    from pipelines.vcity import lat_lng_to_tile
+    from pipelines.peatonal.vcity import lat_lng_to_tile
     # At zoom 1 Barcelona (northern hemisphere, eastern) → tile (1, 0)
     x, y = lat_lng_to_tile(41.3879, 2.1699, zoom=1)
     assert x == 1
@@ -54,12 +54,12 @@ def test_lat_lng_to_tile_zoom_1():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_aggregate_tile_features_empty():
-    from pipelines.vcity import _aggregate_tile_features
+    from pipelines.peatonal.vcity import _aggregate_tile_features
     assert _aggregate_tile_features([]) is None
 
 
 def test_aggregate_tile_features_all_zero_pedestrians():
-    from pipelines.vcity import _aggregate_tile_features
+    from pipelines.peatonal.vcity import _aggregate_tile_features
     features = [
         {"num_pedestrians": 0.0, "tourist_rate": 0.1},
         {"num_pedestrians": 0.0, "tourist_rate": 0.2},
@@ -68,7 +68,7 @@ def test_aggregate_tile_features_all_zero_pedestrians():
 
 
 def test_aggregate_tile_features_normal():
-    from pipelines.vcity import _aggregate_tile_features
+    from pipelines.peatonal.vcity import _aggregate_tile_features
     features = [
         {
             "num_pedestrians": 1000.0,
@@ -92,7 +92,7 @@ def test_aggregate_tile_features_normal():
 
 
 def test_aggregate_tile_features_single():
-    from pipelines.vcity import _aggregate_tile_features
+    from pipelines.peatonal.vcity import _aggregate_tile_features
     features = [
         {"num_pedestrians": 500.0, "tourist_rate": 0.4, "resident_rate": 0.3,
          "shopping_and_leisure_rate": 0.1},
@@ -104,7 +104,7 @@ def test_aggregate_tile_features_single():
 
 
 def test_aggregate_tile_features_missing_rates():
-    from pipelines.vcity import _aggregate_tile_features
+    from pipelines.peatonal.vcity import _aggregate_tile_features
     # Features with no rate fields — pedestrian count should still work
     features = [
         {"num_pedestrians": 300.0},
@@ -119,7 +119,7 @@ def test_aggregate_tile_features_missing_rates():
 
 
 def test_aggregate_tile_features_partial_rates():
-    from pipelines.vcity import _aggregate_tile_features
+    from pipelines.peatonal.vcity import _aggregate_tile_features
     features = [
         {"num_pedestrians": 1000.0, "tourist_rate": 0.2},
         {"num_pedestrians": 2000.0},  # no tourist_rate
@@ -136,18 +136,18 @@ def test_aggregate_tile_features_partial_rates():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_mean_field_empty():
-    from pipelines.vcity import _mean_field
+    from pipelines.peatonal.vcity import _mean_field
     assert _mean_field([], "tourist_rate") is None
 
 
 def test_mean_field_all_none():
-    from pipelines.vcity import _mean_field
+    from pipelines.peatonal.vcity import _mean_field
     features = [{"tourist_rate": None}, {"other": 1.0}]
     assert _mean_field(features, "tourist_rate") is None
 
 
 def test_mean_field_normal():
-    from pipelines.vcity import _mean_field
+    from pipelines.peatonal.vcity import _mean_field
     features = [
         {"tourist_rate": 0.1},
         {"tourist_rate": 0.3},
@@ -161,13 +161,13 @@ def test_mean_field_normal():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_decode_tile_empty_bytes():
-    from pipelines.vcity import _decode_tile
+    from pipelines.peatonal.vcity import _decode_tile
     result = _decode_tile(b"")
     assert result == []
 
 
 def test_decode_tile_invalid_bytes():
-    from pipelines.vcity import _decode_tile
+    from pipelines.peatonal.vcity import _decode_tile
     # Should not raise, just return empty list
     result = _decode_tile(b"\x00\x01\x02garbage")
     assert isinstance(result, list)
@@ -207,7 +207,7 @@ def test_decode_tile_with_mock_mapbox_vector_tile():
     sys.modules["mapbox_vector_tile"] = mock_mvt
 
     try:
-        from pipelines.vcity import _decode_tile
+        from pipelines.peatonal.vcity import _decode_tile
         # Force reload to pick up mocked module
         import importlib
         import pipelines.vcity as vcity_mod
@@ -228,7 +228,7 @@ def test_decode_tile_with_mock_mapbox_vector_tile():
 @pytest.mark.asyncio
 async def test_fetch_vcity_data_empty_tiles():
     """When all tiles return None (no data), zona_data should be empty."""
-    from pipelines.vcity import _fetch_vcity_data
+    from pipelines.peatonal.vcity import _fetch_vcity_data
 
     zonas = [
         {"zona_id": "z1", "nombre": "Eixample", "lat": 41.3879, "lng": 2.1699},
@@ -246,7 +246,7 @@ async def test_fetch_vcity_data_empty_tiles():
 @pytest.mark.asyncio
 async def test_fetch_vcity_data_with_features():
     """When tiles return data, zona_data should contain aggregated metrics."""
-    from pipelines.vcity import _fetch_vcity_data
+    from pipelines.peatonal.vcity import _fetch_vcity_data
 
     zonas = [
         {"zona_id": "z1", "nombre": "Eixample", "lat": 41.3879, "lng": 2.1699},
@@ -274,7 +274,7 @@ async def test_fetch_vcity_data_with_features():
 @pytest.mark.asyncio
 async def test_fetch_vcity_data_deduplicates_tiles():
     """Two zones on the same tile should only trigger one HTTP request."""
-    from pipelines.vcity import lat_lng_to_tile, _fetch_vcity_data
+    from pipelines.peatonal.vcity import lat_lng_to_tile, _fetch_vcity_data
 
     # Use coordinates that should map to the same tile at zoom 15
     # (same tile = same x/y when coordinates are very close)

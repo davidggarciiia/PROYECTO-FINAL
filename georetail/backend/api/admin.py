@@ -28,16 +28,16 @@ router = APIRouter(tags=["admin"])
 
 # Mapa nombre → módulo Python del pipeline
 _PIPELINES: dict[str, str] = {
-    "transporte":             "pipelines.transporte",
-    "bicing":                 "pipelines.bicing",
-    "aforaments":             "pipelines.aforaments",
-    "resenas":                "pipelines.resenas",
+    "transporte":             "pipelines.transporte.transporte",
+    "bicing":                 "pipelines.transporte.bicing",
+    "aforaments":             "pipelines.peatonal.aforaments",
+    "resenas":                "pipelines.entorno.resenas",
     "scores":                 "pipelines.scores",
-    "demografia":             "pipelines.demografia",
-    "precios":                "pipelines.precios",
+    "demografia":             "pipelines.demografia.demografia",
+    "precios":                "pipelines.inmobiliario.precios",
     "parametros_financieros": "pipelines.parametros_financieros",
-    "registre_mercantil":     "pipelines.registre_mercantil",
-    "mercado_inmobiliario":   "pipelines.mercado_inmobiliario",
+    "registre_mercantil":     "pipelines.comercio.registre_mercantil",
+    "mercado_inmobiliario":   "pipelines.inmobiliario.mercado_inmobiliario",
 }
 
 # Orden recomendado para poblar la BD desde cero

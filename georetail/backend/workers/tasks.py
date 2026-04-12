@@ -154,7 +154,7 @@ def scrape_mercado_task(
 async def _scrape_mercado(modo, zonas, max_paginas, portales):
     from db.conexion import init_db_pool
     await init_db_pool()
-    from pipelines.mercado_inmobiliario import ejecutar
+    from pipelines.inmobiliario.mercado_inmobiliario import ejecutar
     stats = await ejecutar(modo=modo, zonas=zonas, max_paginas=max_paginas, portales=portales)
     logger.info("scrape_mercado_task completado: %s", stats)
     return stats

@@ -64,11 +64,26 @@ Cambio v9 (transporte enriquecido + movilidad activa): añadidas tres features a
 Cambio v10 (potencial de consumo): añadida una feature computada al final (índice 45):
   - indice_potencial_consumo (índice 45) — densidad × pct_25_44 × poder_adquisitivo (0-100)
 
-NOTA: Los modelos entrenados con v1-v8 (42 features) fallarán al recibir 46 features
-y caerán al scorer manual. Relanzar scoring/train.py para entrenar en v10.
+Cambio v11 (batch demografía BCN): añadidas cinco features materiales al final
+(índices 46-50):
+  - gini
+  - p80_p20
+  - tamano_hogar
+  - hogares_con_menores
+  - personas_solas
+
+Cambio v12 (renta por unidad de consumo): añadidas dos features demográficas
+espaciales al final (índices 51-52):
+  - renta_media_uc
+  - renta_mediana_uc
+
+NOTA: Los modelos antiguos se recortan por nombre de feature desde train/evaluate/scorer.
 """
 from __future__ import annotations
+import json
 import logging
+import os
+from pathlib import Path
 from typing import Optional
 import numpy as np
 
@@ -79,6 +94,12 @@ def _get_db():  # pragma: no cover
     return get_db
 
 logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_CSV_ROOT = Path(os.environ.get("CSV_DIR", str(_REPO_ROOT / "CSV")))
+_DEMOGRAFIA_MEANS_PATH = (
+    _CSV_ROOT / "_meta" / "demografia_backfill" / "latest" / "demography_feature_means.json"
+)
 
 # v1 tenía 21 features; v2 añade dist_playa_m y ratio_locales_comerciales al final
 # para mantener compatibilidad de índices con modelos guardados.
@@ -133,10 +154,18 @@ FEATURE_NAMES = [
     "tiene_carril_bici",           # 1.0 si carril bici en 200m, 0.0 si no
     # ── v10: potencial de consumo (computed) ──────────────────────────────────
     "indice_potencial_consumo",    # densidad × segmento_activo × renta (0-100, computed)
+    "gini",
+    "p80_p20",
+    "tamano_hogar",
+    "hogares_con_menores",
+    "personas_solas",
+    "renta_media_uc",
+    "renta_mediana_uc",
 ]
 
-# Medias de imputación calculadas sobre dataset de entrenamiento BCN
-_MEDIAS = {
+# Medias base de imputación. Las del batch BCN pueden sobreescribirse desde
+# un artifact generado por pipelines/demografia_backfill.py.
+_BASE_MEDIAS = {
     "flujo_peatonal_total":850.0,"flujo_manana_pct":0.35,"flujo_tarde_pct":0.42,
     "flujo_noche_pct":0.23,"renta_media_hogar":37000.0,"edad_media":42.5,
     "pct_extranjeros":0.22,"densidad_hab_km2":16000.0,"num_competidores_300m":8.0,
@@ -184,7 +213,46 @@ _MEDIAS = {
     "tiene_carril_bici": 0.6,
     # v10 — potencial de consumo
     "indice_potencial_consumo": 42.0,
+    "gini": 33.0,
+    "p80_p20": 2.8,
+    "tamano_hogar": 2.4,
+    "hogares_con_menores": 0.25,
+    "personas_solas": 0.16,
+    "renta_media_uc": 17000.0,
+    "renta_mediana_uc": 14500.0,
 }
+
+
+def _load_demografia_mean_overrides() -> dict[str, float]:
+    if not _DEMOGRAFIA_MEANS_PATH.exists():
+        return {}
+
+    try:
+        payload = json.loads(_DEMOGRAFIA_MEANS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning(
+            "No se pudieron cargar medias demograficas desde %s: %s",
+            _DEMOGRAFIA_MEANS_PATH,
+            exc,
+        )
+        return {}
+
+    raw = payload.get("feature_means") if isinstance(payload, dict) else None
+    if not isinstance(raw, dict):
+        return {}
+
+    overrides: dict[str, float] = {}
+    for feature, value in raw.items():
+        if feature not in FEATURE_NAMES:
+            continue
+        try:
+            overrides[str(feature)] = float(value)
+        except (TypeError, ValueError):
+            continue
+    return overrides
+
+
+_MEDIAS = {**_BASE_MEDIAS, **_load_demografia_mean_overrides()}
 
 
 async def construir_features(zona_id: str, sector: str) -> np.ndarray:
@@ -216,12 +284,12 @@ def _calcular_potencial_consumo_feature(vz: dict) -> float | None:
     renta     = vz.get("renta_media_hogar")
     if densidad is None or pct_25_44 is None or renta is None:
         return None
-    from scoring.demografia_score import calcular_potencial_consumo
+    from scoring.dimensiones.demografia import calcular_potencial_consumo
     return calcular_potencial_consumo(densidad, pct_25_44, renta)
 
 
 def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
-    from scoring.flujo_peatonal import calcular_flujo_score  # noqa: PLC0415
+    from scoring.dimensiones.flujo_peatonal import calcular_flujo_score  # noqa: PLC0415
 
     # Distinguir None (sin dato → imputa) de 0 (flujo real cero → score 0)
     _flujo_raw = vz.get("flujo_peatonal_total")
@@ -296,6 +364,14 @@ def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
         "tiene_carril_bici":          trans.get("tiene_carril"),
         # v10: potencial de consumo (computed desde variables demo)
         "indice_potencial_consumo": _calcular_potencial_consumo_feature(vz),
+        # v11: batch demografía BCN materializada en vz_demografia
+        "gini": vz.get("gini"),
+        "p80_p20": vz.get("p80_p20"),
+        "tamano_hogar": vz.get("tamano_hogar"),
+        "hogares_con_menores": vz.get("hogares_con_menores"),
+        "personas_solas": vz.get("personas_solas"),
+        "renta_media_uc": vz.get("renta_media_uc"),
+        "renta_mediana_uc": vz.get("renta_mediana_uc"),
     }
     vec = [float(raw.get(f) if raw.get(f) is not None else _MEDIAS[f]) for f in FEATURE_NAMES]
     return np.array([vec], dtype=np.float32)

@@ -25,7 +25,7 @@ import numpy as np
 from scoring.features import _build_array, FEATURE_NAMES, _MEDIAS
 
 # Número total de features en v6 (v5.1 + 3 competition features: score_aglomeracion, pct_vulnerables, ratio_complementarios)
-N_FEATURES_V5 = 36
+N_FEATURES_V5 = len(FEATURE_NAMES)
 N_FEATURES_V4 = N_FEATURES_V5  # alias compatibilidad — v4 era 30, ahora v5.1=33
 N_FEATURES_V3 = N_FEATURES_V5  # alias de compatibilidad — tests usan la constante antigua
 
@@ -153,7 +153,10 @@ class TestEstructuraArray:
         """La feature v5.1 nivel_estudios_alto_pct ocupa el índice 32; v6 añade 3 más."""
         assert FEATURE_NAMES[32] == "nivel_estudios_alto_pct"
         assert FEATURE_NAMES[35] == "ratio_complementarios"
-        assert FEATURE_NAMES[-1] == "ratio_complementarios"
+        assert FEATURE_NAMES[-7] == "gini"
+        assert FEATURE_NAMES[-3] == "personas_solas"
+        assert FEATURE_NAMES[-2] == "renta_media_uc"
+        assert FEATURE_NAMES[-1] == "renta_mediana_uc"
 
 
 # ─── Tests de imputación con medias ──────────────────────────────────────────

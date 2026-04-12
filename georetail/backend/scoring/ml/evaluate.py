@@ -37,12 +37,24 @@ from sklearn.metrics import (
 from sklearn.model_selection import StratifiedKFold
 
 from db.conexion import get_db
-from scoring.dataset import construir_dataset
+from scoring.ml.dataset import construir_dataset
+from scoring.infra.governance import slice_feature_matrix
 from scoring.features import FEATURE_NAMES
+from scoring.infra.model_registry import obtener_feature_names_modelo
 
 logger = logging.getLogger(__name__)
 
 MODELS_DIR = Path(os.environ.get("MODELS_DIR", "/data/models"))
+
+
+def _cargar_modelo_desde_version(version: str) -> xgb.XGBClassifier:
+    ruta = MODELS_DIR / f"xgboost_{version}.json"
+    if not ruta.exists():
+        raise FileNotFoundError(f"Modelo {version} no encontrado en {MODELS_DIR}")
+
+    modelo = xgb.XGBClassifier()
+    modelo.load_model(str(ruta))
+    return modelo
 
 
 def evaluar_modelo(
@@ -120,6 +132,7 @@ async def evaluar_por_sector(
 
     modelo = xgb.XGBClassifier()
     modelo.load_model(str(ruta))
+    feature_names = await obtener_feature_names_modelo(version=version)
 
     resultados: dict[str, dict] = {}
 
@@ -129,11 +142,13 @@ async def evaluar_por_sector(
     for sector in sectores:
         try:
             X, y, _ = await construir_dataset(sector=sector)
+            X = slice_feature_matrix(X, FEATURE_NAMES, feature_names)
             if len(X) < 50:
                 logger.warning("Sector %s: solo %d muestras — métricas no fiables", sector, len(X))
                 continue
             metricas = evaluar_modelo(modelo, X, y)
             metricas["n_samples"] = len(X)
+            metricas["n_features_modelo"] = len(feature_names)
             resultados[sector] = metricas
             logger.info("Sector %s — AUC=%.4f | PR-AUC=%.4f", sector, metricas["roc_auc"], metricas["pr_auc"])
         except Exception as exc:
@@ -157,12 +172,13 @@ async def comparar_versiones(
 
     metricas: dict[str, dict] = {}
     for version in [version_a, version_b]:
-        ruta = MODELS_DIR / f"xgboost_{version}.json"
-        if not ruta.exists():
-            raise FileNotFoundError(f"Modelo {version} no encontrado")
-        modelo = xgb.XGBClassifier()
-        modelo.load_model(str(ruta))
-        metricas[version] = evaluar_modelo(modelo, X, y)
+        modelo = _cargar_modelo_desde_version(version)
+        feature_names = await obtener_feature_names_modelo(version=version)
+        X_model = slice_feature_matrix(X, FEATURE_NAMES, feature_names)
+        metricas[version] = {
+            **evaluar_modelo(modelo, X_model, y),
+            "n_features_modelo": len(feature_names),
+        }
 
     diferencia = {
         "roc_auc_delta": round(metricas[version_b]["roc_auc"] - metricas[version_a]["roc_auc"], 4),
@@ -199,11 +215,11 @@ async def calcular_shap_global(
         logger.error("shap no instalado. Instalar con: pip install shap")
         return {}
 
-    ruta = MODELS_DIR / f"xgboost_{version}.json"
-    modelo = xgb.XGBClassifier()
-    modelo.load_model(str(ruta))
+    modelo = _cargar_modelo_desde_version(version)
+    feature_names = await obtener_feature_names_modelo(version=version)
 
     X, y, _ = await construir_dataset(sector=sector)
+    X = slice_feature_matrix(X, FEATURE_NAMES, feature_names)
 
     # Muestra aleatoria para eficiencia (seed fijo para reproducibilidad)
     if len(X) > n_samples:
@@ -227,7 +243,7 @@ async def calcular_shap_global(
 
     resultado = {
         feat: round(float(importancia_norm[i]), 4)
-        for i, feat in enumerate(FEATURE_NAMES)
+        for i, feat in enumerate(feature_names)
     }
 
     # Ordenar de mayor a menor
@@ -344,11 +360,12 @@ async def _main() -> None:
         return
 
     # Evaluación estándar
-    ruta = MODELS_DIR / f"xgboost_{args.version}.json"
-    modelo = xgb.XGBClassifier()
-    modelo.load_model(str(ruta))
+    modelo = _cargar_modelo_desde_version(args.version)
     X, y, _ = await construir_dataset(sector=args.sector)
+    feature_names = await obtener_feature_names_modelo(version=args.version)
+    X = slice_feature_matrix(X, FEATURE_NAMES, feature_names)
     metricas = evaluar_modelo(modelo, X, y)
+    metricas["n_features_modelo"] = len(feature_names)
     print(json.dumps(metricas, indent=2))
 
 

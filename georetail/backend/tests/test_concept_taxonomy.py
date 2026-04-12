@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from scoring.concept_taxonomy import (
+from scoring.concepto.taxonomy import (
     BASE_CONCEPTS,
     CATALOG,
     MODIFIER_TAGS,

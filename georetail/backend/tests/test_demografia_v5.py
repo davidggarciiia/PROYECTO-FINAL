@@ -21,6 +21,8 @@ import csv
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from scoring.features import FEATURE_NAMES
+
 
 # ── Helpers para crear CSV fake de parques ────────────────────────────────────
 
@@ -37,27 +39,27 @@ def _make_parcs_csv(rows: list[dict], fieldnames: list[str]) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_parse_float_integer():
-    from pipelines.parques import _parse_float
+    from pipelines.entorno.parques import _parse_float
     assert _parse_float("42") == pytest.approx(42.0)
 
 
 def test_parse_float_decimal_comma():
-    from pipelines.parques import _parse_float
+    from pipelines.entorno.parques import _parse_float
     assert _parse_float("3,14") == pytest.approx(3.14)
 
 
 def test_parse_float_none_returns_default():
-    from pipelines.parques import _parse_float
+    from pipelines.entorno.parques import _parse_float
     assert _parse_float(None, default=99.0) == pytest.approx(99.0)
 
 
 def test_parse_float_empty_string_returns_default():
-    from pipelines.parques import _parse_float
+    from pipelines.entorno.parques import _parse_float
     assert _parse_float("", default=0.0) == pytest.approx(0.0)
 
 
 def test_parse_float_non_numeric_returns_default():
-    from pipelines.parques import _parse_float
+    from pipelines.entorno.parques import _parse_float
     assert _parse_float("N/A", default=-1.0) == pytest.approx(-1.0)
 
 
@@ -66,7 +68,7 @@ def test_parse_float_non_numeric_returns_default():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_resolve_columns_standard_names():
-    from pipelines.parques import _resolve_columns
+    from pipelines.entorno.parques import _resolve_columns
     header = ["nom", "municipi", "superficie_ha", "latitud", "longitud"]
     col = _resolve_columns(header)
     assert col["nom"] == "nom"
@@ -77,7 +79,7 @@ def test_resolve_columns_standard_names():
 
 
 def test_resolve_columns_alternative_names():
-    from pipelines.parques import _resolve_columns
+    from pipelines.entorno.parques import _resolve_columns
     header = ["NAME", "MUNICIPIO", "HECTAREES", "LAT", "LNG"]
     col = _resolve_columns(header)
     assert col["nom"] == "NAME"
@@ -88,7 +90,7 @@ def test_resolve_columns_alternative_names():
 
 
 def test_resolve_columns_missing_column():
-    from pipelines.parques import _resolve_columns
+    from pipelines.entorno.parques import _resolve_columns
     header = ["nom", "municipi"]
     col = _resolve_columns(header)
     assert col["lat"] is None
@@ -102,7 +104,7 @@ def test_resolve_columns_missing_column():
 @pytest.mark.asyncio
 async def test_descargar_csv_parses_rows():
     """CSV con 3 parques válidos + 1 sin coordenadas → devuelve 3."""
-    from pipelines.parques import _descargar_csv
+    from pipelines.entorno.parques import _descargar_csv
 
     csv_content = _make_parcs_csv(
         rows=[
@@ -139,7 +141,7 @@ async def test_descargar_csv_parses_rows():
 @pytest.mark.asyncio
 async def test_descargar_csv_latin1_fallback():
     """CSV codificado en latin-1 se decodifica correctamente."""
-    from pipelines.parques import _descargar_csv
+    from pipelines.entorno.parques import _descargar_csv
 
     csv_str = "nom,municipi,superficie_ha,latitud,longitud\n"
     csv_str += "Parc Güell,Barcelona,17.18,41.4145,2.1527\n"
@@ -163,7 +165,7 @@ async def test_descargar_csv_latin1_fallback():
 @pytest.mark.asyncio
 async def test_descargar_csv_empty_returns_empty():
     """CSV con solo cabecera → lista vacía."""
-    from pipelines.parques import _descargar_csv
+    from pipelines.entorno.parques import _descargar_csv
 
     csv_str = "nom,municipi,superficie_ha,latitud,longitud\n"
 
@@ -188,7 +190,7 @@ async def test_descargar_csv_empty_returns_empty():
 
 def test_feature_names_length_v5():
     from scoring.features import FEATURE_NAMES
-    assert len(FEATURE_NAMES) == 36, f"Se esperaban 36 features v6, hay {len(FEATURE_NAMES)}"
+    assert len(FEATURE_NAMES) == 53, f"Se esperaban 53 features en el vector actual, hay {len(FEATURE_NAMES)}"
 
 
 def test_feature_names_pct_poblacio_index():
@@ -255,9 +257,8 @@ def test_build_array_imputes_missing_v5_features():
             # pct_poblacio_25_44 y delta_renta_3a ausentes → imputar
         }
         arr = _build_array(vz, {}, None, {}, {}, {})
-        assert arr.shape == (1, 36)
+        assert arr.shape == (1, len(FEATURE_NAMES))
 
-        from scoring.features import FEATURE_NAMES
         idx_pct = FEATURE_NAMES.index("pct_poblacio_25_44")
         idx_delta = FEATURE_NAMES.index("delta_renta_3a")
         assert arr[0, idx_pct]   == pytest.approx(_MEDIAS["pct_poblacio_25_44"])
@@ -285,7 +286,7 @@ def test_build_array_uses_real_v5_values():
             "delta_renta_3a": 0.12,
         }
         arr = _build_array(vz, {}, None, {}, {}, {})
-        assert arr.shape == (1, 36)
+        assert arr.shape == (1, len(FEATURE_NAMES))
 
         idx_pct   = FEATURE_NAMES.index("pct_poblacio_25_44")
         idx_delta = FEATURE_NAMES.index("delta_renta_3a")
@@ -338,7 +339,7 @@ def test_scheduler_has_parques_job():
 @pytest.mark.asyncio
 async def test_upsert_parques_builds_wkt():
     """Verifica que la geometría se construye como SRID=4326;POINT(lon lat)."""
-    from pipelines.parques import _upsert_parques
+    from pipelines.entorno.parques import _upsert_parques
 
     conn = MagicMock()
     conn.execute = AsyncMock(return_value=None)
@@ -460,7 +461,7 @@ def test_fecha_is_date_object_not_string():
 
 def test_extract_iermb_most_recent_year():
     """Con datos de varios años, debe devolver el valor del año más reciente."""
-    from pipelines.demografia import _extract_iermb_bcn_value
+    from pipelines.demografia.demografia import _extract_iermb_bcn_value
 
     data = [
         {"codi_muni": "08019", "any": 2015, "valor": 5.1},
@@ -475,7 +476,7 @@ def test_extract_iermb_most_recent_year():
 
 def test_extract_iermb_single_year():
     """Con un único año, debe devolver ese valor directamente."""
-    from pipelines.demografia import _extract_iermb_bcn_value
+    from pipelines.demografia.demografia import _extract_iermb_bcn_value
 
     data = [{"municipi": "Barcelona", "any": 2022, "valor": 6.9}]
     result = _extract_iermb_bcn_value(data)
@@ -484,7 +485,7 @@ def test_extract_iermb_single_year():
 
 def test_extract_iermb_no_year_field_uses_0():
     """Si no hay campo 'any', el año se trata como 0 y aún devuelve el valor."""
-    from pipelines.demografia import _extract_iermb_bcn_value
+    from pipelines.demografia.demografia import _extract_iermb_bcn_value
 
     data = [{"codi_muni": "08019", "valor": 7.0}]  # sin campo 'any'
     result = _extract_iermb_bcn_value(data)
@@ -493,7 +494,7 @@ def test_extract_iermb_no_year_field_uses_0():
 
 def test_extract_iermb_ignores_other_municipalities():
     """No debe incluir valores de municipios que no son Barcelona."""
-    from pipelines.demografia import _extract_iermb_bcn_value
+    from pipelines.demografia.demografia import _extract_iermb_bcn_value
 
     data = [
         {"codi_muni": "08015", "any": 2023, "valor": 9.0},  # Badalona
@@ -506,7 +507,7 @@ def test_extract_iermb_ignores_other_municipalities():
 
 def test_extract_iermb_empty_returns_none():
     """Lista vacía debe devolver None."""
-    from pipelines.demografia import _extract_iermb_bcn_value
+    from pipelines.demografia.demografia import _extract_iermb_bcn_value
 
     assert _extract_iermb_bcn_value([]) is None
     assert _extract_iermb_bcn_value({}) is None

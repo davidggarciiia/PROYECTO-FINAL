@@ -17,7 +17,7 @@ Funcionalidad:
   - Parsea JSON-LD embebido en la página primero, fallback a selectores DOM
 
 Uso:
-    from pipelines.scraping.booking_scraper import BookingScraper
+    from pipelines.inmobiliario.scraping.booking_scraper import BookingScraper
     async with BookingScraper() as s:
         hoteles = await s.scrape_barcelona(max_pages=10)
 """

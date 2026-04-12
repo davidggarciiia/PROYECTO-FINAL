@@ -1,5 +1,12 @@
 .env
 __pycache__/
+
+# Ruflo / Claude Flow state
+.claude-flow/
+.swarm/
+
+# Frontend build artifacts
+frontend/tsconfig.tsbuildinfo
 *.pyc
 *.pyo
 .pytest_cache/

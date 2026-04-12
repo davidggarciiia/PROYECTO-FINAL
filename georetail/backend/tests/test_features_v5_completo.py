@@ -20,7 +20,7 @@ import pytest
 
 from scoring.features import _build_array, FEATURE_NAMES, _MEDIAS
 
-N_FEATURES = 36
+N_FEATURES = len(FEATURE_NAMES)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -144,10 +144,14 @@ class TestFeatureNamesEstructura:
     def test_posicion_v5_delta_renta(self):
         assert FEATURE_NAMES[31] == "delta_renta_3a"
 
-    def test_v5_1_es_el_ultimo(self):
-        assert FEATURE_NAMES[-1] == "ratio_complementarios"
-        assert FEATURE_NAMES[-2] == "pct_vulnerables"
-        assert FEATURE_NAMES[-3] == "score_aglomeracion"
+    def test_batch_demografia_bcn_va_al_final(self):
+        assert FEATURE_NAMES[-7] == "gini"
+        assert FEATURE_NAMES[-6] == "p80_p20"
+        assert FEATURE_NAMES[-5] == "tamano_hogar"
+        assert FEATURE_NAMES[-4] == "hogares_con_menores"
+        assert FEATURE_NAMES[-3] == "personas_solas"
+        assert FEATURE_NAMES[-2] == "renta_media_uc"
+        assert FEATURE_NAMES[-1] == "renta_mediana_uc"
 
     def test_posicion_v5_1_nivel_estudios(self):
         assert FEATURE_NAMES[32] == "nivel_estudios_alto_pct"

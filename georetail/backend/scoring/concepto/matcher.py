@@ -1416,7 +1416,7 @@ class ConceptoMatcher:
             return []
 
         try:
-            from scoring.concept_taxonomy import compilar_concepto_negocio
+            from scoring.concepto.taxonomy import compilar_concepto_negocio
 
             return compilar_concepto_negocio(
                 matcher_matches=matches,

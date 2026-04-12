@@ -465,7 +465,7 @@ class TestInvariantesConcepto:
         Dog-friendly + clientela_local → peso demografía > peso turismo.
         El score de demografía debe pesar más que el de turismo.
         """
-        from scoring.idea_tags import aplicar_idea_tags
+        from scoring.concepto.idea_tags import aplicar_idea_tags
 
         pesos_base = {
             "peso_flujo": 0.25, "peso_demo": 0.20, "peso_competencia": 0.15,
@@ -479,7 +479,7 @@ class TestInvariantesConcepto:
 
     def test_pesos_orientado_turismo_aumentan_turismo_vs_demografia(self):
         """orientado_turismo → peso turismo debe superar peso demografía."""
-        from scoring.idea_tags import aplicar_idea_tags
+        from scoring.concepto.idea_tags import aplicar_idea_tags
 
         pesos_base = {
             "peso_flujo": 0.25, "peso_demo": 0.20, "peso_competencia": 0.15,
@@ -493,7 +493,7 @@ class TestInvariantesConcepto:
 
     def test_pesos_renormalizados_suman_1(self):
         """Los pesos ajustados siempre deben sumar 1.0."""
-        from scoring.idea_tags import aplicar_idea_tags
+        from scoring.concepto.idea_tags import aplicar_idea_tags
 
         pesos_base = {
             "peso_flujo": 0.25, "peso_demo": 0.20, "peso_competencia": 0.15,

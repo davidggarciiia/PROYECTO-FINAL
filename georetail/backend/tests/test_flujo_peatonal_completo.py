@@ -23,7 +23,7 @@ import math
 import itertools
 import pytest
 
-from scoring.flujo_peatonal import (
+from scoring.dimensiones.flujo_peatonal import (
     PESOS_BASE,
     VCITY_MAX_BARCELONA,
     VIANANTS_MAX_BARCELONA,

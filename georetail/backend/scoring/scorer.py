@@ -15,22 +15,27 @@ import json, logging, os
 from typing import Optional
 import numpy as np
 from db.conexion import get_db
+from scoring.infra.governance import (
+    get_model_feature_names_from_record,
+    slice_feature_matrix,
+)
+from scoring.features import FEATURE_NAMES
+from scoring.infra.model_registry import obtener_modelo_activo
 
 logger = logging.getLogger(__name__)
 
 # XGBoost model — cargado en startup desde disco
 _xgb_model = None
 _xgb_version: Optional[str] = None
+_xgb_feature_names: list[str] = list(FEATURE_NAMES)
 _shap_explainer = None  # cacheado para no recrearlo en cada zona
 
 
 async def cargar_modelo() -> None:
     """Carga el modelo XGBoost activo desde disco. Llamar en startup."""
-    global _xgb_model, _xgb_version, _shap_explainer
+    global _xgb_model, _xgb_version, _xgb_feature_names, _shap_explainer
     try:
-        async with get_db() as conn:
-            row = await conn.fetchrow(
-                "SELECT version FROM modelos_versiones WHERE activo=TRUE LIMIT 1")
+        row = await obtener_modelo_activo()
         if not row:
             logger.info("Sin modelo XGBoost activo — usando pesos manuales")
             return
@@ -45,8 +50,13 @@ async def cargar_modelo() -> None:
         _xgb_model = xgb.XGBClassifier()
         _xgb_model.load_model(ruta)
         _xgb_version = version
+        _xgb_feature_names = get_model_feature_names_from_record(row)
         _shap_explainer = None  # resetear al cargar nuevo modelo
-        logger.info("Modelo XGBoost %s cargado OK", version)
+        logger.info(
+            "Modelo XGBoost %s cargado OK con %d features activas",
+            version,
+            len(_xgb_feature_names),
+        )
     except Exception as e:
         logger.error("Error cargando modelo XGBoost: %s", e)
 
@@ -73,7 +83,7 @@ async def calcular_score(zona_id: str, sector: str,
     return _score_manual(datos_zona, datos_sector)
 
 
-async def calcular_scores_batch(zona_ids: list[str], sector: str, idea_tags: list[str] | None = None) -> dict[str, dict]:
+async def calcular_scores_batch(zona_ids: list[str], sector: str, idea_tags: list[str] | None = None, perfil_negocio: dict | None = None) -> dict[str, dict]:
     """
     Calcula scores para múltiples zonas en batch.
     Usa queries batch para eficiencia.
@@ -93,7 +103,7 @@ async def calcular_scores_batch(zona_ids: list[str], sector: str, idea_tags: lis
     resultados = {}
     for zona_id in zona_ids:
         try:
-            datos = await _get_datos_zona_completos(zona_id, sector, idea_tags=idea_tags)
+            datos = await _get_datos_zona_completos(zona_id, sector, idea_tags=idea_tags, perfil_negocio=perfil_negocio)
             resultados[zona_id] = _score_manual(datos, datos_sector)
         except Exception as e:
             logger.warning("Score manual fallido zona=%s: %s", zona_id, e)
@@ -221,11 +231,13 @@ def _score_manual(datos: dict, sector: dict) -> dict:
 
     Los pesos se leen de la tabla `sectores`.
     """
+    perfil_negocio = datos.get("_perfil_negocio") or {}
+
     # ── Calcular scores por dimensión ─────────────────────────────────────────
     # Cada dimensión normaliza su(s) variable(s) a 0-100
 
     # FLUJO PEATONAL — fusión ponderada; escala manual: 3000 p/día = score 100
-    from scoring.flujo_peatonal import calcular_flujo_score
+    from scoring.dimensiones.flujo_peatonal import calcular_flujo_score
     _fp_total = datos.get("flujo_peatonal_total")
     _fp_pt    = datos.get("flujo_popular_times_score")
     _fp_vcity = datos.get("vcity_flujo_peatonal")
@@ -245,8 +257,8 @@ def _score_manual(datos: dict, sector: dict) -> dict:
     # Si hay idea_tags disponibles en datos, se usan para ajustar pesos.
     # Fallback: fórmula simple si el módulo falla.
     try:
-        from scoring.demografia_score import calcular_score_demografia
-        _demo_result = calcular_score_demografia(datos, idea_tags=datos.get("_idea_tags"))
+        from scoring.dimensiones.demografia import calcular_score_demografia
+        _demo_result = calcular_score_demografia(datos, idea_tags=datos.get("_idea_tags"), perfil_negocio=perfil_negocio)
         s_demo = _demo_result["score_demografia"]
     except Exception as _e:
         logger.warning("Error en score demografía enriquecido: %s", _e)
@@ -280,8 +292,15 @@ def _score_manual(datos: dict, sector: dict) -> dict:
         lineas = datos.get("num_lineas_transporte") or 0
         s_trans = min(100.0, lineas * 5.0)
 
-    # SEGURIDAD — fórmula compuesta multivariable (v7)
-    s_seg = _calcular_score_seguridad(datos)
+    # SEGURIDAD — fórmula compuesta multivariable (v7); delega a módulo dedicado si disponible
+    try:
+        from scoring.dimensiones.seguridad import calcular_score_seguridad
+        _seg_result = calcular_score_seguridad(datos, perfil_negocio=perfil_negocio)
+        s_seg = _seg_result["score_seguridad"]
+    except Exception as _e:
+        logger.warning("Error seguridad_score: %s", _e)
+        incidencias = datos.get("incidencias_por_1000hab") or 35
+        s_seg = min(100.0, max(0.0, (120.0 - incidencias) / 1.15))
 
     # TURISMO — corregido por proximidad real al litoral BCN.
     # El campo score_turismo de variables_zona se agrega a nivel de barrio/distrito,
@@ -298,8 +317,18 @@ def _score_manual(datos: dict, sector: dict) -> dict:
             turismo_base = max(turismo_base, 55.0)   # zona marítima amplia
     s_turismo = min(100.0, max(0.0, turismo_base))
 
-    # ENTORNO COMERCIAL — fórmula compuesta multivariable (v8)
-    s_entorno = _calcular_score_entorno(datos)
+    # ENTORNO COMERCIAL — fórmula compuesta multivariable (v8); delega a módulo dedicado si disponible
+    try:
+        from scoring.dimensiones.entorno import calcular_score_entorno
+        _ent_result = calcular_score_entorno(datos, perfil_negocio=perfil_negocio)
+        s_entorno = _ent_result["score_entorno"]
+    except Exception as _e:
+        logger.warning("Error entorno_score: %s", _e)
+        _v = datos.get("pct_locales_vacios")
+        vacios = _v if _v is not None else 0.15
+        _r = datos.get("tasa_rotacion_anual")
+        rotacion = _r if _r is not None else 0.18
+        s_entorno = max(0.0, 100.0 - vacios * 200.0 - rotacion * 100.0)
 
     # ── Score global ponderado ────────────────────────────────────────────────
     dims = {
@@ -333,11 +362,12 @@ def _score_manual(datos: dict, sector: dict) -> dict:
 
 async def _score_xgboost(zona_id: str, sector: str, datos: dict) -> dict:
     from scoring.features import construir_features
-    X = await construir_features(zona_id, sector)
-    prob = float(_xgb_model.predict_proba(X)[0][1])
+    X_full = await construir_features(zona_id, sector)
+    X_model = slice_feature_matrix(X_full, FEATURE_NAMES, _xgb_feature_names)
+    prob = float(_xgb_model.predict_proba(X_model)[0][1])
 
     # SHAP values
-    shap = _calcular_shap(X)
+    shap = _calcular_shap(X_model)
 
     # Score global: prob de supervivencia → escala 0-100
     score_global = min(100.0, prob * 100.0)
@@ -359,12 +389,12 @@ async def _score_xgboost(zona_id: str, sector: str, datos: dict) -> dict:
 
 
 async def _scores_xgboost_batch(X: np.ndarray, ids: list[str], sector: str) -> dict[str, dict]:
-    from scoring.features import FEATURE_NAMES
-    probs = _xgb_model.predict_proba(X)[:,1]
+    X_model = slice_feature_matrix(X, FEATURE_NAMES, _xgb_feature_names)
+    probs = _xgb_model.predict_proba(X_model)[:,1]
     resultados = {}
     for i, zona_id in enumerate(ids):
         prob = float(probs[i])
-        shap = _calcular_shap(X[i:i+1])
+        shap = _calcular_shap(X_model[i:i+1])
         resultados[zona_id] = {
             "score_global": round(min(100.0, prob*100.0), 1),
             "probabilidad_supervivencia": round(prob, 3),
@@ -376,14 +406,16 @@ async def _scores_xgboost_batch(X: np.ndarray, ids: list[str], sector: str) -> d
 
 def _calcular_shap(X: np.ndarray) -> Optional[dict]:
     global _shap_explainer
-    from scoring.features import FEATURE_NAMES
     try:
         import shap
         if _shap_explainer is None:
             _shap_explainer = shap.TreeExplainer(_xgb_model)
         vals = _shap_explainer.shap_values(X)
         if isinstance(vals, list): vals = vals[1]
-        return {FEATURE_NAMES[i]: round(float(vals[0][i]),3) for i in range(len(FEATURE_NAMES))}
+        return {
+            _xgb_feature_names[i]: round(float(vals[0][i]), 3)
+            for i in range(len(_xgb_feature_names))
+        }
     except Exception as e:
         logger.warning("SHAP error: %s", e)
         return None
@@ -412,7 +444,7 @@ async def _get_datos_sector(sector: str) -> dict:
     return dict(row) if row else {}
 
 
-async def _get_datos_zona_completos(zona_id: str, sector: str, idea_tags: list[str] | None = None) -> dict:
+async def _get_datos_zona_completos(zona_id: str, sector: str, idea_tags: list[str] | None = None, perfil_negocio: dict | None = None) -> dict:
     async with get_db() as conn:
         row = await conn.fetchrow("""
             SELECT
@@ -468,8 +500,8 @@ async def _get_datos_zona_completos(zona_id: str, sector: str, idea_tags: list[s
 
     # Calcular score de transporte enriquecido (reemplaza el count simple)
     try:
-        from scoring.transporte_score import calcular_score_transporte
-        trans_data = await calcular_score_transporte(zona_id, idea_tags=idea_tags)
+        from scoring.dimensiones.transporte import calcular_score_transporte
+        trans_data = await calcular_score_transporte(zona_id, idea_tags=idea_tags, perfil_negocio=perfil_negocio)
         result["score_transporte_calculado"] = trans_data["score_transporte"]
         result["score_movilidad_activa"] = trans_data["score_movilidad_activa"]
     except Exception as e:
@@ -479,6 +511,8 @@ async def _get_datos_zona_completos(zona_id: str, sector: str, idea_tags: list[s
     # (necesario para demografia_score y otros módulos que usan idea_tags en el cálculo)
     if idea_tags:
         result["_idea_tags"] = idea_tags
+
+    result["_perfil_negocio"] = perfil_negocio or {}
 
     return result
 
