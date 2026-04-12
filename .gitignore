@@ -36,3 +36,10 @@ georetail/backend/models/*.ubj
 
 # Exports
 georetail/backend/exports/
+
+# Ruflo / Claude Flow state
+.claude-flow/
+.swarm/
+
+# Frontend build artifacts
+frontend/tsconfig.tsbuildinfo

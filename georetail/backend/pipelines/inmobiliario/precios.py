@@ -119,7 +119,7 @@ async def _locales_scrapers() -> int:
     Idealista usa scraping en lugar de la API oficial (requería aprobación + pago).
     Los scrapers se ejecutan secuencialmente para no sobrecargar los portales.
     """
-    from pipelines.scraping import (
+    from pipelines.inmobiliario.scraping import (
         IdealistaScraper,
         FotocasaScraper,
         HabitacliaScraper,

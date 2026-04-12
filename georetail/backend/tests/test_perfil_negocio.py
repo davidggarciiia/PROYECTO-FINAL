@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 import numpy as np
 
-from scoring.perfil_negocio import (
+from scoring.concepto.perfil import (
     PerfilNegocio,
     DEFAULTS_POR_SECTOR,
     FEATURE_NAMES_PERFIL,

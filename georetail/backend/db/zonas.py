@@ -304,7 +304,7 @@ async def get_competencia_zona(zona_id: str, sector: str, radio_m: int = 500) ->
 
     Returns dict compatible con CompetenciaDetalle, or None if zona not found.
     """
-    from scoring.competencia import (
+    from scoring.dimensiones.competencia import (
         NegocioCompetidor,
         negocios_desde_rows,
         calcular_score_competencia,

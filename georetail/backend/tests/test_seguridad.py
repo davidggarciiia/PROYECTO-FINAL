@@ -147,7 +147,7 @@ def test_iermb_none_usa_fallback():
 def test_normalize_barri():
     """_normalize_barri normaliza acentos y casing."""
     pytest.importorskip("httpx")
-    from pipelines.seguridad import _normalize_barri
+    from pipelines.entorno.seguridad import _normalize_barri
     assert _normalize_barri("El Raval") == "el raval"
     assert _normalize_barri("Sarrià-Sant Gervasi") == "sarria-sant gervasi"
     assert _normalize_barri("L'Eixample") == "l'eixample"
@@ -157,7 +157,7 @@ def test_normalize_barri():
 def test_parse_incidents_csv():
     """_parse_incidents_csv clasifica correctamente por tipo y nocturnidad."""
     pytest.importorskip("httpx")
-    from pipelines.seguridad import _parse_incidents_csv
+    from pipelines.entorno.seguridad import _parse_incidents_csv
 
     csv_text = """Nom barri,Hora de dia,Descripció causa vianant
 El Raval,22,Furt de carterisme

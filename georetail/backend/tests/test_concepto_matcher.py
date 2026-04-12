@@ -18,7 +18,7 @@ import pytest
 import numpy as np
 from unittest.mock import MagicMock, patch
 
-from scoring.concepto_matcher import (
+from scoring.concepto.matcher import (
     CONCEPTOS_DB,
     ConceptoMatcher,
     get_matcher,

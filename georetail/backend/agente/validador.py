@@ -8,7 +8,7 @@ from agente import extraer_json
 from agente.prompts import VALIDACION_SISTEMA
 from agente.traductor import traducir
 from routers.llm_router import completar
-from scoring.concept_taxonomy import compilar_concepto_negocio, lookup_canonical_tag
+from scoring.concepto.taxonomy import compilar_concepto_negocio, lookup_canonical_tag
 
 logger = logging.getLogger(__name__)
 

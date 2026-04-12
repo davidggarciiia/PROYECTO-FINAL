@@ -24,7 +24,7 @@ from datetime import date
 
 import pytest
 
-from pipelines.demografia import (
+from pipelines.demografia.demografia import (
     _extract_iermb_bcn_value,
     _parse_float,
     _parse_renda_csv,

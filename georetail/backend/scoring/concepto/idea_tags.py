@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from scoring.concept_taxonomy import (
+from scoring.concepto.taxonomy import (
     VISIBLE_TAGS,
     aplicar_pesos_a_sector,
     compilar_concepto_negocio,

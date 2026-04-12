@@ -29,7 +29,7 @@ from typing import Optional
 
 from config import get_settings
 from db.conexion import get_db
-from pipelines.scraping import (
+from pipelines.inmobiliario.scraping import (
     FotocasaScraper,
     HabitacliaScraper,
     IdealistaScraper,
@@ -38,8 +38,8 @@ from pipelines.scraping import (
     ScrapingConfig,
     desde_dict_scraper,
 )
-from pipelines.scraping.models import InmueblePortal
-from pipelines.scraping.urls import urls_idealista_por_zona
+from pipelines.inmobiliario.scraping.models import InmueblePortal
+from pipelines.inmobiliario.scraping.urls import urls_idealista_por_zona
 
 logger = logging.getLogger(__name__)
 
@@ -240,8 +240,8 @@ class _IdealistaZonaScraper:
         self._cfg = cfg
 
     async def scrape(self, max_paginas: int) -> list[dict]:
-        from pipelines.scraping.base_scraper import BaseScraper
-        from pipelines.scraping.idealista_scraper import _parse_idealista, _es_challenge
+        from pipelines.inmobiliario.scraping.base_scraper import BaseScraper
+        from pipelines.inmobiliario.scraping.idealista_scraper import _parse_idealista, _es_challenge
 
         resultados = []
         async with BaseScraper(self._cfg) as scraper:

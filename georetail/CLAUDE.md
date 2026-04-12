@@ -53,7 +53,11 @@ backend/
 │   ├── financiero.py                  ← POST /api/financiero
 │   ├── refinamiento.py                ← POST /api/refinamiento
 │   ├── exportar.py                    ← POST /api/exportar + GET /api/exportar/download/{id}
-│   └── health.py                      ← GET /api/health
+│   ├── health.py                      ← GET /api/health
+│   ├── admin.py                       ← POST /api/admin/pipelines/{nombre} (trigger manual)
+│   ├── competencia.py                 ← GET /api/competencia/{zona_id}
+│   ├── mercado.py                     ← GET /api/mercado/{zona_id}
+│   └── _utils.py                      ← helpers compartidos (score_to_color, etc.)
 ├── db/
 │   ├── conexion.py                    ← pool asyncpg min=5 max=20
 │   ├── redis_client.py                ← redis.asyncio
@@ -66,19 +70,43 @@ backend/
 │   ├── places_router.py               ← Google Places→Foursquare→Yelp→OSM
 │   └── geocoding_router.py            ← Google→Nominatim→OpenCage + caché PG
 ├── scoring/
-│   ├── features.py                    ← 21 features, construir_features, construir_features_batch
+│   ├── motor.py                       ← API pública: calcular_scores_batch, get_scores_zona
 │   ├── scorer.py                      ← pesos manuales + XGBoost, guardar_scores
-│   ├── dataset.py                     ← construcción dataset de entrenamiento desde PG
-│   ├── train.py                       ← entrenamiento XGBoost, CV 5-fold, promover versión
-│   ├── evaluate.py                    ← métricas, comparar versiones, SHAP global
-│   └── hyperparams.py                 ← búsqueda hiperparámetros con Optuna
+│   ├── features.py                    ← 42 features, construir_features, construir_features_batch
+│   ├── dimensiones/                   ← un scorer por dimensión (pure, sin I/O)
+│   │   ├── flujo_peatonal.py          ← fusión ponderada 4 fuentes (popular_times, vcity, vianants, ratio)
+│   │   ├── demografia.py              ← scoring demográfico multivariable (renta, edad, educación...)
+│   │   ├── entorno.py                 ← entorno comercial (vacíos, rotación, licencias, ocio)
+│   │   ├── seguridad.py               ← seguridad granular (hurtos, robos, daños, GU)
+│   │   ├── transporte.py              ← acceso transporte multifactor (tránsito + bici + a pie)
+│   │   └── competencia.py             ← scoring avanzado competencia (aglomeración + saturación)
+│   ├── concepto/                      ← matching semántico tipo de negocio
+│   │   ├── taxonomy.py                ← taxonomía conceptual unificada (~100 conceptos canónicos)
+│   │   ├── matcher.py                 ← matching por embeddings a conceptos canónicos
+│   │   ├── perfil.py                  ← perfil numérico del negocio desde taxonomía
+│   │   └── idea_tags.py               ← capa compatibilidad idea_tags sobre taxonomía
+│   ├── ml/                            ← entrenamiento y evaluación del modelo XGBoost
+│   │   ├── dataset.py                 ← construcción dataset de entrenamiento desde PG
+│   │   ├── train.py                   ← XGBoost CV 5-fold, promover versión
+│   │   ├── train_synthetic.py         ← entrenamiento con datos sintéticos (sin BD)
+│   │   ├── evaluate.py                ← métricas, SHAP global, comparar versiones
+│   │   └── hyperparams.py             ← búsqueda hiperparámetros con Optuna
+│   └── infra/                         ← gobernanza de datos y registro de modelos
+│       ├── governance.py              ← decisiones de fuentes demográficas, slice_feature_matrix
+│       ├── readiness.py               ← calidad datos demográficos (DuckDB + cleanlab)
+│       ├── model_registry.py          ← obtener_modelo_activo, feature_names por versión
+│       └── legal.py                   ← requisitos legales por zona+sector
 ├── nlp/
 │   ├── embeddings.py                  ← sentence-transformers, encode, actualizar_perfil_zona
-│   └── clasificador.py                ← clasificar_batch, generar_alertas_zona
+│   ├── clasificador.py                ← clasificar_batch, generar_alertas_zona
+│   └── alertas.py                     ← generación y priorización de alertas NLP
 ├── agente/
 │   ├── validador.py                   ← validar_negocio (LLM)
+│   ├── analizador.py                  ← analizar_zona (LLM)
+│   ├── analisis.py                    ← generar_analisis_zona (wrapper de analizador)
+│   ├── refinamiento.py                ← procesar_refinamiento (LLM)
+│   ├── traductor.py                   ← traducción de queries para APIs externas
 │   ├── cuestionario.py                ← procesar_respuesta
-│   ├── analizador.py                  ← analizar_zona
 │   └── prompts/__init__.py            ← todos los prompts del sistema
 ├── financiero/
 │   ├── estimador.py                   ← estimar_parametros automáticamente
@@ -89,16 +117,51 @@ backend/
 ├── exportar/
 │   └── generador.py                   ← WeasyPrint + Jinja2, mapa estático Mapbox
 └── pipelines/
-    ├── scheduler.py                   ← APScheduler, 12 jobs
-    ├── aforaments.py                  ← flujo peatonal CKAN (ST_DWithin + ponderación distancia)
-    ├── resenas.py                     ← Google Places + Foursquare + NLP
-    ├── precios.py                     ← Idealista + Open Data BCN
-    ├── scores.py                      ← recálculo semanal XGBoost
-    ├── demografia.py                  ← padró + renda BCN
-    ├── registre_mercantil.py          ← training data XGBoost
-    ├── parametros_financieros.py      ← pre-cálculo semanal financiero
-    ├── transporte.py                  ← líneas/paradas TMB (semanal sábado 01:00)
-    └── mercado_inmobiliario.py        ← scraping multi-portal locales/viviendas
+    ├── scheduler.py                   ← APScheduler, orquesta todos los pipelines
+    ├── scores.py                      ← recálculo semanal XGBoost (todas las zonas)
+    ├── parametros_financieros.py      ← pre-cálculo semanal financiero (zonas × sectores)
+    ├── peatonal/                      ← flujo de tráfico y peatonal
+    │   ├── aforaments.py              ← tráfico rodado desde CSVs locales (ST_DWithin + ponderación)
+    │   ├── vianants.py                ← aforament vianants BCN Open Data (sensores peatonales)
+    │   └── vcity.py                   ← flujo peatonal VCity BSC (tileserver Martin)
+    ├── demografia/                    ← datos demográficos
+    │   ├── demografia.py              ← padró + renda BCN (mensual)
+    │   ├── demografia_backfill.py     ← backfill histórico desde CSVs locales (_cleaned/)
+    │   └── descarga_datos_publicos.py ← descarga auditable de fuentes públicas BCN/Catalunya
+    ├── turismo/                       ← alojamiento turístico
+    │   ├── airbnb.py                  ← InsideAirbnb listings (CSV.gz público)
+    │   ├── booking.py                 ← Booking.com + HUT fallback (alojamientos)
+    │   └── hut.py                     ← HUT Generalitat → score_turismo por zona
+    ├── transporte/                    ← movilidad urbana
+    │   ├── transporte.py              ← líneas/paradas TMB API (semanal sábado 01:00)
+    │   └── bicing.py                  ← estaciones Bicing GBFS API
+    ├── inmobiliario/                  ← mercado inmobiliario
+    │   ├── mercado_inmobiliario.py    ← scraping multi-portal (Idealista, Fotocasa, Habitaclia...)
+    │   ├── precios.py                 ← precios alquiler comercial (Open Data BCN + scrapers)
+    │   └── scraping/                  ← scrapers por portal + modelos + URLs
+    │       ├── base_scraper.py
+    │       ├── idealista_scraper.py
+    │       ├── fotocasa_scraper.py
+    │       ├── habitaclia_scraper.py
+    │       ├── milanuncios_scraper.py
+    │       ├── pisos_scraper.py
+    │       ├── booking_scraper.py
+    │       ├── gosom_client.py        ← cliente REST para google-maps-scraper (Go)
+    │       ├── models.py
+    │       └── urls.py
+    ├── comercio/                      ← actividad comercial y licencias
+    │   ├── cens_comercial.py          ← Cens Comercial BCN → negocios_historico (labels XGBoost)
+    │   ├── llicencies.py              ← llicències d'activitat BCN (CKAN)
+    │   ├── competencia.py             ← análisis competencia mensual (Google Places + OSM)
+    │   ├── registre_mercantil.py      ← empresas BCN datos.gob.es (training data XGBoost)
+    │   └── entorno_comercial.py       ← mercats municipals + datos comerciales BCN
+    └── entorno/                       ← entorno físico y urbano
+        ├── overpass.py                ← negocios activos desde OSM Overpass API
+        ├── parques.py                 ← parques AMB (opendata.amb.cat)
+        ├── venues_ocio.py             ← equipaments culturals i d'oci BCN
+        ├── seguridad.py               ← incidencias Guardia Urbana BCN (CKAN)
+        ├── google_maps.py             ← enriquecimiento negocios vía gosom scraper
+        └── resenas.py                 ← reseñas Google Places + Foursquare + NLP (diario)
 ```
 
 ### ✅ Archivos adicionales implementados
@@ -107,18 +170,18 @@ backend/
 backend/
 ├── db/migraciones/
 │   ├── 001_schema_inicial.sql         ← esquema completo de BD (32 tablas)
-│   └── 004_inmuebles_portales.sql     ← tabla multi-portal + vista v_mercado_zona
+│   ├── 004_inmuebles_portales.sql     ← tabla multi-portal + vista v_mercado_zona
+│   └── 006..025_*.sql                 ← migraciones incrementales (ver carpeta)
+├── models/
+│   └── xgboost_synthetic_v3.json      ← modelo pre-entrenado con datos sintéticos
 ├── requirements.txt
 ├── Dockerfile
 ├── pytest.ini
-├── tests/                             ← suite completa (191 tests, 7 módulos)
+├── tests/                             ← suite completa (26 módulos de test)
 │   ├── conftest.py                    ← stubs asyncpg/openai/anthropic/google para CI
-│   ├── test_calculadora.py
-│   ├── test_estimador.py
-│   ├── test_scorer.py
-│   ├── test_motor.py
-│   ├── test_features.py
-│   └── test_agente.py
+│   ├── scripts/
+│   │   └── test_integracion_modelo.py ← diagnóstico interactivo (requiere BD live, no pytest)
+│   └── test_*.py                      ← tests unitarios e integración por módulo
 └── .env.example                       ← en raíz del proyecto (georetail/.env.example)
 
 frontend/                              ← Next.js completo con Leaflet + OpenStreetMap

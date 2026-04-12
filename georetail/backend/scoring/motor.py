@@ -20,7 +20,7 @@ import json
 import logging
 from typing import Optional
 
-from scoring.concept_taxonomy import (
+from scoring.concepto.taxonomy import (
     aplicar_pesos_a_sector,
     compilar_concepto_negocio,
     idea_tags_visibles_desde_texto,
@@ -110,7 +110,8 @@ async def calcular_scores_batch(
         zonas_sin_cache = [zona_id for zona_id in zona_ids if zona_id not in resultados_por_zona]
 
         if zonas_sin_cache:
-            frescos = await _scorer_batch(zonas_sin_cache, sector_codigo)
+            perfil = (concepto_negocio or {}).get("perfil_negocio") or perfil_negocio or {}
+            frescos = await _scorer_batch(zonas_sin_cache, sector_codigo, idea_tags=contexto.get("tags_efectivos") or idea_tags, perfil_negocio=perfil)
             for zona_id in zonas_sin_cache:
                 payload = frescos.get(zona_id)
                 resultados_por_zona[zona_id] = (
@@ -331,7 +332,7 @@ def _resolver_matcher(descripcion_negocio: Optional[str]):
         return [], None
 
     try:
-        from scoring.concepto_matcher import get_matcher
+        from scoring.concepto.matcher import get_matcher
 
         matcher = get_matcher()
         matches = matcher.match(descripcion_negocio, top_k=4)
@@ -446,7 +447,7 @@ def _score_zona_vs_ideal(zona_data: dict, zona_ideal: dict) -> float:
     equivalente para no perder la afinidad derivada desde perfil_negocio.
     """
     try:
-        from scoring.concepto_matcher import score_zona_vs_ideal as _shared_score
+        from scoring.concepto.matcher import score_zona_vs_ideal as _shared_score
 
         return _shared_score(zona_data, zona_ideal)
     except Exception:

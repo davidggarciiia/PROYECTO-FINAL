@@ -34,7 +34,7 @@ import xgboost as xgb
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import roc_auc_score
 
-from scoring.dataset import construir_dataset
+from scoring.ml.dataset import construir_dataset
 from scoring.features import FEATURE_NAMES
 
 logger = logging.getLogger(__name__)

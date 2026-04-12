@@ -101,14 +101,14 @@ def stop_scheduler() -> None:
 
 async def _run_resenas():
     try:
-        from pipelines.resenas import ejecutar
+        from pipelines.entorno.resenas import ejecutar
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline resenas error: %s", e)
 
 async def _run_aforaments():
     try:
-        from pipelines.aforaments import ejecutar
+        from pipelines.peatonal.aforaments import ejecutar
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline aforaments error: %s", e)
@@ -120,7 +120,7 @@ async def _run_vianants():
     ADVERTÈNCIA: aforaments.py mesura trànsit de vehicles, NO vianants a peu.
     """
     try:
-        from pipelines.vianants import ejecutar
+        from pipelines.peatonal.vianants import ejecutar
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline vianants error: %s", e)
@@ -132,7 +132,7 @@ async def _run_vcity():
     flujo_peatonal_total). Si VCity no está disponible, usa fallback vianants_bcn.
     """
     try:
-        from pipelines.vcity import ejecutar
+        from pipelines.peatonal.vcity import ejecutar
         result = await ejecutar()
         logger.info("Pipeline vcity — %s", result)
     except Exception as e:
@@ -140,7 +140,7 @@ async def _run_vcity():
 
 async def _run_precios():
     try:
-        from pipelines.precios import ejecutar
+        from pipelines.inmobiliario.precios import ejecutar
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline precios error: %s", e)
@@ -154,14 +154,14 @@ async def _run_scores():
 
 async def _run_demografia():
     try:
-        from pipelines.demografia import ejecutar
+        from pipelines.demografia.demografia import ejecutar
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline demografia error: %s", e)
 
 async def _run_registre():
     try:
-        from pipelines.registre_mercantil import ejecutar
+        from pipelines.comercio.registre_mercantil import ejecutar
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline registre_mercantil error: %s", e)
@@ -178,7 +178,7 @@ async def _run_params_fin():
 
 async def _run_mercado_locales_alq():
     try:
-        from pipelines.mercado_inmobiliario import ejecutar
+        from pipelines.inmobiliario.mercado_inmobiliario import ejecutar
         stats = await ejecutar(modo="locales_alquiler")
         logger.info("Mercado locales_alquiler — %s", stats)
     except Exception as e:
@@ -186,7 +186,7 @@ async def _run_mercado_locales_alq():
 
 async def _run_mercado_locales_vta():
     try:
-        from pipelines.mercado_inmobiliario import ejecutar
+        from pipelines.inmobiliario.mercado_inmobiliario import ejecutar
         stats = await ejecutar(modo="locales_venta")
         logger.info("Mercado locales_venta — %s", stats)
     except Exception as e:
@@ -194,7 +194,7 @@ async def _run_mercado_locales_vta():
 
 async def _run_mercado_viviendas():
     try:
-        from pipelines.mercado_inmobiliario import ejecutar
+        from pipelines.inmobiliario.mercado_inmobiliario import ejecutar
         stats = await ejecutar(modo="viviendas")
         logger.info("Mercado viviendas — %s", stats)
     except Exception as e:
@@ -202,7 +202,7 @@ async def _run_mercado_viviendas():
 
 async def _run_transporte():
     try:
-        from pipelines.transporte import ejecutar
+        from pipelines.transporte.transporte import ejecutar
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline transporte error: %s", e)
@@ -210,7 +210,7 @@ async def _run_transporte():
 async def _run_bicing():
     """Semanal sábado 02:00 — BSMSA GBFS → estaciones_bicing."""
     try:
-        from pipelines.bicing import ejecutar
+        from pipelines.transporte.bicing import ejecutar
         result = await ejecutar()
         logger.info("Pipeline bicing — %s", result)
     except Exception as e:
@@ -231,7 +231,7 @@ async def _run_purgar_portales():
 async def _run_airbnb():
     """Mensual día 3, 05:00 — Inside Airbnb → airbnb_density_500m, airbnb_occupancy_est."""
     try:
-        from pipelines.airbnb import ejecutar
+        from pipelines.turismo.airbnb import ejecutar
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline airbnb error: %s", e)
@@ -239,7 +239,7 @@ async def _run_airbnb():
 async def _run_llicencies():
     """Mensual día 5, 06:00 — Open Data BCN llicències d'activitat → licencias_nuevas_1a."""
     try:
-        from pipelines.llicencies import ejecutar
+        from pipelines.comercio.llicencies import ejecutar
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline llicencies error: %s", e)
@@ -247,7 +247,7 @@ async def _run_llicencies():
 async def _run_venues_ocio():
     """Mensual día 7, 07:00 — OSM + Agenda BCN → tabla venues_ocio + eventos_culturales_500m."""
     try:
-        from pipelines.venues_ocio import ejecutar
+        from pipelines.entorno.venues_ocio import ejecutar
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline venues_ocio error: %s", e)
@@ -255,7 +255,7 @@ async def _run_venues_ocio():
 async def _run_booking():
     """Semanal jueves 03:00 — Booking.com API → tabla alojamientos_turisticos + booking_hoteles_500m."""
     try:
-        from pipelines.booking import ejecutar
+        from pipelines.turismo.booking import ejecutar
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline booking error: %s", e)
@@ -263,7 +263,7 @@ async def _run_booking():
 async def _run_google_maps():
     """Semanal miércoles 02:00 — Google Places → negocios_activos.review_count + google_place_id."""
     try:
-        from pipelines.google_maps import ejecutar
+        from pipelines.entorno.google_maps import ejecutar
         await ejecutar()
     except Exception as e:
         logger.error("Pipeline google_maps error: %s", e)
@@ -274,7 +274,7 @@ async def _run_google_maps():
 async def _run_parques():
     """Mensual día 2, 06:00 — Parques AMB → parques_amb + m2_zonas_verdes_cercanas."""
     try:
-        from pipelines.parques import ejecutar
+        from pipelines.entorno.parques import ejecutar
         result = await ejecutar()
         logger.info("Pipeline parques AMB — %s", result)
     except Exception as e:
@@ -286,7 +286,7 @@ async def _run_parques():
 async def _run_seguridad():
     """Mensual día 1, 07:30 — GU incidents + comisarías + IERMB → seguridad multivariable."""
     try:
-        from pipelines.seguridad import ejecutar
+        from pipelines.entorno.seguridad import ejecutar
         result = await ejecutar()
         logger.info("Pipeline seguridad — %s", result)
     except Exception as e:
@@ -298,7 +298,7 @@ async def _run_seguridad():
 async def _run_entorno_comercial():
     """Mensual día 4, 06:00 — mercats + soroll + equipaments → entorno comercial multivariable."""
     try:
-        from pipelines.entorno_comercial import ejecutar
+        from pipelines.comercio.entorno_comercial import ejecutar
         result = await ejecutar()
         logger.info("Pipeline entorno_comercial — %s", result)
     except Exception as e:

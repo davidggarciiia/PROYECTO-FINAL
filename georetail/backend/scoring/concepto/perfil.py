@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
 
-from scoring.concept_taxonomy import (
+from scoring.concepto.taxonomy import (
     NEUTRAL_PROFILE,
     PROFILE_KEYS,
     SECTOR_PROFILE_DEFAULTS,

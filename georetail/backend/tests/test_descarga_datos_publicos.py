@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pipelines.descarga_datos_publicos import (
+from pipelines.demografia.descarga_datos_publicos import (
     _collect_download_candidates,
     _collect_ine_export_candidates,
     _collect_ine_table_candidates,
