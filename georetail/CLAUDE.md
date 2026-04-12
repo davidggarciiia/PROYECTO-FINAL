@@ -72,14 +72,15 @@ backend/
 ├── scoring/
 │   ├── motor.py                       ← API pública: calcular_scores_batch, get_scores_zona
 │   ├── scorer.py                      ← pesos manuales + XGBoost, guardar_scores
-│   ├── features.py                    ← 42 features, construir_features, construir_features_batch
+│   ├── features.py                    ← 58 features (v13), construir_features, construir_features_batch
 │   ├── dimensiones/                   ← un scorer por dimensión (pure, sin I/O)
 │   │   ├── flujo_peatonal.py          ← fusión ponderada 4 fuentes (popular_times, vcity, vianants, ratio)
 │   │   ├── demografia.py              ← scoring demográfico multivariable (renta, edad, educación...)
 │   │   ├── entorno.py                 ← entorno comercial (vacíos, rotación, licencias, ocio)
 │   │   ├── seguridad.py               ← seguridad granular (hurtos, robos, daños, GU)
 │   │   ├── transporte.py              ← acceso transporte multifactor (tránsito + bici + a pie)
-│   │   └── competencia.py             ← scoring avanzado competencia (aglomeración + saturación)
+│   │   ├── competencia.py             ← scoring avanzado competencia (aglomeración + saturación)
+│   │   └── dinamismo.py               ← trayectoria comercial histórica (licencias+HHI+supervivencia)
 │   ├── concepto/                      ← matching semántico tipo de negocio
 │   │   ├── taxonomy.py                ← taxonomía conceptual unificada (~100 conceptos canónicos)
 │   │   ├── matcher.py                 ← matching por embeddings a conceptos canónicos
@@ -154,7 +155,8 @@ backend/
     │   ├── llicencies.py              ← llicències d'activitat BCN (CKAN)
     │   ├── competencia.py             ← análisis competencia mensual (Google Places + OSM)
     │   ├── registre_mercantil.py      ← empresas BCN datos.gob.es (training data XGBoost)
-    │   └── entorno_comercial.py       ← mercats municipals + datos comerciales BCN
+    │   ├── entorno_comercial.py       ← mercats municipals + datos comerciales BCN
+    │   └── dinamismo.py               ← pipeline mensual (día 6 03:00) → dinamismo_zonal table
     └── entorno/                       ← entorno físico y urbano
         ├── overpass.py                ← negocios activos desde OSM Overpass API
         ├── parques.py                 ← parques AMB (opendata.amb.cat)
@@ -171,7 +173,8 @@ backend/
 ├── db/migraciones/
 │   ├── 001_schema_inicial.sql         ← esquema completo de BD (32 tablas)
 │   ├── 004_inmuebles_portales.sql     ← tabla multi-portal + vista v_mercado_zona
-│   └── 006..025_*.sql                 ← migraciones incrementales (ver carpeta)
+│   ├── 006..025_*.sql                 ← migraciones incrementales (ver carpeta)
+│   └── 026_dinamismo_zonal.sql        ← tabla dinamismo_zonal + vista v_dinamismo_zona
 ├── models/
 │   └── xgboost_synthetic_v3.json      ← modelo pre-entrenado con datos sintéticos
 ├── requirements.txt
@@ -204,7 +207,8 @@ docker-compose.yml                     ← postgres + redis + backend + worker +
 | POST | `/api/local/preview` | api/local.py | Click en mapa — datos mínimos para tooltip (<200ms) |
 | POST | `/api/local` | api/local.py | "Ver detalle" — análisis completo (~1-3s) |
 | GET | `/api/locales` | api/locales.py | Vista lista con filtros y paginación |
-| GET | `/api/legal/{sector}` | api/legal.py | Requisitos legales del sector |
+| GET | `/api/legal/{sector}` | api/legal.py | Requisitos legales del sector (estático) |
+| POST | `/api/legal/roadmap` | api/legal.py | Roadmap jurídico LLM personalizado (zona+sector, cache 30d) |
 | POST | `/api/financiero` | api/financiero.py | Calculadora financiera automática (debounce 300ms) |
 | POST | `/api/refinamiento` | api/refinamiento.py | Filtrar resultados con lenguaje natural |
 | POST | `/api/exportar` | api/exportar.py | Generar PDF |
@@ -251,7 +255,9 @@ Es lo que diferencia una calle comercial de una residencial en el mismo barrio.
 
 ## Modelo XGBoost — arquitectura
 
-**Features (21):** Ver `scoring/features.py` → `FEATURE_NAMES`
+**Features (58, v13):** Ver `scoring/features.py` → `FEATURE_NAMES`
+Dimensiones scorer manual_v2: flujo 25%, demografía 20%, competencia 15%, transporte 15%,
+entorno 10%, dinamismo 5%, seguridad 5%, turismo 5%. `precio` eliminado como dimensión.
 
 **Label:** `1` si el negocio sobrevivió ≥ 3 años, `0` si cerró antes.
 
