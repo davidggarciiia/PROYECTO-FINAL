@@ -4,6 +4,7 @@ import type {
   LocalDetalleResponse,
   FinancieroResponse,
   CompetenciaDetalle,
+  LegalRoadmapResponse,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -44,6 +45,12 @@ export const api = {
 
   competencia: (zona_id: string, session_id: string) =>
     apiFetch<CompetenciaDetalle>(`/api/competencia/${zona_id}?session_id=${encodeURIComponent(session_id)}`),
+
+  legal: (zona_id: string, session_id: string) =>
+    apiFetch<LegalRoadmapResponse>("/api/legal/roadmap", {
+      method: "POST",
+      body: JSON.stringify({ zona_id, session_id }),
+    }),
 
   health: () => apiFetch<{ status: string; version: string }>("/api/health"),
 };

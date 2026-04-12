@@ -89,6 +89,11 @@ def init_scheduler() -> None:
     # ── Entorno comercial (v8: mercats + soroll + equipaments) ────────────────
     _scheduler.add_job(_run_entorno_comercial, CronTrigger(day=4, hour=6, minute=0), id="entorno_comercial", replace_existing=True, **_JOB_DEFAULTS)
 
+    # ── Dinamismo comercial histórico (v13: trayectoria zona) ─────────────────
+    # Depende de: llicencies (día 5), cens_comercial (one-time), negocios_historico
+    # Se ejecuta el día 6 para que llicencies ya haya corrido ese mes.
+    _scheduler.add_job(_run_dinamismo, CronTrigger(day=6, hour=3, minute=0), id="dinamismo_comercial", replace_existing=True, **_JOB_DEFAULTS)
+
     _scheduler.start()
     logger.info("APScheduler iniciado con %d jobs", len(_scheduler.get_jobs()))
 
@@ -303,3 +308,15 @@ async def _run_entorno_comercial():
         logger.info("Pipeline entorno_comercial — %s", result)
     except Exception as e:
         logger.error("Pipeline entorno_comercial error: %s", e)
+
+
+# ── Runner dinamismo comercial (v13) ─────────────────────────────────────────
+
+async def _run_dinamismo():
+    """Mensual día 6, 03:00 — negocios_historico + llicencies + variables_zona → dinamismo_zonal."""
+    try:
+        from pipelines.comercio.dinamismo import run
+        result = await run()
+        logger.info("Pipeline dinamismo_comercial — %s", result)
+    except Exception as e:
+        logger.error("Pipeline dinamismo_comercial error: %s", e)

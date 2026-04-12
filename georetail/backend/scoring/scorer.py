@@ -276,11 +276,12 @@ def _score_manual(datos: dict, sector: dict) -> dict:
         saturacion = 50 if sat_raw is None else sat_raw
         s_comp = max(0.0, min(100.0, 100.0 - saturacion))
 
-    # PRECIO ALQUILER — inversamente proporcional al precio (más barato = mejor)
-    # Rango BCN: 8-45 €/m². Score 100 = 8€/m², Score 0 = 45€/m²
+    # PRECIO ALQUILER — ya no es dimensión de calidad de zona; se mantiene como
+    # referencia en el retorno pero su peso en el score global es 0.
+    # El precio pertenece al módulo financiero (asequibilidad por sector), no al scoring.
     _precio_raw = datos.get("precio_m2")
-    precio_m2 = _precio_raw if _precio_raw is not None else 20  # `or` trataría precio=0 como None
-    s_precio = min(100.0, max(0.0, (45.0 - precio_m2) / 0.37))
+    precio_m2 = _precio_raw if _precio_raw is not None else 20
+    s_precio = min(100.0, max(0.0, (45.0 - precio_m2) / 0.37))  # se calcula pero peso=0
 
     # TRANSPORTE — score enriquecido multi-factor (calidad por tipo, decay distancia, frecuencia, bicing)
     # Si hay score pre-calculado (del nuevo módulo transporte_score.py), usarlo directamente.
@@ -330,16 +331,27 @@ def _score_manual(datos: dict, sector: dict) -> dict:
         rotacion = _r if _r is not None else 0.18
         s_entorno = max(0.0, 100.0 - vacios * 200.0 - rotacion * 100.0)
 
-    # ── Score global ponderado ────────────────────────────────────────────────
+    # DINAMISMO — trayectoria histórica de la zona (v13, pipeline mensual)
+    try:
+        from scoring.dimensiones.dinamismo import calcular_dinamismo
+        _din_result = calcular_dinamismo(datos, perfil_negocio=perfil_negocio)
+        s_dinamismo = _din_result["score_dinamismo"]
+    except Exception as _e:
+        logger.warning("Error dinamismo_score: %s", _e)
+        s_dinamismo = 50.0
+
+    # ── Score global ponderado ─────────────────────────────────────────────────
+    # precio retirado como dimensión (es restricción financiera, no calidad de zona).
+    # Sus 15 puntos se redistribuyen: +5 entorno, +5 dinamismo, +5 transporte.
     dims = {
-        "flujo":      (s_flujo,   sector.get("peso_flujo",0.25)),
-        "demografia": (s_demo,    sector.get("peso_demo",0.20)),
-        "competencia":(s_comp,    sector.get("peso_competencia",0.15)),
-        "precio":     (s_precio,  sector.get("peso_precio",0.15)),
-        "transporte": (s_trans,   sector.get("peso_transporte",0.10)),
-        "seguridad":  (s_seg,     sector.get("peso_seguridad",0.05)),
-        "turismo":    (s_turismo, sector.get("peso_turismo",0.05)),
-        "entorno":    (s_entorno, sector.get("peso_entorno",0.05)),
+        "flujo":      (s_flujo,     sector.get("peso_flujo",      0.25)),
+        "demografia": (s_demo,      sector.get("peso_demo",       0.20)),
+        "competencia":(s_comp,      sector.get("peso_competencia",0.15)),
+        "transporte": (s_trans,     sector.get("peso_transporte", 0.15)),
+        "entorno":    (s_entorno,   sector.get("peso_entorno",    0.10)),
+        "dinamismo":  (s_dinamismo, sector.get("peso_dinamismo",  0.05)),
+        "seguridad":  (s_seg,       sector.get("peso_seguridad",  0.05)),
+        "turismo":    (s_turismo,   sector.get("peso_turismo",    0.05)),
     }
 
     score_global = sum(v * w for v, w in dims.values())
@@ -349,14 +361,15 @@ def _score_manual(datos: dict, sector: dict) -> dict:
         "score_flujo_peatonal":     round(s_flujo, 1),
         "score_demografia":         round(s_demo, 1),
         "score_competencia":        round(s_comp, 1),
-        "score_precio_alquiler":    round(s_precio, 1),
+        "score_precio_alquiler":    round(s_precio, 1),  # referencia, no pondera
         "score_transporte":         round(s_trans, 1),
         "score_seguridad":          round(s_seg, 1),
         "score_turismo":            round(s_turismo, 1),
         "score_entorno_comercial":  round(s_entorno, 1),
+        "score_dinamismo":          round(s_dinamismo, 1),
         "probabilidad_supervivencia": None,
         "shap_values":              None,
-        "modelo_version":           "manual_v1",
+        "modelo_version":           "manual_v2",
     }
 
 

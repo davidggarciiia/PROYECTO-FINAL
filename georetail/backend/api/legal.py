@@ -31,6 +31,7 @@ Fuentes de referencia para los datos:
 
 from __future__ import annotations
 
+import json
 import logging
 
 from typing import Optional
@@ -38,6 +39,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from db.conexion import get_db
+from db.redis_client import get_redis
 from schemas.models import (
     LicenciaNecesaria, RestriccionGeografica, ViabilidadLegal, ModeloLegal,
 )
@@ -451,3 +454,184 @@ async def get_legal(sector_codigo: str) -> LegalResponse:
         ],
         disclaimer=_DISCLAIMER,
     )
+
+
+# ─── Endpoint LLM: POST /api/legal/roadmap ───────────────────────────────────
+
+class RoadmapRequest(BaseModel):
+    zona_id: str
+    session_id: str
+
+
+# Distritos con restricciones conocidas por sector
+_RESTRICCIONES_DISTRITO: dict[str, dict[str, str]] = {
+    "restauracion": {
+        "Ciutat Vella": "Moratoria general activa desde 2017. Prácticamente no se conceden nuevas licencias de restauración.",
+        "Eixample":     "Plan de Usos Eixample 2023: límites de densidad estrictos (máx 5 en radio 50m en Zona A). Proceso lento y con riesgo de denegación.",
+        "Sant Martí":   "Plan de Usos Sant Martí vigente desde dic 2025: máx 10 establecimientos en radio 100m, distancia mínima 25m entre locales del mismo tipo.",
+    },
+    "shisha_lounge": {
+        "Gràcia":       "PEMU Gràcia restringe establecimientos de ocio nocturno. Verificar zona concreta antes de firmar contrato.",
+        "Cidade Vella": "Alta concentración de locales de ocio — restricciones especiales de densidad.",
+    },
+}
+
+_CACHE_TTL = 60 * 60 * 24 * 30  # 30 días — las regulaciones no cambian a diario
+
+_SISTEMA_LEGAL = """Eres un asesor legal especializado en apertura de negocios en Barcelona.
+Tu tarea es generar un roadmap burocrático detallado y preciso para abrir un negocio en Barcelona.
+Responde SIEMPRE en español. Sé concreto, útil y honesto sobre los riesgos.
+Responde ÚNICAMENTE con JSON válido, sin texto adicional ni markdown."""
+
+
+def _build_prompt(
+    tipo_negocio: str,
+    distrito: str,
+    sector_datos: dict,
+    restriccion_texto: Optional[str],
+) -> str:
+    restricciones_str = json.dumps(sector_datos.get("restricciones_geograficas", []), ensure_ascii=False)
+    licencias_str = json.dumps(sector_datos.get("licencias_necesarias", []), ensure_ascii=False)
+    req_local_str = json.dumps(sector_datos.get("requisitos_local", []), ensure_ascii=False)
+    req_op_str = json.dumps(sector_datos.get("requisitos_operativos", []), ensure_ascii=False)
+    zona_restringida = restriccion_texto is not None
+
+    restriccion_block = f"""
+RESTRICCIÓN ESPECÍFICA DE ZONA:
+{restriccion_texto}
+""" if restriccion_texto else "No hay restricciones especiales conocidas para esta zona concreta."
+
+    return f"""Genera un roadmap burocrático completo para abrir el siguiente negocio en Barcelona:
+
+NEGOCIO: {tipo_negocio}
+DISTRITO: {distrito}
+ZONA RESTRINGIDA: {"SÍ" if zona_restringida else "NO"}
+{restriccion_block}
+
+DATOS LEGALES BASE (usa esto como fuente de verdad):
+Licencias necesarias: {licencias_str}
+Requisitos del local: {req_local_str}
+Requisitos operativos: {req_op_str}
+Restricciones geográficas generales: {restricciones_str}
+Modelo legal especial: {sector_datos.get("modelo_legal") or "ninguno"}
+
+Devuelve EXACTAMENTE este JSON (sin texto adicional):
+{{
+  "tipo_negocio": "{tipo_negocio}",
+  "distrito": "{distrito}",
+  "zona_restringida": {str(zona_restringida).lower()},
+  "restriccion_detalle": {json.dumps(restriccion_texto or "")},
+  "equipo_externo": [
+    {{"nombre": "...", "descripcion": "...", "coste_aprox": "..."}}
+  ],
+  "fases": [
+    {{
+      "id": "fase_1",
+      "numero": 1,
+      "titulo": "...",
+      "descripcion": "...",
+      "tramites": [
+        {{
+          "numero": 1,
+          "titulo": "...",
+          "nombre_oficial": "...",
+          "que_es": "...",
+          "donde": "...",
+          "documentos": ["..."],
+          "tiempo_estimado": "...",
+          "coste_estimado": "...",
+          "enlace": "https://...",
+          "alerta": "..."
+        }}
+      ]
+    }}
+  ],
+  "costes_resumen": [
+    {{"concepto": "...", "coste": "..."}}
+  ],
+  "proximos_pasos": ["..."]
+}}
+
+INSTRUCCIONES:
+- Crea 3-5 fases lógicas (viabilidad, constitución, licencias, operación, apertura)
+- Cada fase debe tener 1-4 trámites concretos y accionables
+- Los costes deben ser realistas para Barcelona 2026
+- Los enlaces deben ser URLs reales del Ajuntament o organismos oficiales
+- Si zona_restringida=true, añade una alerta clara en el primer trámite
+- El campo "alerta" solo se rellena cuando hay algo importante a advertir (puede ser null)
+- equipo_externo: incluye gestoría, arquitecto/ingeniero técnico, y prevención de riesgos si aplica
+- proximos_pasos: 3-5 acciones inmediatas ordenadas por urgencia"""
+
+
+@router.post(
+    "/legal/roadmap",
+    summary="Roadmap burocrático generado por IA para abrir un negocio en una zona concreta",
+)
+async def post_legal_roadmap(body: RoadmapRequest) -> dict:
+    """
+    Genera un roadmap burocrático personalizado para la zona y el tipo de negocio
+    de la sesión activa. Usa LLM con fallback automático. Cachea 30 días en Redis.
+
+    El roadmap incluye:
+      - Fases y trámites paso a paso (acordeón)
+      - Restricciones urbanísticas de la zona concreta
+      - Equipo externo imprescindible (gestor, arquitecto, prevención)
+      - Resumen de costes estimados
+      - Próximos pasos ordenados
+    """
+    from routers.llm_router import completar
+
+    # ── Obtener contexto de la sesión ─────────────────────────────────────────
+    async with get_db() as conn:
+        zona_row = await conn.fetchrow(
+            """
+            SELECT z.nombre, z.distrito, z.barrio
+            FROM zonas z
+            WHERE z.id = $1
+            """,
+            body.zona_id,
+        )
+        sesion_row = await conn.fetchrow(
+            "SELECT descripcion_negocio, sector FROM sesiones WHERE id = $1",
+            body.session_id,
+        )
+
+    if not zona_row:
+        raise HTTPException(status_code=404, detail="Zona no encontrada")
+
+    distrito  = zona_row["distrito"] or "Barcelona"
+    sector    = (sesion_row["sector"] if sesion_row else None) or "moda"
+    tipo_neg  = (sesion_row["descripcion_negocio"] if sesion_row else None) or "Negocio en Barcelona"
+    sector_datos = _SECTORES.get(sector, _SECTORES["moda"])
+
+    # ── Cache Redis ───────────────────────────────────────────────────────────
+    cache_key = f"legal:roadmap:{body.zona_id}:{sector}"
+    r = get_redis()
+    cached = await r.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
+    # ── Restricción específica del distrito ───────────────────────────────────
+    restriccion_texto: Optional[str] = _RESTRICCIONES_DISTRITO.get(sector, {}).get(distrito)
+
+    # ── Llamada LLM ───────────────────────────────────────────────────────────
+    prompt = _build_prompt(tipo_neg, distrito, sector_datos, restriccion_texto)
+    try:
+        respuesta = await completar(
+            mensajes=[{"role": "user", "content": prompt}],
+            sistema=_SISTEMA_LEGAL,
+            endpoint="legal_roadmap",
+            session_id=body.session_id,
+            max_tokens=3000,
+            temperature=0.2,
+            requiere_json=True,
+        )
+        roadmap = json.loads(respuesta)
+    except (json.JSONDecodeError, Exception) as exc:
+        logger.error("legal/roadmap LLM error: %s", exc)
+        raise HTTPException(status_code=503, detail="No se pudo generar el roadmap. Inténtalo de nuevo.")
+
+    # ── Guardar en cache ──────────────────────────────────────────────────────
+    await r.setex(cache_key, _CACHE_TTL, json.dumps(roadmap, ensure_ascii=False))
+
+    return roadmap
