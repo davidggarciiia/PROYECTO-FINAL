@@ -472,7 +472,7 @@ _RESTRICCIONES_DISTRITO: dict[str, dict[str, str]] = {
     },
     "shisha_lounge": {
         "Gràcia":       "PEMU Gràcia restringe establecimientos de ocio nocturno. Verificar zona concreta antes de firmar contrato.",
-        "Cidade Vella": "Alta concentración de locales de ocio — restricciones especiales de densidad.",
+        "Ciutat Vella": "Alta concentración de locales de ocio — restricciones especiales de densidad.",
     },
 }
 

@@ -12,6 +12,7 @@ Frecuencia: mensual, día 1 a las 02:00 (scheduler.py).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 from datetime import date, datetime, timezone
@@ -155,21 +156,23 @@ async def _hhi_zona(conn, zona_id: int) -> float | None:
 
 
 async def _demografia_tendencia(conn, zona_id: int) -> dict[str, Any]:
-    """Variación % de renta y población en los últimos 3 años."""
+    """Variación % de renta y población: snapshot más reciente vs más antiguo en ventana 3 años."""
     rows = await conn.fetch(
         """
         SELECT renta_bruta_hogar, poblacion, updated_at::date AS fecha
         FROM variables_zona
-        WHERE zona_id = $1 AND renta_bruta_hogar IS NOT NULL
+        WHERE zona_id = $1
+          AND renta_bruta_hogar IS NOT NULL
+          AND updated_at >= NOW() - INTERVAL '3 years'
         ORDER BY updated_at DESC
-        LIMIT 2
         """,
         zona_id,
     )
     if len(rows) < 2:
         return {"renta_variacion_3a": None, "poblacion_variacion_3a": None}
 
-    reciente, antiguo = rows[0], rows[1]
+    # Más reciente vs más antiguo dentro de la ventana de 3 años
+    reciente, antiguo = rows[0], rows[-1]
 
     def _pct_cambio(nuevo, viejo) -> float | None:
         if viejo and viejo != 0 and nuevo is not None:
@@ -302,7 +305,7 @@ async def run() -> dict:
             SET estado = 'completed', fin = now(), resultado = $1
             WHERE id = $2
             """,
-            str(resultado),
+            json.dumps(resultado),
             exec_id,
         )
 

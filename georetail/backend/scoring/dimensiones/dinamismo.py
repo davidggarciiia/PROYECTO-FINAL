@@ -91,12 +91,13 @@ def calcular_dinamismo(
         score += _AJUSTE_TENDENCIA.get(tendencia, 0.0)
 
         # Ajuste fino: renta creciendo es señal de gentrificación positiva
+        # NOTA: renta_variacion_3a se almacena como fracción decimal (0.04 = 4%)
         renta_var = _get(datos, "renta_variacion_3a", 0.0)
-        if renta_var > 10.0:
+        if renta_var > 0.10:
             score += 3.0
-        elif renta_var > 5.0:
+        elif renta_var > 0.05:
             score += 1.5
-        elif renta_var < -5.0:
+        elif renta_var < -0.05:
             score -= 2.0
 
         # Ajuste fino: supervivencia histórica como señal de confianza del mercado

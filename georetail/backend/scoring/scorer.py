@@ -395,6 +395,7 @@ async def _score_xgboost(zona_id: str, sector: str, datos: dict) -> dict:
         "score_seguridad":          None,
         "score_turismo":            None,
         "score_entorno_comercial":  None,
+        "score_dinamismo":          None,
         "probabilidad_supervivencia": round(prob, 3),
         "shap_values":              shap,
         "modelo_version":           f"xgboost_{_xgb_version}",
@@ -445,6 +446,7 @@ def _score_neutro() -> dict:
         "score_seguridad":            50.0,
         "score_turismo":              50.0,
         "score_entorno_comercial":    50.0,
+        "score_dinamismo":            50.0,
         "probabilidad_supervivencia": None,
         "shap_values":                None,
         "modelo_version":             "fallback",
@@ -483,7 +485,15 @@ async def _get_datos_zona_completos(zona_id: str, sector: str, idea_tags: list[s
                         'LINESTRING(2.1850 41.3740,2.1940 41.3792,2.2030 41.3840,'
                         '2.2130 41.3900,2.2250 41.3970,2.2380 41.4020)', 4326
                     )::geography
-                )::int AS dist_playa_m
+                )::int AS dist_playa_m,
+                -- v13: dinamismo comercial histórico (pipeline mensual día 6)
+                din.score_dinamismo,
+                din.tendencia,
+                din.ratio_apertura_cierre_1a,
+                din.tasa_supervivencia_3a,
+                din.renta_variacion_3a,
+                din.hhi_sectorial,
+                din.negocios_historico_count
             FROM v_variables_zona vz
             JOIN zonas z ON z.id = vz.zona_id
             LEFT JOIN competencia_por_local cp ON cp.zona_id=vz.zona_id
@@ -506,6 +516,19 @@ async def _get_datos_zona_completos(zona_id: str, sector: str, idea_tags: list[s
                 JOIN paradas_lineas pl2 ON pl2.parada_id=pt.id
                 WHERE ST_DWithin(pt.geometria::geography, z.geometria::geography, 500)
             ) trans ON TRUE
+            -- v13: snapshot más reciente de dinamismo_zonal para esta zona
+            LEFT JOIN LATERAL (
+                SELECT
+                    dz.score_dinamismo,
+                    dz.tendencia,
+                    dz.ratio_apertura_cierre_1a,
+                    dz.tasa_supervivencia_3a,
+                    dz.renta_variacion_3a,
+                    dz.hhi_sectorial,
+                    dz.negocios_historico_count
+                FROM v_dinamismo_zona dz
+                WHERE dz.zona_id = vz.zona_id
+            ) din ON TRUE
             WHERE vz.zona_id=$1
             ORDER BY vz.fecha DESC LIMIT 1
         """, zona_id, sector)
