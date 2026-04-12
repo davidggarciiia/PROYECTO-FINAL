@@ -309,5 +309,34 @@
       "rows_skipped": 2
     },
     "idescat-aec-15392-1.csv": 9
-  }
+  },
+  "idescat": {
+    "afi": {
+      "files": 1232,
+      "rows_bcn": 6875754,
+      "rows_skipped": 14624627
+    },
+    "ist": {
+      "files": 18,
+      "rows_bcn": 147700,
+      "rows_skipped": 122589
+    },
+    "censph": {
+      "files": 2649,
+      "rows": 87063387
+    },
+    "irpf": {
+      "files": 10,
+      "rows": 274176
+    },
+    "pmh": {
+      "files": 190,
+      "rows": 45223641
+    },
+    "rfdbc": {
+      "files": 16,
+      "rows": 195390
+    }
+  },
+  "scraping_test": {}
 }

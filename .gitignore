@@ -43,3 +43,6 @@ georetail/backend/exports/
 
 # Frontend build artifacts
 frontend/tsconfig.tsbuildinfo
+
+# Herramientas externas (binarios Go, etc.)
+tools/

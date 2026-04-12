@@ -28,6 +28,8 @@ shap==0.46.0                  # explica qué variables influyen en el score
 optuna==3.6.1                 # búsqueda de hiperparámetros (configuración óptima del modelo)
 numpy==1.26.4
 pandas==2.2.3
+duckdb==1.1.3                 # auditoria local de CSV/ZIP demograficos
+cleanlab==2.7.0               # deteccion de filas sospechosas para datasets de ML
 joblib==1.4.2                 # guardar/cargar modelos en disco
 
 # ─── NLP (procesamiento de lenguaje natural) ──────────────────────────────────
