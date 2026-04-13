@@ -105,7 +105,7 @@ function Skeleton({ h = 16, w = "100%" }: { h?: number; w?: string }) {
 }
 
 const MIN_W = 340;
-const MAX_W = 740;
+const MAX_W = 800;
 const DEFAULT_W = 440;
 
 export default function DetailPanel({ zona, detalle, loading, sessionId, onClose }: Props) {
@@ -119,8 +119,20 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
   const toggleSection = (key: string) =>
     setOpenSections((prev: Record<string, boolean>) => ({ ...prev, [key]: !prev[key] }));
 
+  const [expanded, setExpanded] = useState(false);
+
   const panelRef   = useRef<HTMLDivElement>(null);
   const dragState  = useRef({ active: false, startX: 0, startW: DEFAULT_W });
+
+  const toggleExpand = () => {
+    setExpanded((prev) => {
+      const next = !prev;
+      if (panelRef.current) {
+        panelRef.current.style.width = `${next ? MAX_W : DEFAULT_W}px`;
+      }
+      return next;
+    });
+  };
 
   const onResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -206,8 +218,21 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
             </span>
           </div>
         </div>
+        <button className={styles.expandBtn} onClick={toggleExpand} title={expanded ? "Minimizar panel" : "Expandir panel"}>
+          {expanded ? (
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
+              <path d="M1.5 8H5M5 8l-2-2M5 8l-2 2M14.5 8H11M11 8l2-2M11 8l2 2"
+                stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
+              <path d="M5 8H1.5M1.5 8l2-2M1.5 8l2 2M11 8H14.5M14.5 8l-2-2M14.5 8l-2 2"
+                stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+        </button>
         <button className={styles.closeBtn} onClick={onClose} title="Cerrar panel">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
             <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
           </svg>
         </button>

@@ -10,7 +10,7 @@
   z-index: 1000;
   box-shadow: -12px 0 48px rgba(0,0,0,0.55);
   min-width: 340px;
-  max-width: 740px;
+  max-width: 800px;
 }
 
 /* ── Resize handle ── */
@@ -123,20 +123,36 @@
 
 .closeBtn {
   position: absolute;
-  top: 16px; right: 16px;
-  width: 28px; height: 28px;
-  border-radius: 8px;
-  background: var(--surface-3);
-  border: 1px solid var(--border);
+  top: 12px; right: 12px;
+  width: 50px; height: 50px;
+  background: none;
+  border: none;
+  padding: 0;
   display: flex; align-items: center; justify-content: center;
   color: var(--text-muted);
-  transition: all 0.15s;
+  cursor: pointer;
+  transition: color 0.15s;
 }
-.closeBtn:hover { background: var(--border); color: var(--text); }
+.closeBtn:hover { color: var(--text); }
 
-/* Hide the ✕ close button on mobile — the back bar replaces it */
+.expandBtn {
+  position: absolute;
+  top: 12px; right: 68px;
+  width: 50px; height: 50px;
+  background: none;
+  border: none;
+  padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.expandBtn:hover { color: var(--text); }
+
+/* Hide header buttons on mobile — the back bar replaces them */
 @media (max-width: 767px) {
   .closeBtn { display: none; }
+  .expandBtn { display: none; }
 }
 
 /* ── Tabs ── */

@@ -11,7 +11,7 @@ import type {
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔧 MOCK FLAG — cambiar a false para conectar con el backend real
 // ─────────────────────────────────────────────────────────────────────────────
-const USE_MOCK = true;
+const USE_MOCK = false;
 // ─────────────────────────────────────────────────────────────────────────────
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
