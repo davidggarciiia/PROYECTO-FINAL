@@ -134,58 +134,130 @@ function TramiteCard({ tramite }: { tramite: TramiteLegal }) {
   );
 }
 
-// ─── Fase accordion ───────────────────────────────────────────────────────────
+// ─── Collapsible section (accordion) ─────────────────────────────────────────
+
+function CollapsibleSection({
+  title,
+  icon,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <section className={styles.section}>
+      <button
+        className={`${styles.sectionTitleBtn} ${open ? styles.sectionTitleBtnOpen : ""}`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className={styles.sectionIcon}>{icon}</span>
+        <span className={styles.sectionTitleText}>{title}</span>
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          className={styles.sectionChevron}
+          style={{ transform: open ? "rotate(180deg)" : "none" }}
+        >
+          <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open && children}
+    </section>
+  );
+}
+
+// ─── Roadmap fase node ────────────────────────────────────────────────────────
 
 const FASE_COLORS = [
-  "var(--accent)",
+  "#6366F1",
   "#10B981",
   "#F59E0B",
   "#A78BFA",
   "#EC4899",
 ];
 
-function FaseAccordion({ fase, index }: { fase: FaseRoadmap; index: number }) {
+function RoadmapFase({
+  fase,
+  index,
+  isLast,
+}: {
+  fase: FaseRoadmap;
+  index: number;
+  isLast: boolean;
+}) {
   const [open, setOpen] = useState(index === 0);
   const color = FASE_COLORS[index % FASE_COLORS.length];
 
   return (
-    <div className={styles.fase} style={{ "--fase-color": color } as React.CSSProperties}>
-      <button className={styles.faseHeader} onClick={() => setOpen((o) => !o)}>
-        <span className={styles.faseNumBadge} style={{ background: `${color}22`, borderColor: `${color}44`, color }}>
-          F{fase.numero}
-        </span>
-        <div className={styles.faseTitleBlock}>
-          <span className={styles.faseTitulo}>{fase.titulo}</span>
-          {fase.descripcion && !open && (
-            <span className={styles.faseDesc}>{fase.descripcion}</span>
-          )}
-        </div>
-        <span className={styles.faseTramiteCount} style={{ color }}>
-          {fase.tramites.length} trámite{fase.tramites.length !== 1 ? "s" : ""}
-        </span>
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 10 10"
-          className={styles.faseChevron}
-          style={{ transform: open ? "rotate(180deg)" : "none", color }}
+    <div className={styles.roadmapNode}>
+      {/* ── Left: dot + track ── */}
+      <div className={styles.nodeLeft}>
+        <div
+          className={styles.nodeDot}
+          style={{ background: color, boxShadow: `0 0 0 4px ${color}28` }}
         >
-          <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-        </svg>
-      </button>
-
-      {open && (
-        <div className={styles.faseBody}>
-          {fase.descripcion && (
-            <p className={styles.faseDescExpanded}>{fase.descripcion}</p>
-          )}
-          <div className={styles.tramiteList}>
-            {fase.tramites.map((t) => (
-              <TramiteCard key={t.numero} tramite={t} />
-            ))}
-          </div>
+          {fase.numero}
         </div>
-      )}
+        {!isLast && (
+          <div
+            className={styles.nodeTrack}
+            style={{ background: `linear-gradient(to bottom, ${color}70, ${color}18)` }}
+          />
+        )}
+      </div>
+
+      {/* ── Right: header + body ── */}
+      <div className={styles.nodeRight}>
+        <button
+          className={styles.nodeHeader}
+          onClick={() => setOpen((o) => !o)}
+          style={{ "--node-color": color } as React.CSSProperties}
+        >
+          <div className={styles.nodeTitleBlock}>
+            <span className={styles.nodeTitle}>{fase.titulo}</span>
+            {fase.descripcion && !open && (
+              <span className={styles.nodeDesc}>{fase.descripcion}</span>
+            )}
+          </div>
+          <span className={styles.nodeTramiteCount} style={{ color }}>
+            {fase.tramites.length} trámite{fase.tramites.length !== 1 ? "s" : ""}
+          </span>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            className={styles.nodeChevron}
+            style={{ transform: open ? "rotate(180deg)" : "none", color }}
+          >
+            <path
+              d="M2 3.5l3 3 3-3"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              fill="none"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+
+        {open && (
+          <div className={styles.nodeBody}>
+            {fase.descripcion && (
+              <p className={styles.nodeDescExpanded}>{fase.descripcion}</p>
+            )}
+            <div className={styles.tramiteList}>
+              {fase.tramites.map((t) => (
+                <TramiteCard key={t.numero} tramite={t} />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -294,15 +366,16 @@ export default function LegalPanel({ zona, sessionId }: Props) {
       </div>
 
       {/* ── Equipo externo ── */}
-      <section className={styles.section}>
-        <h3 className={styles.sectionTitle}>
+      <CollapsibleSection
+        title="Equipo externo imprescindible"
+        icon={
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <circle cx="4" cy="3.5" r="1.8" stroke="currentColor" strokeWidth="1.2" />
             <circle cx="8.5" cy="3.5" r="1.8" stroke="currentColor" strokeWidth="1.2" />
             <path d="M1 9.5c0-1.7 1.3-3 3-3M8.5 6.5c1.7 0 3 1.3 3 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
           </svg>
-          Equipo externo imprescindible
-        </h3>
+        }
+      >
         <p className={styles.equipoNote}>No podrás hacer esto solo. Contrata estos perfiles antes de empezar.</p>
         <div className={styles.equipoList}>
           {roadmap.equipo_externo.map((p, i) => (
@@ -334,32 +407,39 @@ export default function LegalPanel({ zona, sessionId }: Props) {
             </div>
           ))}
         </div>
-      </section>
+      </CollapsibleSection>
 
       {/* ── Fases ── */}
-      <section className={styles.section}>
-        <h3 className={styles.sectionTitle}>
+      <CollapsibleSection
+        title="Trámites paso a paso"
+        icon={
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M2 2h8M2 6h6M2 10h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
           </svg>
-          Trámites paso a paso
-        </h3>
-        <div className={styles.faseList}>
+        }
+      >
+        <div className={styles.roadmap}>
           {roadmap.fases.map((fase, i) => (
-            <FaseAccordion key={fase.id} fase={fase} index={i} />
+            <RoadmapFase
+              key={fase.id}
+              fase={fase}
+              index={i}
+              isLast={i === roadmap.fases.length - 1}
+            />
           ))}
         </div>
-      </section>
+      </CollapsibleSection>
 
       {/* ── Costes ── */}
-      <section className={styles.section}>
-        <h3 className={styles.sectionTitle}>
+      <CollapsibleSection
+        title="Resumen de costes"
+        icon={
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.2" />
             <path d="M6 3.5v5M4.5 5h2.5a1 1 0 010 2H4.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
           </svg>
-          Resumen de costes
-        </h3>
+        }
+      >
         <div className={styles.costesTable}>
           {roadmap.costes_resumen.map((c, i) => (
             <div
@@ -374,7 +454,7 @@ export default function LegalPanel({ zona, sessionId }: Props) {
         <p className={styles.costesNota}>
           * Estimaciones orientativas. No incluye reforma interior, decoración ni stock inicial.
         </p>
-      </section>
+      </CollapsibleSection>
 
 
     </div>
