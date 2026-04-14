@@ -1,13 +1,26 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import type { ZonaPreview, LocalDetalleResponse, FinancieroResponse, CompetenciaDetalle, SeguridadDetalle, EntornoComercialDetalle } from "@/lib/types";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import type {
+  CompetenciaDetalle,
+  ExplicacionDimension,
+  ImpactoModeloDimension,
+  LocalDetalleResponse,
+  ScoresDimensiones,
+  ZonaDetalle,
+  ZonaPreview,
+} from "@/lib/types";
 import { api } from "@/lib/api";
 import FinancialPanel from "./FinancialPanel";
-import CompetenciaPanel from "./CompetenciaPanel";
 import LegalPanel from "./LegalPanel";
 import ScoreBars from "./ScoreBars";
 import styles from "./DetailPanel.module.css";
+
+const CompetenciaPanel = dynamic(() => import("./CompetenciaPanel"), {
+  ssr: false,
+  loading: () => <div className={styles.inlineLoading}>Cargando análisis de competencia...</div>,
+});
 
 interface Props {
   zona: ZonaPreview;
@@ -17,45 +30,198 @@ interface Props {
   onClose: () => void;
 }
 
-type Tab = "analisis" | "competencia" | "financiero" | "legal" | "dev";
+type Tab = "detalles" | "competencia" | "financiero" | "legal";
 
-function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
-  const r = (size / 2) - 6;
-  const circ = 2 * Math.PI * r;
-  const fill = circ * (score / 100);
-  const color = score >= 75 ? "var(--green)" : score >= 50 ? "var(--yellow)" : "var(--red)";
-  const glow  = score >= 75 ? "rgba(16,185,129,0.4)" : score >= 50 ? "rgba(245,158,11,0.4)" : "rgba(239,68,68,0.4)";
+const MIN_W = 360;
+const MAX_W = 760;
+const DEFAULT_W = 470;
+
+const DIMENSION_ORDER: Array<{ key: keyof ScoresDimensiones; label: string }> = [
+  { key: "flujo_peatonal", label: "Flujo peatonal" },
+  { key: "demografia", label: "Demografía" },
+  { key: "competencia", label: "Competencia" },
+  { key: "precio_alquiler", label: "Precio de alquiler" },
+  { key: "transporte", label: "Transporte" },
+  { key: "seguridad", label: "Seguridad" },
+  { key: "turismo", label: "Turismo" },
+  { key: "entorno_comercial", label: "Entorno comercial" },
+  { key: "dinamismo", label: "Dinamismo" },
+];
+
+function getTone(score: number | undefined) {
+  if (score == null) {
+    return { className: styles.toneNeutral, label: "Sin dato" };
+  }
+  if (score >= 75) return { className: styles.tonePositive, label: "Muy favorable" };
+  if (score >= 55) return { className: styles.toneMid, label: "Favorable" };
+  if (score >= 40) return { className: styles.toneWarn, label: "Con reservas" };
+  return { className: styles.toneNegative, label: "Débil" };
+}
+
+function formatCurrency(value?: number) {
+  if (value == null) return "—";
+  return `${Math.round(value).toLocaleString("es-ES")} €`;
+}
+
+function formatPercent(value?: number | null, digits = 0) {
+  if (value == null) return "—";
+  return `${(value * 100).toFixed(digits)}%`;
+}
+
+function formatNumber(value?: number | null, digits = 0) {
+  if (value == null) return "—";
+  return Number(value).toLocaleString("es-ES", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function confidenceLabel(value?: string) {
+  if (!value) return "Confianza media";
+  return `Confianza ${value}`;
+}
+
+function impactSummary(impact?: ImpactoModeloDimension) {
+  if (!impact) return "Sin detalle del impacto del modelo";
+  if (impact.tendencia === "empuja_a_favor") return "El modelo empuja esta dimensión a favor";
+  if (impact.tendencia === "empuja_en_contra") return "El modelo penaliza esta dimensión";
+  return "El modelo la usa con impacto moderado";
+}
+
+function hasMeaningfulText(value?: string | null) {
+  return Boolean(value && value.trim());
+}
+
+function observedFactsForDimension(key: keyof ScoresDimensiones, z: ZonaDetalle): string[] {
+  switch (key) {
+    case "flujo_peatonal":
+      return [
+        z.flujo_peatonal_dia?.manana != null ? `Mañana: ${formatNumber(z.flujo_peatonal_dia.manana)} personas/hora` : "",
+        z.flujo_peatonal_dia?.tarde != null ? `Tarde: ${formatNumber(z.flujo_peatonal_dia.tarde)} personas/hora` : "",
+        z.flujo_peatonal_dia?.noche != null ? `Noche: ${formatNumber(z.flujo_peatonal_dia.noche)} personas/hora` : "",
+      ].filter(Boolean);
+    case "demografia":
+      return [
+        z.renta_media_hogar != null ? `Renta media del hogar: ${formatCurrency(z.renta_media_hogar)}` : "",
+        z.edad_media != null ? `Edad media: ${formatNumber(z.edad_media, 0)} años` : "",
+        z.pct_extranjeros != null ? `Población extranjera: ${formatNumber(z.pct_extranjeros, 0)}%` : "",
+      ].filter(Boolean);
+    case "transporte":
+      return [
+        z.num_lineas_transporte != null ? `Líneas cercanas: ${formatNumber(z.num_lineas_transporte, 0)}` : "",
+        z.num_paradas_transporte != null ? `Paradas cercanas: ${formatNumber(z.num_paradas_transporte, 0)}` : "",
+      ].filter(Boolean);
+    case "competencia":
+      return [
+        `Competidores cercanos detectados: ${formatNumber(z.competidores_cercanos.length, 0)}`,
+        ...z.competidores_cercanos
+          .slice(0, 3)
+          .map((c) => `${c.nombre} a ${formatNumber(c.distancia_m, 0)} m`),
+      ].filter(Boolean);
+    case "precio_alquiler":
+      return [
+        z.alquiler_mensual != null ? `Alquiler mensual estimado: ${formatCurrency(z.alquiler_mensual)}` : "",
+        z.m2 != null ? `Superficie: ${formatNumber(z.m2, 0)} m²` : "",
+      ].filter(Boolean);
+    case "seguridad":
+      return [
+        z.seguridad_detalle?.incidencias_por_1000hab != null ? `Incidencias por 1.000 hab: ${formatNumber(z.seguridad_detalle.incidencias_por_1000hab, 1)}` : "",
+        z.seguridad_detalle?.comisarias_1km != null ? `Comisarías a 1 km: ${formatNumber(z.seguridad_detalle.comisarias_1km, 0)}` : "",
+        z.seguridad_detalle?.dist_comisaria_m != null ? `Comisaría más cercana: ${formatNumber(z.seguridad_detalle.dist_comisaria_m, 0)} m` : "",
+      ].filter(Boolean);
+    case "turismo":
+      return [z.score_turismo != null ? `Score turístico: ${formatNumber(z.score_turismo, 0)}` : ""].filter(Boolean);
+    case "entorno_comercial":
+      return [
+        z.num_negocios_activos != null ? `Negocios activos: ${formatNumber(z.num_negocios_activos, 0)}` : "",
+        z.pct_locales_vacios != null ? `Locales vacíos: ${formatNumber(z.pct_locales_vacios, 0)}%` : "",
+        z.entorno_detalle?.ratio_locales_comerciales != null ? `Ratio comercial: ${formatNumber(z.entorno_detalle.ratio_locales_comerciales, 2)}` : "",
+      ].filter(Boolean);
+    default:
+      return [];
+  }
+}
+
+function fallbackExplanation(key: keyof ScoresDimensiones, label: string, score: number | undefined, z: ZonaDetalle): ExplicacionDimension {
+  const normalized = score != null ? `${Math.round(score)}/100` : "sin score disponible";
+  return {
+    score,
+    titular: `${label}: ${normalized}`,
+    explicacion_corta: "No hay una explicación textual validada para esta dimensión. Solo se muestran métricas observadas del backend.",
+    porque_sube: [],
+    porque_baja: [],
+    hechos_clave: observedFactsForDimension(key, z),
+    impacto_modelo: "Sin detalle validado del impacto del modelo para esta dimensión.",
+    confianza: "media",
+    fuentes: [],
+  };
+}
+
+function detailMetrics(z: ZonaDetalle) {
+  return [
+    { label: "Alquiler", value: formatCurrency(z.alquiler_mensual), note: "coste mensual estimado" },
+    { label: "Superficie", value: z.m2 != null ? `${formatNumber(z.m2, 0)} m²` : "—", note: "tamaño del local" },
+    { label: "Supervivencia 3 años", value: formatPercent(z.probabilidad_supervivencia, 0), note: "estimación del modelo" },
+    { label: "Negocios activos", value: z.num_negocios_activos != null ? formatNumber(z.num_negocios_activos, 0) : "—", note: "actividad comercial" },
+  ];
+}
+
+function buildDafo(z: ZonaDetalle) {
+  const strengths = [...(z.analisis_ia?.puntos_fuertes ?? [])];
+  const weaknesses = [...(z.analisis_ia?.puntos_debiles ?? [])];
+  const opportunities = z.analisis_ia?.oportunidad ? [z.analisis_ia.oportunidad] : [];
+  const threats = z.analisis_ia?.riesgos ? [z.analisis_ia.riesgos] : [];
+
+  if (!strengths.length && z.scores_dimensiones) {
+    const top = Object.entries(z.scores_dimensiones)
+      .filter((entry): entry is [string, number] => typeof entry[1] === "number")
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2);
+    strengths.push(...top.map(([key, value]) => `Mejor dimensión medida: ${key.replaceAll("_", " ")} (${Math.round(value)}/100).`));
+  }
+
+  if (!weaknesses.length && z.scores_dimensiones) {
+    const low = Object.entries(z.scores_dimensiones)
+      .filter((entry): entry is [string, number] => typeof entry[1] === "number")
+      .sort((a, b) => a[1] - b[1])
+      .slice(0, 2);
+    weaknesses.push(...low.map(([key, value]) => `Dimensión más débil medida: ${key.replaceAll("_", " ")} (${Math.round(value)}/100).`));
+  }
+
+  return {
+    Fortalezas: strengths.length ? strengths : ["Sin fortalezas validadas disponibles todavía."],
+    Debilidades: weaknesses.length ? weaknesses : ["Sin debilidades validadas disponibles todavía."],
+    Oportunidades: opportunities.length ? opportunities : ["Sin oportunidades validadas disponibles todavía."],
+    Amenazas: threats.length ? threats : ["Sin amenazas validadas disponibles todavía."],
+  };
+}
+
+function SkeletonBlock() {
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5"/>
-      <circle
-        cx={size/2} cy={size/2} r={r} fill="none"
-        stroke={color} strokeWidth="5"
-        strokeDasharray={`${fill} ${circ - fill}`}
-        strokeLinecap="round"
-        transform={`rotate(-90 ${size/2} ${size/2})`}
-        style={{ filter: `drop-shadow(0 0 6px ${glow})`, transition: "stroke-dasharray 0.6s cubic-bezier(0.16,1,0.3,1)" }}
-      />
-      <text x={size/2} y={size/2 - 3} textAnchor="middle" fontSize="16" fontWeight="800" fill={color}>
-        {Math.round(score)}
-      </text>
-      <text x={size/2} y={size/2 + 12} textAnchor="middle" fontSize="9" fill="rgba(255,255,255,0.4)" fontWeight="500">
-        / 100
-      </text>
-    </svg>
+    <div className={styles.skeletonStack}>
+      <div className="skeleton" style={{ height: 120, borderRadius: 18 }} />
+      <div className="skeleton" style={{ height: 84, borderRadius: 16 }} />
+      <div className="skeleton" style={{ height: 260, borderRadius: 18 }} />
+    </div>
   );
 }
 
-function Skeleton({ h = 16, w = "100%" }: { h?: number; w?: string }) {
-  return <div className="skeleton" style={{ height: h, width: w, borderRadius: 6, marginBottom: 8 }} />;
-}
-
 export default function DetailPanel({ zona, detalle, loading, sessionId, onClose }: Props) {
-  const [tab, setTab] = useState<Tab>("analisis");
-  const [financiero, setFinanciero] = useState<FinancieroResponse | null>(null);
+  const [tab, setTab] = useState<Tab>("detalles");
+  const [financiero, setFinanciero] = useState<import("@/lib/types").FinancieroResponse | null>(null);
   const [loadingFin, setLoadingFin] = useState(false);
   const [competencia, setCompetencia] = useState<CompetenciaDetalle | null>(null);
   const [loadingComp, setLoadingComp] = useState(false);
+  const [competenciaError, setCompetenciaError] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const dragState = useRef({ active: false, startX: 0, startW: DEFAULT_W });
+
+  useEffect(() => {
+    setTab("detalles");
+    setFinanciero(null);
+    setCompetencia(null);
+    setCompetenciaError(null);
+  }, [zona.zona_id]);
 
   const loadFinanciero = useCallback(async () => {
     if (financiero || loadingFin) return;
@@ -63,262 +229,332 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
     try {
       const data = await api.financiero(zona.zona_id, sessionId);
       setFinanciero(data);
-    } catch (e) {
-      console.error("Error financiero:", e);
+    } catch (error) {
+      console.error("Error financiero:", error);
     } finally {
       setLoadingFin(false);
     }
-  }, [zona.zona_id, sessionId, financiero, loadingFin]);
+  }, [financiero, loadingFin, sessionId, zona.zona_id]);
 
   const loadCompetencia = useCallback(async () => {
     if (competencia || loadingComp) return;
     setLoadingComp(true);
+    setCompetenciaError(null);
     try {
       const data = await api.competencia(zona.zona_id, sessionId);
       setCompetencia(data);
-    } catch (e) {
-      console.error("Error competencia:", e);
+    } catch (error) {
+      console.error("Error competencia:", error);
+      setCompetenciaError("No se ha podido cargar el análisis de competencia.");
     } finally {
       setLoadingComp(false);
     }
-  }, [zona.zona_id, sessionId, competencia, loadingComp]);
+  }, [competencia, loadingComp, sessionId, zona.zona_id]);
 
-  const handleTab = (t: Tab) => {
-    setTab(t);
-    if (t === "financiero") loadFinanciero();
-    if (t === "competencia") loadCompetencia();
-  };
+  useEffect(() => {
+    if (tab === "financiero") void loadFinanciero();
+    if (tab === "competencia") void loadCompetencia();
+  }, [tab, loadCompetencia, loadFinanciero]);
 
-  // Use detalle data when available, fall back to ZonaPreview
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startW = panelRef.current?.offsetWidth ?? DEFAULT_W;
+    dragState.current = { active: true, startX: e.clientX, startW };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMove = (ev: MouseEvent) => {
+      if (!dragState.current.active || !panelRef.current) return;
+      const delta = dragState.current.startX - ev.clientX;
+      const newW = Math.min(MAX_W, Math.max(MIN_W, dragState.current.startW + delta));
+      panelRef.current.style.width = `${newW}px`;
+    };
+
+    const onUp = () => {
+      dragState.current.active = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
+
   const z = detalle?.zona;
   const score = z?.score_global ?? zona.score_global ?? 0;
-  const scoreClass = score >= 75 ? "verde" : score >= 50 ? "amarillo" : "rojo";
-  const scoreLabel = score >= 75 ? "Alta viabilidad" : score >= 50 ? "Viabilidad media" : "Baja viabilidad";
+  const scoreTone = getTone(score);
+  const summaryText = hasMeaningfulText(z?.resumen_global_llm)
+    ? z!.resumen_global_llm!
+    : hasMeaningfulText(z?.analisis_ia?.resumen_global)
+      ? z!.analisis_ia!.resumen_global
+      : hasMeaningfulText(z?.analisis_ia?.resumen)
+        ? z!.analisis_ia!.resumen
+        : "No hay todavía un resumen validado para este local.";
 
-  // Preview KPIs always available from ZonaPreview
-  const alquiler = z?.alquiler_mensual ?? zona.alquiler_mensual;
-  const m2       = z?.m2             ?? zona.m2;
+  const metrics = useMemo(() => (z ? detailMetrics(z) : []), [z]);
+  const dafo = useMemo(() => (z ? buildDafo(z) : { Fortalezas: [], Debilidades: [], Oportunidades: [], Amenazas: [] }), [z]);
+  const dimensions = useMemo(() => {
+    if (!z) return [];
+    return DIMENSION_ORDER
+      .map(({ key, label }) => {
+        const scoreValue = z.scores_dimensiones?.[key];
+        const explicacionValidada =
+          z.explicaciones_dimensiones?.[key] ??
+          z.analisis_ia?.explicaciones_dimensiones?.[key];
+        const explicacion =
+          explicacionValidada ??
+          fallbackExplanation(key, label, scoreValue, z);
+        const impacto =
+          z.impacto_modelo_por_dimension?.[key] ??
+          z.analisis_ia?.impacto_modelo_por_dimension?.[key];
+        return { key, label, score: scoreValue, explicacion, impacto, isFallback: !explicacionValidada };
+      })
+      .filter((item) => item.score != null || item.explicacion.titular || item.explicacion.explicacion_corta);
+  }, [z]);
 
   return (
-    <div className={`${styles.panel} slideInRight`}>
-      {/* ── Header ── */}
-      <div className={styles.header}>
-        <div className={styles.headerContent}>
-          <div className={styles.scoreArea}>
-            <ScoreRing score={score} />
-          </div>
-          <div className={styles.headerInfo}>
-            <div className={styles.zoneName}>{z?.nombre ?? zona.nombre}</div>
-            <div className={styles.zoneSub}>{z?.barrio ?? zona.barrio} · {z?.distrito ?? zona.distrito}</div>
-            <span className={`badge badge-${scoreClass} ${styles.viabilidadBadge}`}>
-              {scoreLabel}
-            </span>
-          </div>
-        </div>
-        <button className={styles.closeBtn} onClick={onClose} title="Cerrar panel">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+    <div ref={panelRef} className={`${styles.panel} slideInRight`} style={{ width: DEFAULT_W }}>
+      <div className={styles.resizeHandle} onMouseDown={onResizeStart}>
+        <div className={styles.resizeGrip} />
+      </div>
+
+      <div className={styles.mobileBackBar}>
+        <button className={styles.mobileBackBtn} onClick={onClose} aria-label="Volver al mapa">
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+            <path d="M11 4L6 9l5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
+          Volver
         </button>
       </div>
 
-      {/* ── Tabs ── */}
+      <div className={styles.header}>
+        <div className={styles.headerTop}>
+          <div>
+            <p className={styles.eyebrow}>Análisis del local</p>
+            <h2 className={styles.zoneName}>{z?.nombre ?? zona.nombre}</h2>
+            <p className={styles.zoneSub}>
+              {z?.barrio ?? zona.barrio} · {z?.distrito ?? zona.distrito}
+              {z?.direccion ? ` · ${z.direccion}` : ""}
+            </p>
+          </div>
+          <button className={styles.closeBtn} onClick={onClose} title="Cerrar panel">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div className={styles.scoreHero}>
+          <div className={styles.scoreCard}>
+            <div className={styles.scoreNumber}>{Math.round(score)}</div>
+            <div className={styles.scoreMeta}>
+              <span className={`${styles.scoreBadge} ${scoreTone.className}`}>{scoreTone.label}</span>
+              <span className={styles.scoreCaption}>Puntuación global</span>
+            </div>
+          </div>
+
+          <div className={styles.heroFacts}>
+            <div className={styles.heroFact}>
+              <span className={styles.heroFactLabel}>Supervivencia</span>
+              <strong>{formatPercent(z?.probabilidad_supervivencia, 0)}</strong>
+            </div>
+            <div className={styles.heroFact}>
+              <span className={styles.heroFactLabel}>Alquiler</span>
+              <strong>{formatCurrency(z?.alquiler_mensual)}</strong>
+            </div>
+            <div className={styles.heroFact}>
+              <span className={styles.heroFactLabel}>Superficie</span>
+              <strong>{z?.m2 != null ? `${formatNumber(z.m2, 0)} m²` : "—"}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className={styles.tabs}>
-        {(["analisis", "competencia", "financiero", "legal", "dev"] as Tab[]).map(t => (
+        {(["detalles", "competencia", "financiero", "legal"] as Tab[]).map((item) => (
           <button
-            key={t}
-            className={`${styles.tab} ${tab === t ? styles.tabActive : ""}`}
-            onClick={() => handleTab(t)}
+            key={item}
+            className={`${styles.tab} ${tab === item ? styles.tabActive : ""}`}
+            onClick={() => setTab(item)}
           >
-            {t === "analisis"    && "Análisis"}
-            {t === "competencia" && "Competencia"}
-            {t === "financiero"  && "Financiero"}
-            {t === "legal"       && "Legal"}
-            {t === "dev"         && "Dev"}
+            {item === "detalles" && "Detalles"}
+            {item === "competencia" && "Competencia"}
+            {item === "financiero" && "Financiero"}
+            {item === "legal" && "Legal"}
           </button>
         ))}
       </div>
 
-      {/* ── Content ── */}
       <div className={styles.content}>
-
-        {/* ── Análisis tab ── */}
-        {tab === "analisis" && (
+        {tab === "detalles" && (
           <div className={styles.tabPane}>
             {loading ? (
-              /* Skeleton while loading */
-              <div className={styles.skeletonWrap}>
-                <Skeleton h={80} />
-                <Skeleton h={14} w="60%" />
-                <Skeleton h={14} />
-                <Skeleton h={14} w="80%" />
-                <Skeleton h={120} />
-              </div>
+              <SkeletonBlock />
+            ) : !z ? (
+              <div className={styles.emptyState}>No se ha podido cargar el detalle completo del local.</div>
             ) : (
               <>
-                {/* KPIs — always shown from preview data */}
-                <div className={styles.kpiGrid}>
-                  {alquiler && (
-                    <div className={styles.kpi}>
-                      <span className={styles.kpiVal}>{alquiler.toLocaleString("es-ES")} €</span>
-                      <span className={styles.kpiLabel}>Alquiler / mes</span>
+                <section className={styles.section}>
+                  <div className={styles.sectionHeader}>
+                    <div>
+                      <p className={styles.sectionKicker}>Por qué este local</p>
+                      <h3 className={styles.sectionTitle}>La recomendación en una frase</h3>
                     </div>
-                  )}
-                  {m2 && (
-                    <div className={styles.kpi}>
-                      <span className={styles.kpiVal}>{m2} m²</span>
-                      <span className={styles.kpiLabel}>Superficie</span>
-                    </div>
-                  )}
-                  {z?.probabilidad_supervivencia && (
-                    <div className={styles.kpi}>
-                      <span className={styles.kpiVal} style={{ color: "var(--green)" }}>
-                        {Math.round(z.probabilidad_supervivencia * 100)}%
-                      </span>
-                      <span className={styles.kpiLabel}>Supervivencia 3a</span>
-                    </div>
-                  )}
-                  {z?.num_negocios_activos != null && (
-                    <div className={styles.kpi}>
-                      <span className={styles.kpiVal}>{z.num_negocios_activos}</span>
-                      <span className={styles.kpiLabel}>Negocios activos</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Score bars (from full detail) */}
-                {z?.scores_dimensiones && (
-                  <section className={styles.section}>
-                    <h3 className={styles.sectionTitle}>
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                        <rect x="1" y="7" width="2" height="4" rx="1"/>
-                        <rect x="5" y="4" width="2" height="7" rx="1"/>
-                        <rect x="9" y="1" width="2" height="10" rx="1"/>
-                      </svg>
-                      Puntuaciones por dimensión
-                    </h3>
-                    <ScoreBars scores={z.scores_dimensiones} />
-                  </section>
-                )}
-
-                {/* AI Analysis */}
-                {z?.analisis_ia && (
-                  <section className={styles.section}>
-                    <h3 className={styles.sectionTitle}>
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                        <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.5"/>
-                        <path d="M4 5c0-1.1.9-2 2-2s2 .9 2 2c0 .8-.5 1.5-1.2 1.8L6 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                        <circle cx="6" cy="10.5" r=".5" fill="currentColor"/>
-                      </svg>
-                      Análisis IA
-                    </h3>
-                    {z.analisis_ia.resumen && (
-                      <p className={styles.analisisText}>{z.analisis_ia.resumen}</p>
-                    )}
-                    {(z.analisis_ia.puntos_fuertes?.length > 0 || z.analisis_ia.puntos_debiles?.length > 0) && (
-                      <div className={styles.prosConsGrid}>
-                        {z.analisis_ia.puntos_fuertes?.length > 0 && (
-                          <div className={styles.prosBox}>
-                            <div className={styles.prosHeader}>
-                              <span className={styles.prosIcon}>✓</span> Puntos fuertes
-                            </div>
-                            <ul className={styles.dotList}>
-                              {z.analisis_ia.puntos_fuertes.map((p, i) => <li key={i}>{p}</li>)}
-                            </ul>
-                          </div>
-                        )}
-                        {z.analisis_ia.puntos_debiles?.length > 0 && (
-                          <div className={styles.consBox}>
-                            <div className={styles.consHeader}>
-                              <span className={styles.consIcon}>✗</span> Puntos débiles
-                            </div>
-                            <ul className={styles.dotList}>
-                              {z.analisis_ia.puntos_debiles.map((p, i) => <li key={i}>{p}</li>)}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </section>
-                )}
-
-                {/* Flujo peatonal */}
-                {z?.flujo_peatonal_dia && (
-                  <section className={styles.section}>
-                    <h3 className={styles.sectionTitle}>
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                        <circle cx="6" cy="3" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
-                        <path d="M4 6c0-1.1.9-2 2-2s2 .9 2 2v3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                      </svg>
-                      Flujo peatonal
-                    </h3>
-                    <div className={styles.flujoGrid}>
-                      {[
-                        { label: "Mañana", val: z.flujo_peatonal_dia.manana, icon: "🌅" },
-                        { label: "Tarde",  val: z.flujo_peatonal_dia.tarde,  icon: "☀️" },
-                        { label: "Noche",  val: z.flujo_peatonal_dia.noche,  icon: "🌙" },
-                      ].map(({ label, val, icon }) => (
-                        <div key={label} className={styles.flujoItem}>
-                          <span className={styles.flujoIcon}>{icon}</span>
-                          <span className={styles.flujoVal}>{(val ?? 0).toLocaleString()}</span>
-                          <span className={styles.flujoLabel}>{label}</span>
+                  </div>
+                  <div className={styles.summaryCard}>
+                    <p className={styles.summaryText}>{summaryText}</p>
+                    <div className={styles.metricGrid}>
+                      {metrics.map((metric) => (
+                        <div key={metric.label} className={styles.metricCard}>
+                          <span className={styles.metricLabel}>{metric.label}</span>
+                          <strong className={styles.metricValue}>{metric.value}</strong>
+                          <span className={styles.metricNote}>{metric.note}</span>
                         </div>
                       ))}
                     </div>
-                  </section>
-                )}
+                  </div>
+                </section>
 
-                {/* Competitors teaser */}
-                {z?.competidores_cercanos && z.competidores_cercanos.length > 0 && (
-                  <button className={styles.competenciaTeaser} onClick={() => handleTab("competencia")}>
-                    <span>{z.competidores_cercanos.length} negocios cerca · Ver análisis de competencia →</span>
-                  </button>
-                )}
+                <section className={styles.section}>
+                  <div className={styles.sectionHeader}>
+                    <div>
+                      <p className={styles.sectionKicker}>Visión rápida</p>
+                      <h3 className={styles.sectionTitle}>Dónde destaca y dónde exige más</h3>
+                    </div>
+                  </div>
+                  <div className={styles.sectionCard}>
+                    {z.scores_dimensiones && <ScoreBars scores={z.scores_dimensiones} />}
+                  </div>
+                </section>
 
-                {/* Alertas */}
-                {z?.alertas && z.alertas.length > 0 && (
-                  <section className={styles.section}>
-                    <h3 className={styles.sectionTitle}>
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                        <path d="M6 1l5 9H1L6 1z" stroke="currentColor" strokeWidth="1.2"/>
-                        <path d="M6 5v2M6 8.5h.01" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                      </svg>
-                      Alertas
-                    </h3>
-                    {z.alertas.map((a, i) => (
-                      <div key={i} className={styles.alerta}>
-                        <span className={styles.alertaTipo}>{a.tipo}</span>
-                        <span className={styles.alertaTexto}>{a.texto}</span>
+                <section className={styles.section}>
+                  <div className={styles.sectionHeader}>
+                    <div>
+                      <p className={styles.sectionKicker}>DAFO</p>
+                      <h3 className={styles.sectionTitle}>Lectura estratégica del local</h3>
+                    </div>
+                  </div>
+                  <div className={styles.dafoGrid}>
+                    {Object.entries(dafo).map(([title, items]) => (
+                      <div key={title} className={styles.dafoCard}>
+                        <h4 className={styles.dafoTitle}>{title}</h4>
+                        <ul className={styles.cleanList}>
+                          {items.map((item, index) => (
+                            <li key={`${title}-${index}`}>{item}</li>
+                          ))}
+                        </ul>
                       </div>
                     ))}
-                  </section>
-                )}
-
-                {/* If detalle failed but we have ZonaPreview data, show a note */}
-                {!z && !loading && (
-                  <div className={styles.fallbackNote}>
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                      <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.3"/>
-                      <path d="M7 4v3.5M7 9.5h.01" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                    </svg>
-                    <span>El análisis completo no está disponible. Los datos de puntuación están en la ficha.</span>
                   </div>
-                )}
+                </section>
+
+                <section className={styles.section}>
+                  <div className={styles.sectionHeader}>
+                    <div>
+                      <p className={styles.sectionKicker}>Dimensión por dimensión</p>
+                      <h3 className={styles.sectionTitle}>Qué ha usado el modelo para llegar a la puntuación</h3>
+                    </div>
+                  </div>
+                  <div className={styles.dimensionStack}>
+                    {dimensions.map(({ key, label, score: scoreValue, explicacion, impacto, isFallback }) => {
+                      const tone = getTone(scoreValue);
+                      return (
+                        <article key={key} className={styles.dimensionCard}>
+                          <div className={styles.dimensionHeader}>
+                            <div>
+                              <h4 className={styles.dimensionTitle}>{label}</h4>
+                              <p className={styles.dimensionSubtitle}>{explicacion.titular || explicacion.explicacion_corta}</p>
+                            </div>
+                            <div className={styles.dimensionScoreWrap}>
+                              <span className={`${styles.scoreBadge} ${tone.className}`}>{scoreValue != null ? Math.round(scoreValue) : "—"}</span>
+                            </div>
+                          </div>
+
+                          {explicacion.explicacion_corta && (
+                            <p className={styles.dimensionBody}>{explicacion.explicacion_corta}</p>
+                          )}
+
+                          <div className={styles.dimensionGrid}>
+                            <div className={styles.dimensionBlock}>
+                              <span className={styles.blockLabel}>Lo que suma</span>
+                              <ul className={styles.cleanList}>
+                                {(explicacion.porque_sube.length ? explicacion.porque_sube : [isFallback ? "Sin drivers positivos validados todavía." : "No hay factores positivos destacados en el detalle actual."]).map((item, index) => (
+                                  <li key={`up-${key}-${index}`}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div className={styles.dimensionBlock}>
+                              <span className={styles.blockLabel}>Lo que frena</span>
+                              <ul className={styles.cleanList}>
+                                {(explicacion.porque_baja.length ? explicacion.porque_baja : [isFallback ? "Sin drivers negativos validados todavía." : "No aparece una fricción clara en esta dimensión."]).map((item, index) => (
+                                  <li key={`down-${key}-${index}`}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+
+                          {(explicacion.hechos_clave.length > 0 || impacto) && (
+                            <div className={styles.dimensionMeta}>
+                              {explicacion.hechos_clave.length > 0 && (
+                                <div className={styles.dimensionMetaBlock}>
+                                  <span className={styles.blockLabel}>Hechos clave</span>
+                                  <div className={styles.factPills}>
+                                    {explicacion.hechos_clave.map((fact, index) => (
+                                      <span key={`fact-${key}-${index}`} className={styles.factPill}>{fact}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className={styles.dimensionMetaBlock}>
+                                <span className={styles.blockLabel}>Impacto del modelo</span>
+                                <p className={styles.modelImpact}>{explicacion.impacto_modelo || impactSummary(impacto)}</p>
+                                {impacto?.top_features?.length ? (
+                                  <ul className={styles.featureList}>
+                                    {impacto.top_features.slice(0, 3).map((feature, index) => (
+                                      <li key={`feature-${key}-${index}`}>
+                                        <strong>{feature.feature ?? "Factor"}</strong>
+                                        {feature.descripcion ? ` · ${feature.descripcion}` : ""}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : null}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className={styles.dimensionFooter}>
+                            <span className={styles.footerMeta}>{confidenceLabel(explicacion.confianza)}</span>
+                            {explicacion.fuentes.length > 0 && (
+                              <div className={styles.sourceList}>
+                                {explicacion.fuentes.map((source, index) => (
+                                  <span key={`source-${key}-${index}`} className={styles.sourceTag}>{source}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
               </>
             )}
           </div>
         )}
 
-        {/* ── Competencia tab ── */}
         {tab === "competencia" && (
-          <CompetenciaPanel
-            competencia={competencia}
-            loading={loadingComp}
-            zona={zona}
-          />
+          <div className={styles.tabPane}>
+            {competenciaError ? (
+              <div className={styles.emptyState}>{competenciaError}</div>
+            ) : (
+              <CompetenciaPanel competencia={competencia} loading={loadingComp} zona={zona} />
+            )}
+          </div>
         )}
 
-        {/* ── Financiero tab ── */}
         {tab === "financiero" && (
           <FinancialPanel
             financiero={financiero}
@@ -329,55 +565,7 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
           />
         )}
 
-        {/* ── Legal tab ── */}
-        {tab === "legal" && (
-          <LegalPanel zona={zona} sessionId={sessionId} />
-        )}
-
-        {/* ── Dev tab ── */}
-        {tab === "dev" && (
-          <div className={styles.tabPane}>
-            {z?.seguridad_detalle && (
-              <section className={styles.section}>
-                <h3 className={styles.sectionTitle}>Seguridad (v7) — Sub-scores</h3>
-                <div className={styles.devGrid}>
-                  {Object.entries(z.seguridad_detalle).map(([k, v]) => (
-                    <div key={k} className={styles.devRow}>
-                      <span className={styles.devKey}>{k}</span>
-                      <span className={styles.devVal}>{v != null ? String(v) : "—"}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-            {z?.entorno_detalle && (
-              <section className={styles.section}>
-                <h3 className={styles.sectionTitle}>Entorno Comercial (v8) — Sub-scores</h3>
-                <div className={styles.devGrid}>
-                  {Object.entries(z.entorno_detalle).map(([k, v]) => (
-                    <div key={k} className={styles.devRow}>
-                      <span className={styles.devKey}>{k}</span>
-                      <span className={styles.devVal}>{v != null ? String(v) : "—"}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-            {detalle?.dev_data && (
-              <section className={styles.section}>
-                <h3 className={styles.sectionTitle}>Raw Data</h3>
-                <pre className={styles.devPre}>
-                  {JSON.stringify(detalle.dev_data, null, 2)}
-                </pre>
-              </section>
-            )}
-            {!z?.seguridad_detalle && !z?.entorno_detalle && !detalle?.dev_data && (
-              <p style={{ opacity: 0.5, padding: 16 }}>
-                No hay datos de desarrollo disponibles. Solicita con dev=true.
-              </p>
-            )}
-          </div>
-        )}
+        {tab === "legal" && <LegalPanel zona={zona} sessionId={sessionId} />}
       </div>
     </div>
   );

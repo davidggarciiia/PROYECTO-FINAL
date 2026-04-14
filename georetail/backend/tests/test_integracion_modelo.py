@@ -257,6 +257,7 @@ class TestScoreManualClaves:
         "score_seguridad",
         "score_turismo",
         "score_entorno_comercial",
+        "score_dinamismo",
         "probabilidad_supervivencia",
         "shap_values",
         "modelo_version",

@@ -12,6 +12,7 @@ Docs interactivas (Swagger UI):
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -56,15 +57,23 @@ async def lifespan(app: FastAPI):
     """
     logger.info("Arrancando GeoRetail backend...")
 
-    await init_db_pool()
-    logger.info("Pool de PostgreSQL inicializado")
-
-    await init_redis()
-    logger.info("Redis inicializado")
+    try:
+        await init_db_pool()
+        logger.info("Pool de PostgreSQL inicializado")
+    except Exception as exc:
+        logger.warning("PostgreSQL no disponible (modo sin BD): %s", exc)
 
     try:
-        cargar_embeddings()
+        await init_redis()
+        logger.info("Redis inicializado")
+    except Exception as exc:
+        logger.warning("Redis no disponible (modo sin caché): %s", exc)
+
+    try:
+        await asyncio.wait_for(asyncio.to_thread(cargar_embeddings), timeout=20)
         logger.info("Modelo de embeddings cargado")
+    except asyncio.TimeoutError:
+        logger.warning("La carga de embeddings ha excedido 20s; continuando en modo degradado")
     except Exception as exc:
         logger.warning("No se pudo cargar el modelo de embeddings: %s", exc)
 

@@ -1,5 +1,4 @@
-// Tipos TypeScript sincronizados con schemas/models.py del backend
-
+export type Theme = "dark" | "light";
 export type ColorZona = "verde" | "amarillo" | "rojo";
 
 export interface ZonaPreview {
@@ -44,6 +43,38 @@ export interface CompetidorCercano {
   amenaza_score?: number;
 }
 
+export type CompetidorDetalle = CompetidorCercano;
+
+export interface PrecioSegmento {
+  nivel_dominante?: number;
+  etiqueta: string;
+  distribucion: Record<number, number>;
+  tiene_gap: boolean;
+  gap_nivel?: number;
+  gap_etiqueta?: string;
+}
+
+export interface CompetenciaDetalle {
+  zona_id: string;
+  sector: string;
+  radio_m?: number;
+  score_competencia: number;
+  score_cluster: number;
+  amenaza_incumbentes: number;
+  oportunidad_mercado: number;
+  score_complementarios: number;
+  num_directos?: number;
+  pct_vulnerables?: number;
+  hhi_index: number;
+  ratio_complementarios?: number;
+  precio_segmento?: PrecioSegmento | null;
+  amenaza: CompetidorDetalle[];
+  oportunidad: CompetidorDetalle[];
+  sinergicos: CompetidorDetalle[];
+  fuente?: string;
+  datos_calculados?: boolean;
+}
+
 export interface AlertaZona {
   tipo: string;
   texto: string;
@@ -58,6 +89,36 @@ export interface AnalisisIA {
   riesgos: string;
   recomendacion_final: string;
   razon_recomendacion: string;
+}
+
+export interface ImpactoModeloFeature {
+  feature?: string;
+  valor?: number;
+  descripcion?: string;
+}
+
+export interface ImpactoModeloDimension {
+  contribucion: number;
+  tendencia: string;
+  top_features: ImpactoModeloFeature[];
+}
+
+export interface ExplicacionDimension {
+  score?: number | null;
+  titular: string;
+  explicacion_corta: string;
+  porque_sube: string[];
+  porque_baja: string[];
+  hechos_clave: string[];
+  impacto_modelo: string;
+  confianza: string;
+  fuentes: string[];
+}
+
+export interface AnalisisIADetallado extends AnalisisIA {
+  resumen_global?: string;
+  explicaciones_dimensiones?: Record<string, ExplicacionDimension>;
+  impacto_modelo_por_dimension?: Record<string, ImpactoModeloDimension>;
 }
 
 export interface ScoresDimensiones {
@@ -106,25 +167,31 @@ export interface ZonaDetalle {
   m2?: number;
   alquiler_mensual?: number;
   disponible: boolean;
+  escaparate_ml?: number;
   score_global?: number;
   scores_dimensiones?: ScoresDimensiones;
   probabilidad_supervivencia?: number;
+  shap_values?: Record<string, number> | null;
+  modelo_version?: string | null;
   flujo_peatonal_dia?: { manana: number; tarde: number; noche: number };
   renta_media_hogar?: number;
   edad_media?: number;
   pct_extranjeros?: number;
+  score_turismo?: number;
   num_negocios_activos?: number;
   pct_locales_vacios?: number;
   num_lineas_transporte?: number;
   num_paradas_transporte?: number;
-  seguridad_detalle?: SeguridadDetalle;
-  entorno_detalle?: EntornoComercialDetalle;
+  seguridad_detalle?: SeguridadDetalle | null;
+  entorno_detalle?: EntornoComercialDetalle | null;
   competidores_cercanos: CompetidorCercano[];
   alertas: AlertaZona[];
-  analisis_ia?: AnalisisIA;
+  analisis_ia?: AnalisisIADetallado | null;
+  explicaciones_dimensiones?: Record<string, ExplicacionDimension>;
+  impacto_modelo_por_dimension?: Record<string, ImpactoModeloDimension>;
+  resumen_global_llm?: string | null;
 }
 
-// Búsqueda
 export interface BuscarRequest {
   descripcion: string;
   session_id?: string;
@@ -141,7 +208,18 @@ export interface BuscarResponse {
   motivo?: string;
 }
 
-// Financiero
+export interface CuestionarioRequest {
+  session_id: string;
+  respuesta: string;
+}
+
+export interface CuestionarioResponse {
+  estado: string;
+  pregunta?: string;
+  progreso_pct: number;
+  trigger_busqueda: boolean;
+}
+
 export interface ProyeccionMes {
   mes: number;
   ingresos_conservador: number;
@@ -155,8 +233,15 @@ export interface ProyeccionMes {
   ramp_factor: number;
 }
 
+export interface ParametroFinanciero {
+  valor_usado: number;
+  fuente: string;
+  rango_min: number;
+  rango_max: number;
+}
+
 export interface FinancieroResponse {
-  parametros: Record<string, { valor_usado: number; fuente: string; rango_min: number; rango_max: number }>;
+  parametros: Record<string, ParametroFinanciero>;
   inversion_total: number;
   desglose_inversion: Record<string, number>;
   ingresos_anuales_conservador: number;
@@ -175,61 +260,10 @@ export interface FinancieroResponse {
   alerta_alquiler: boolean;
 }
 
-export interface DevData {
-  zona_raw: Record<string, unknown>;
-  scores_raw: Record<string, unknown>;
-}
-
 export interface LocalDetalleResponse {
   zona: ZonaDetalle;
   financiero_preview?: Partial<FinancieroResponse>;
-  dev_data?: DevData;
 }
-
-export interface PrecioSegmento {
-  nivel_dominante?: number;    // 1=€ 2=€€ 3=€€€ 4=€€€€
-  etiqueta: string;            // "€", "€€", "€€€", "€€€€" or "Sin datos"
-  distribucion: Record<string, number>;  // {"1": 3, "2": 5, ...}
-  tiene_gap: boolean;
-  gap_nivel?: number;
-  gap_etiqueta?: string;
-}
-
-export interface CompetidorDetalle {
-  nombre: string;
-  sector?: string;
-  distancia_m?: number;
-  rating?: number;
-  num_resenas?: number;
-  precio_nivel?: number;
-  es_competencia_directa: boolean;
-  es_complementario: boolean;
-  es_vulnerable: boolean;
-  amenaza_score?: number;   // 0-100
-}
-
-export interface CompetenciaDetalle {
-  zona_id: string;
-  sector: string;
-  radio_m: number;
-  score_competencia: number;
-  score_cluster: number;
-  amenaza_incumbentes: number;
-  oportunidad_mercado: number;
-  score_complementarios: number;
-  num_directos: number;
-  pct_vulnerables: number;
-  hhi_index: number;
-  ratio_complementarios: number;
-  precio_segmento?: PrecioSegmento;
-  amenaza: CompetidorDetalle[];
-  oportunidad: CompetidorDetalle[];
-  sinergicos: CompetidorDetalle[];
-  fuente: string;
-  datos_calculados: boolean;
-}
-
-// ── Legal Roadmap (Álvaro — LegalPanel) ──────────────────────────────────────
 
 export interface ProfesionalExterno {
   nombre: string;
@@ -267,9 +301,27 @@ export interface LegalRoadmapResponse {
   tipo_negocio: string;
   distrito: string;
   zona_restringida: boolean;
-  restriccion_detalle?: string;
   equipo_externo: ProfesionalExterno[];
   fases: FaseRoadmap[];
   costes_resumen: CosteRoadmap[];
   proximos_pasos: string[];
+}
+
+export interface DevData {
+  flujo_fuentes?: Record<string, unknown>;
+  transporte?: Record<string, unknown>;
+  competencia_raw?: {
+    competidores?: CompetidorDetalle[];
+    [key: string]: unknown;
+  };
+  demografia?: Record<string, unknown>;
+  seguridad?: Record<string, unknown>;
+  entorno?: Record<string, unknown>;
+  turismo?: Record<string, unknown>;
+  ml?: {
+    modelo_version?: string;
+    probabilidad_supervivencia?: number;
+    shap_values?: Record<string, number>;
+    [key: string]: unknown;
+  };
 }

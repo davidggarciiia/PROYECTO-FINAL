@@ -100,7 +100,12 @@ async def calcular_scores_batch(
                 WHERE sz.zona_id = ANY($1)
                   AND s.codigo   = $2
                 ORDER BY sz.zona_id,
-                         (sz.modelo_version != 'seed_v1') DESC,
+                         CASE sz.modelo_version
+                             WHEN 'fallback'       THEN 0
+                             WHEN 'fallback_error' THEN 0
+                             WHEN 'seed_v1'        THEN 1
+                             ELSE                       2
+                         END DESC,
                          sz.fecha_calculo DESC
                 """,
                 zona_ids,
@@ -178,7 +183,12 @@ async def get_scores_zona(
             JOIN sectores s ON s.id = sz.sector_id
             WHERE sz.zona_id = $1
               AND s.codigo   = $2
-            ORDER BY (sz.modelo_version != 'seed_v1') DESC,
+            ORDER BY CASE sz.modelo_version
+                         WHEN 'fallback'       THEN 0
+                         WHEN 'fallback_error' THEN 0
+                         WHEN 'seed_v1'        THEN 1
+                         ELSE                       2
+                     END DESC,
                      sz.fecha_calculo DESC
             LIMIT 1
             """,
@@ -426,8 +436,9 @@ def _aplicar_contexto_score(
     if zona_ideal:
         score_afinidad = _score_zona_vs_ideal(zona_data or {}, zona_ideal)
         scores["score_afinidad_concepto"] = score_afinidad
+        peso_afinidad = _calcular_peso_afinidad(zona_ideal)
         scores["score_global"] = round(
-            base_score * (1.0 - _PESO_AFINIDAD) + score_afinidad * _PESO_AFINIDAD,
+            base_score * (1.0 - peso_afinidad) + score_afinidad * peso_afinidad,
             1,
         )
 
@@ -560,6 +571,7 @@ def _recalcular_global_con_afinidad(
     scores: dict,
     pesos: dict,
     score_afinidad: float,
+    zona_ideal: Optional[dict] = None,
 ) -> float:
     """
     Recalcula score_global incorporando score_afinidad_concepto como 9a dimension.
@@ -568,8 +580,44 @@ def _recalcular_global_con_afinidad(
     score_global original; si las tiene, recalcula desde las 8 dimensiones.
     """
     score_base = _calcular_score_base(scores, pesos)
-    score_final = score_base * (1.0 - _PESO_AFINIDAD) + score_afinidad * _PESO_AFINIDAD
+    peso_afinidad = _calcular_peso_afinidad(zona_ideal)
+    score_final = score_base * (1.0 - peso_afinidad) + score_afinidad * peso_afinidad
     return round(score_final, 1)
+
+
+def _calcular_peso_afinidad(zona_ideal: Optional[dict]) -> float:
+    """
+    Ajusta cuánto pesa el encaje de concepto.
+
+    Para negocios muy de barrio o poco dependientes del turismo elevamos el peso
+    de afinidad para que el centro no gane por inercia estructural. Para
+    conceptos muy turísticos o de alto flujo lo dejamos cerca del baseline.
+    """
+    if not zona_ideal:
+        return _PESO_AFINIDAD
+
+    peso = _PESO_AFINIDAD
+    turismo_ideal = float(zona_ideal.get("turismo_ideal", 30.0) or 30.0)
+    flujo_min = float(zona_ideal.get("flujo_min", 500.0) or 500.0)
+    ratio_min = float(zona_ideal.get("ratio_comercial_min", 0.22) or 0.22)
+
+    if turismo_ideal <= 20.0:
+        peso += 0.08
+    elif turismo_ideal <= 32.0:
+        peso += 0.04
+
+    if flujo_min <= 350.0:
+        peso += 0.04
+    elif flujo_min <= 550.0:
+        peso += 0.02
+
+    if ratio_min <= 0.18:
+        peso += 0.02
+
+    if turismo_ideal >= 45.0 or flujo_min >= 900.0:
+        peso -= 0.03
+
+    return max(0.10, min(0.26, round(peso, 3)))
 
 
 def _format_scores_for_api(raw: dict) -> dict:

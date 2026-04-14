@@ -41,6 +41,7 @@ from pydantic import BaseModel
 
 from db.conexion import get_db
 from db.redis_client import get_redis
+from db.sesiones import get_sesion
 from schemas.models import (
     LicenciaNecesaria, RestriccionGeografica, ViabilidadLegal, ModeloLegal,
 )
@@ -591,17 +592,22 @@ async def post_legal_roadmap(body: RoadmapRequest) -> dict:
             """,
             body.zona_id,
         )
-        sesion_row = await conn.fetchrow(
-            "SELECT descripcion_negocio, sector FROM sesiones WHERE id = $1",
-            body.session_id,
-        )
+
+    sesion = await get_sesion(body.session_id)
 
     if not zona_row:
         raise HTTPException(status_code=404, detail="Zona no encontrada")
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada o expirada")
 
-    distrito  = zona_row["distrito"] or "Barcelona"
-    sector    = (sesion_row["sector"] if sesion_row else None) or "moda"
-    tipo_neg  = (sesion_row["descripcion_negocio"] if sesion_row else None) or "Negocio en Barcelona"
+    perfil = sesion.get("perfil", {}) or {}
+    distrito = zona_row["distrito"] or "Barcelona"
+    sector = perfil.get("sector") or "moda"
+    tipo_neg = (
+        sesion.get("descripcion_original")
+        or perfil.get("descripcion_negocio")
+        or "Negocio en Barcelona"
+    )
     sector_datos = _SECTORES.get(sector, _SECTORES["moda"])
 
     # ── Cache Redis ───────────────────────────────────────────────────────────
