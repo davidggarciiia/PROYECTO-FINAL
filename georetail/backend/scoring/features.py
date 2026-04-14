@@ -123,8 +123,26 @@ def _get_db():  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_CSV_ROOT = Path(os.environ.get("CSV_DIR", str(_REPO_ROOT / "CSV")))
+def _resolve_csv_root() -> Path:
+    env_csv = os.environ.get("CSV_DIR")
+    if env_csv:
+        return Path(env_csv)
+
+    candidates = [
+        Path("/data/csv"),
+        Path(__file__).resolve().parents[2] / "CSV",
+        Path(__file__).resolve().parents[1] / "CSV",
+        Path.cwd() / "CSV",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    # Fallback conservador: mantener la convención esperada en local aunque no exista aún.
+    return Path(__file__).resolve().parents[2] / "CSV"
+
+
+_CSV_ROOT = _resolve_csv_root()
 _DEMOGRAFIA_MEANS_PATH = (
     _CSV_ROOT / "_meta" / "demografia_backfill" / "latest" / "demography_feature_means.json"
 )
@@ -399,7 +417,9 @@ def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
         # v3: turismo y dinamismo comercial
         "airbnb_density_500m":       tur.get("airbnb_density_500m"),
         "airbnb_occupancy_est":      tur.get("airbnb_occupancy_est"),
-        "google_review_count_medio": tur.get("google_review_count_medio"),
+        # review_count viene del estado actual de negocios_activos y no está
+        # historificado; se neutraliza hasta tener snapshots reales.
+        "google_review_count_medio": None,
         "licencias_nuevas_1a":       tur.get("licencias_nuevas_1a"),
         "eventos_culturales_500m":   tur.get("eventos_culturales_500m"),
         "booking_hoteles_500m":      tur.get("booking_hoteles_500m"),
@@ -441,6 +461,12 @@ def _build_array(vz, comp, precio, trans, geo, tur) -> np.ndarray:
         "personas_solas": vz.get("personas_solas"),
         "renta_media_uc": vz.get("renta_media_uc"),
         "renta_mediana_uc": vz.get("renta_mediana_uc"),
+        # v13: dinamismo comercial histórico
+        "score_dinamismo_zona": vz.get("score_dinamismo_zona"),
+        "ratio_apertura_cierre_1a": vz.get("ratio_apertura_cierre_1a"),
+        "tasa_supervivencia_3a": vz.get("tasa_supervivencia_3a"),
+        "renta_variacion_3a": vz.get("renta_variacion_3a"),
+        "hhi_sectorial": vz.get("hhi_sectorial"),
         "seasonality_summer_lift": vz.get("seasonality_summer_lift"),
         "seasonality_christmas_lift": vz.get("seasonality_christmas_lift"),
         "seasonality_rebajas_lift": vz.get("seasonality_rebajas_lift"),

@@ -336,12 +336,12 @@ class TestValoresArray:
         idx = FEATURE_NAMES.index("airbnb_occupancy_est")
         assert arr[0][idx] == pytest.approx(0.70, rel=1e-5)
 
-    def test_v3_google_reviews_correcto(
+    def test_v3_google_reviews_neutralizado_hasta_historificar(
         self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo
     ):
         arr = _build_array(vz_completo, comp_completo, 18.0, trans_completo, geo_completo, tur_completo)
         idx = FEATURE_NAMES.index("google_review_count_medio")
-        assert arr[0][idx] == pytest.approx(200.0, rel=1e-5)
+        assert arr[0][idx] == pytest.approx(_MEDIAS["google_review_count_medio"], rel=1e-5)
 
     def test_v3_licencias_nuevas_correcto(
         self, vz_completo, comp_completo, trans_completo, geo_completo, tur_completo

@@ -17,33 +17,33 @@
 
 :root {
   /* Colors */
-  --bg:           #080C14;
-  --surface:      #0D1220;
-  --surface-2:    #111827;
-  --surface-3:    #1A2236;
-  --border:       rgba(255,255,255,0.07);
-  --border-hover: rgba(255,255,255,0.14);
+  --bg:           #101518;
+  --surface:      #151C20;
+  --surface-2:    #1B2429;
+  --surface-3:    #243037;
+  --border:       rgba(255,255,255,0.08);
+  --border-hover: rgba(255,255,255,0.16);
 
   /* Text */
-  --text:         #F1F5F9;
-  --text-muted:   #64748B;
-  --text-subtle:  #334155;
+  --text:         #F3F1EB;
+  --text-muted:   #C1C7C3;
+  --text-subtle:  #82908B;
 
   /* Accent — Indigo */
-  --accent:       #6366F1;
-  --accent-light: #818CF8;
-  --accent-glow:  rgba(99,102,241,0.25);
+  --accent:       #2C7A7B;
+  --accent-light: #39908F;
+  --accent-glow:  rgba(44,122,123,0.14);
 
   /* Score colors */
-  --green:        #10B981;
-  --green-dim:    rgba(16,185,129,0.12);
-  --green-border: rgba(16,185,129,0.25);
-  --yellow:       #F59E0B;
-  --yellow-dim:   rgba(245,158,11,0.12);
-  --yellow-border:rgba(245,158,11,0.25);
-  --red:          #EF4444;
-  --red-dim:      rgba(239,68,68,0.12);
-  --red-border:   rgba(239,68,68,0.25);
+  --green:        #2A8C73;
+  --green-dim:    rgba(42,140,115,0.12);
+  --green-border: rgba(42,140,115,0.24);
+  --yellow:       #BC873E;
+  --yellow-dim:   rgba(188,135,62,0.14);
+  --yellow-border:rgba(188,135,62,0.24);
+  --red:          #B1534A;
+  --red-dim:      rgba(177,83,74,0.14);
+  --red-border:   rgba(177,83,74,0.22);
 
   /* Layout */
   --sidebar-w:    380px;
@@ -51,12 +51,37 @@
   --radius:       12px;
   --radius-sm:    8px;
   --radius-xs:    6px;
-  --shadow-sm:    0 1px 3px rgba(0,0,0,0.4);
-  --shadow:       0 4px 24px rgba(0,0,0,0.5);
-  --shadow-lg:    0 12px 48px rgba(0,0,0,0.6);
+  --shadow-sm:    0 1px 3px rgba(0,0,0,0.24);
+  --shadow:       0 8px 28px rgba(0,0,0,0.22);
+  --shadow-lg:    0 18px 48px rgba(0,0,0,0.24);
 
   /* Typography */
   --font: var(--font-inter, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+}
+
+/* ── Light mode variables ─────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg:           #F2EEE6;
+  --surface:      #FBF8F2;
+  --surface-2:    #F4EFE6;
+  --surface-3:    #E8E1D5;
+  --border:       rgba(50,56,60,0.10);
+  --border-hover: rgba(50,56,60,0.18);
+  --text:         #172126;
+  --text-muted:   #55656B;
+  --text-subtle:  #7A8783;
+  --accent:       #1F5F68;
+  --accent-light: #2C7A7B;
+  --accent-glow:  rgba(31,95,104,0.10);
+  --green-dim:    rgba(42,140,115,0.10);
+  --green-border: rgba(42,140,115,0.22);
+  --yellow-dim:   rgba(188,135,62,0.10);
+  --yellow-border:rgba(188,135,62,0.22);
+  --red-dim:      rgba(177,83,74,0.10);
+  --red-border:   rgba(177,83,74,0.22);
+  --shadow-sm:    0 1px 3px rgba(24,28,30,0.08);
+  --shadow:       0 8px 24px rgba(24,28,30,0.08);
+  --shadow-lg:    0 18px 40px rgba(24,28,30,0.10);
 }
 
 html, body {
@@ -74,6 +99,23 @@ html, body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+/* ── Leaflet light mode overrides ── */
+[data-theme="light"] .leaflet-tooltip {
+  background: rgba(255,255,255,0.97) !important;
+  border: 1px solid rgba(0,0,0,0.10) !important;
+  color: #0F172A !important;
+}
+[data-theme="light"] .leaflet-tooltip-top::before {
+  border-top-color: rgba(0,0,0,0.10) !important;
+}
+[data-theme="light"] .leaflet-container {
+  background: #F8FAFC !important;
+}
+[data-theme="light"] .leaflet-control-attribution {
+  background: rgba(248,250,252,0.90) !important;
+  color: #64748B !important;
+}
 
 /* ── Leaflet dark theme ── */
 .leaflet-container { background: #0D1117 !important; font-family: var(--font) !important; }
@@ -101,11 +143,11 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 .btn-primary {
   background: var(--accent);
   color: #fff;
-  box-shadow: 0 0 0 0 var(--accent-glow);
+  box-shadow: 0 6px 16px rgba(31,95,104,0.18);
 }
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-light);
-  box-shadow: 0 0 20px var(--accent-glow);
+  box-shadow: 0 10px 24px rgba(31,95,104,0.22);
   transform: translateY(-1px);
 }
 .btn-primary:active { transform: translateY(0); }

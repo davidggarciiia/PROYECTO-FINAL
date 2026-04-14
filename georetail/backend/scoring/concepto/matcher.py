@@ -1402,8 +1402,67 @@ class ConceptoMatcher:
                 for i in top_idx
             ]
         except Exception as e:
-            logger.warning("ConceptoMatcher.match falló: %s — sin matches", e)
+            logger.warning("ConceptoMatcher.match falló: %s — usando fallback keywords", e)
+            return self._keyword_match(descripcion, top_k)
+
+    def _keyword_match(self, descripcion: str, top_k: int = 4) -> list[dict]:
+        """
+        Fallback sin sentence_transformers: overlap de keywords entre la
+        descripción del usuario y la descripción + nombre + tags de cada concepto.
+        Funciona bien para textos descriptivos (>5 palabras).
+        """
+        import re
+
+        _STOPWORDS = {
+            "de", "la", "el", "en", "un", "una", "con", "que", "y", "a",
+            "los", "las", "del", "al", "por", "para", "es", "se", "no",
+            "su", "sus", "lo", "le", "me", "mi", "si", "o", "e", "u",
+            "quiero", "abrir", "cerca", "muy", "mas", "más", "zona",
+            "local", "negocio", "tipo", "mi", "mi", "he",
+        }
+
+        def tokenize(text: str) -> set[str]:
+            tokens = re.findall(r"[a-záéíóúüñ]+", text.lower())
+            return {t for t in tokens if len(t) > 3 and t not in _STOPWORDS}
+
+        query_tokens = tokenize(descripcion)
+        if not query_tokens:
             return []
+
+        scores: list[tuple[float, str]] = []
+        for key, concept in CONCEPTOS_DB.items():
+            concept_text = " ".join([
+                concept.get("nombre", ""),
+                concept.get("descripcion", ""),
+                " ".join(concept.get("tags", [])),
+            ])
+            concept_tokens = tokenize(concept_text)
+            if not concept_tokens:
+                continue
+            overlap = len(query_tokens & concept_tokens)
+            # Jaccard-like score normalised to [0,1]
+            score = overlap / (len(query_tokens | concept_tokens) + 1e-9)
+            # Boost if key name appears literally in the description
+            key_words = set(key.replace("_", " ").split())
+            if key_words & query_tokens:
+                score *= 1.5
+            scores.append((score, key))
+
+        scores.sort(reverse=True)
+        results = []
+        for score, key in scores[:top_k]:
+            if score <= 0:
+                break
+            results.append({
+                "key": key,
+                **CONCEPTOS_DB[key],
+                "similarity": min(score, 0.95),
+            })
+        if not results:
+            logger.warning("ConceptoMatcher keyword fallback: sin matches para %r", descripcion[:60])
+        else:
+            logger.info("ConceptoMatcher keyword fallback: top=%s (%.3f)", results[0]["key"], results[0]["similarity"])
+        return results
 
     def blend_tags(self, matches: list[dict]) -> list[str]:
         """

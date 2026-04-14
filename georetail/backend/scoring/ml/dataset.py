@@ -45,6 +45,31 @@ _MIN_REGISTROS = 200
 _DEMOGRAFIA_AUDIT_FEATURES = DEMOGRAFIA_SELECTABLE_EXISTING_FEATURES
 
 
+def _score_transporte_proxy(
+    num_lineas: Optional[float],
+    num_paradas: Optional[float],
+    num_bicing: Optional[float],
+    tiene_carril: Optional[float],
+) -> Optional[float]:
+    """
+    Proxy determinista para train histórico cuando no hay snapshot historificada
+    del score enriquecido de transporte.
+
+    No pretende sustituir al score runtime, pero evita que la feature quede
+    siempre imputada a la media cuando sí tenemos conectividad estructural.
+    """
+    if all(value is None for value in (num_lineas, num_paradas, num_bicing, tiene_carril)):
+        return None
+
+    lineas = float(num_lineas or 0.0)
+    paradas = float(num_paradas or 0.0)
+    bicing = float(num_bicing or 0.0)
+    carril = 1.0 if float(tiene_carril or 0.0) > 0 else 0.0
+
+    score = min(100.0, lineas * 5.0 + paradas * 3.0 + bicing * 7.0 + carril * 8.0)
+    return round(score, 1)
+
+
 async def construir_dataset(
     sector: Optional[str] = None,
     fecha_corte: Optional[date] = None,
@@ -344,13 +369,35 @@ async def _construir_features_historicas(
             SELECT
                 z.id AS zona_id,
                 COUNT(DISTINCT pl.linea_id)::int AS num_lineas,
-                COUNT(DISTINCT pt.id)::int        AS num_paradas
+                COUNT(DISTINCT pt.id)::int        AS num_paradas,
+                COALESCE(b.num_bicing, 0)::int   AS num_bicing,
+                COALESCE(cb.tiene_carril, FALSE)::boolean AS tiene_carril
             FROM zonas z
             JOIN paradas_transporte pt
                 ON ST_DWithin(pt.geometria::geography, z.geometria::geography, 500)
             JOIN paradas_lineas pl ON pl.parada_id = pt.id
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*)::int AS num_bicing
+                FROM estaciones_bicing eb
+                WHERE ST_DWithin(
+                    eb.geometria::geography,
+                    ST_Centroid(z.geometria)::geography,
+                    400
+                )
+            ) b ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM carriles_bici cb
+                    WHERE ST_DWithin(
+                        cb.geometria::geography,
+                        ST_Centroid(z.geometria)::geography,
+                        200
+                    )
+                ) AS tiene_carril
+            ) cb ON TRUE
             WHERE z.id = ANY($1)
-            GROUP BY z.id
+            GROUP BY z.id, b.num_bicing, cb.tiene_carril
         """
 
         # ── Per-negocio snapshots (evita data leakage) ───────────────────────
@@ -374,12 +421,41 @@ async def _construir_features_historicas(
                 vz.score_turismo, vz.incidencias_por_1000hab,
                 vz.nivel_ruido_db, vz.score_equipamientos, vz.m2_zonas_verdes_cercanas,
                 vz.ratio_locales_comerciales,
+                vz.hurtos_por_1000hab, vz.robatoris_por_1000hab, vz.danys_por_1000hab,
+                vz.incidencias_noche_pct, vz.comisarias_1km, vz.mercados_municipales_1km,
                 -- v3: turismo y dinamismo comercial
                 vz.airbnb_density_500m,
                 vz.airbnb_occupancy_est,
                 vz.licencias_nuevas_1a,
                 vz.eventos_culturales_500m,
                 vz.booking_hoteles_500m,
+                vz.pct_poblacio_25_44,
+                vz.delta_renta_3a,
+                vz.nivel_estudios_alto_pct,
+                vz.gini,
+                vz.p80_p20,
+                vz.tamano_hogar,
+                vz.hogares_con_menores,
+                vz.personas_solas,
+                vz.renta_media_uc,
+                vz.renta_mediana_uc,
+                vz.score_dinamismo_zona,
+                vz.ratio_apertura_cierre_1a,
+                vz.tasa_supervivencia_3a,
+                vz.renta_variacion_3a,
+                vz.hhi_sectorial,
+                vz.seasonality_summer_lift,
+                vz.seasonality_christmas_lift,
+                vz.seasonality_rebajas_lift,
+                vz.seasonality_volatility,
+                vz.seasonality_peak_concentration,
+                vz.weekend_lift,
+                vz.sunday_lift,
+                vz.weekday_midday_share,
+                vz.weekend_evening_share,
+                vz.late_night_share,
+                vz.holiday_proxy_score,
+                vz.temporal_confianza,
                 ST_Distance(
                     ST_Centroid(z.geometria)::geography,
                     ST_GeomFromText(
@@ -388,7 +464,7 @@ async def _construir_features_historicas(
                     )::geography
                 )::int AS dist_playa_m
             FROM input i
-            JOIN variables_zona vz ON vz.zona_id = i.zone_id AND vz.fecha <= i.fecha_ref
+            JOIN v_variables_zona vz ON vz.zona_id = i.zone_id AND vz.fecha <= i.fecha_ref
             JOIN zonas z ON z.id = vz.zona_id
             ORDER BY i.idx, vz.fecha DESC
         """
@@ -399,16 +475,41 @@ async def _construir_features_historicas(
                 FROM unnest($1::text[], $2::text[], $3::date[]) WITH ORDINALITY
                     AS t(zone_id, sec, fecha_ref, ordinality)
             )
-            SELECT DISTINCT ON (i.idx)
+            SELECT
                 i.idx,
-                cp.num_competidores, cp.rating_medio, cp.score_saturacion
+                COALESCE(cdz.num_directos, cp.num_competidores) AS num_competidores,
+                COALESCE(cdz.rating_medio_directos, cp.rating_medio) AS rating_medio,
+                COALESCE(cdz.score_competencia_v2, cp.score_saturacion) AS score_saturacion,
+                cdz.cluster_score,
+                cdz.pct_vulnerables,
+                cdz.ratio_complementarios
             FROM input i
-            JOIN competencia_por_local cp
-                ON cp.zona_id = i.zone_id
-                AND cp.sector_codigo = i.sec
-                AND cp.radio_m = 300
-                AND cp.fecha_calculo <= i.fecha_ref
-            ORDER BY i.idx, cp.fecha_calculo DESC
+            LEFT JOIN LATERAL (
+                SELECT
+                    num_directos,
+                    rating_medio_directos,
+                    score_competencia_v2,
+                    cluster_score,
+                    pct_vulnerables,
+                    ratio_complementarios
+                FROM competencia_detalle_zona
+                WHERE zona_id = i.zone_id
+                  AND sector_codigo = i.sec
+                  AND radio_m = 500
+                  AND fecha <= i.fecha_ref
+                ORDER BY fecha DESC
+                LIMIT 1
+            ) cdz ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT num_competidores, rating_medio, score_saturacion
+                FROM competencia_por_local
+                WHERE zona_id = i.zone_id
+                  AND sector_codigo = i.sec
+                  AND radio_m = 300
+                  AND fecha_calculo <= i.fecha_ref
+                ORDER BY fecha_calculo DESC
+                LIMIT 1
+            ) cp ON TRUE
         """
 
         precio_per_negocio_query = """
@@ -424,21 +525,6 @@ async def _construir_features_historicas(
                 ON paz.zona_id = i.zone_id
                 AND paz.fecha <= i.fecha_ref
             ORDER BY i.idx, paz.fecha DESC
-        """
-
-        # v3: media de reseñas Google de negocios activos en 300m por zona
-        # (no depende de fecha histórica — es un proxy del dinamismo actual de la zona)
-        google_reviews_query = """
-            SELECT
-                z.id AS zona_id,
-                AVG(na.review_count)::float AS avg_reviews
-            FROM zonas z
-            JOIN negocios_activos na
-                ON na.activo = TRUE
-               AND ST_DWithin(na.geometria::geography, z.geometria::geography, 300)
-               AND na.review_count > 0
-            WHERE z.id = ANY($1)
-            GROUP BY z.id
         """
 
         # Transporte no depende de fecha (la red es relativamente estable)
@@ -459,10 +545,6 @@ async def _construir_features_historicas(
         }
 
         # v3: google reviews por zona (batch, no por índice)
-        google_rows = await conn.fetch(google_reviews_query, zona_ids_unicos)
-        google_reviews_dict: dict[str, Optional[float]] = {
-            r["zona_id"]: r["avg_reviews"] for r in google_rows
-        }
 
     # ── Construir vector de features por negocio ──────────────────────────────
     resultados: list[Optional[list[float]]] = []
@@ -502,17 +584,73 @@ async def _construir_features_historicas(
             "num_lineas_transporte":    trans.get("num_lineas"),
             "num_paradas_500m":         trans.get("num_paradas"),
             "m2_zonas_verdes_cercanas": vz.get("m2_zonas_verdes_cercanas"),
+            "hurtos_por_1000hab":       vz.get("hurtos_por_1000hab"),
+            "robatoris_por_1000hab":    vz.get("robatoris_por_1000hab"),
+            "danys_por_1000hab":        vz.get("danys_por_1000hab"),
+            "incidencias_noche_pct":    vz.get("incidencias_noche_pct"),
+            "comisarias_1km":           vz.get("comisarias_1km"),
             # v2: granularidad geográfica de nivel zona
             "dist_playa_m":              vz.get("dist_playa_m"),
             "ratio_locales_comerciales": vz.get("ratio_locales_comerciales"),
             # v3: turismo y dinamismo comercial
             "airbnb_density_500m":       vz.get("airbnb_density_500m"),
             "airbnb_occupancy_est":      vz.get("airbnb_occupancy_est"),
-            "google_review_count_medio": google_reviews_dict.get(zona_id),
+            "google_review_count_medio": None,
             "licencias_nuevas_1a":       vz.get("licencias_nuevas_1a"),
             "eventos_culturales_500m":   vz.get("eventos_culturales_500m"),
             "booking_hoteles_500m":      vz.get("booking_hoteles_500m"),
+            "pct_poblacio_25_44":        vz.get("pct_poblacio_25_44"),
+            "delta_renta_3a":            vz.get("delta_renta_3a"),
+            "nivel_estudios_alto_pct":   vz.get("nivel_estudios_alto_pct"),
+            "score_aglomeracion":        comp.get("cluster_score"),
+            "pct_vulnerables":           comp.get("pct_vulnerables"),
+            "ratio_complementarios":     comp.get("ratio_complementarios"),
+            "mercados_municipales_1km":  vz.get("mercados_municipales_1km"),
+            "num_bicing_400m":           trans.get("num_bicing"),
+            "tiene_carril_bici":         float(trans.get("tiene_carril")) if trans.get("tiene_carril") is not None else None,
+            "score_transporte_calculado": _score_transporte_proxy(
+                trans.get("num_lineas"),
+                trans.get("num_paradas"),
+                trans.get("num_bicing"),
+                float(trans.get("tiene_carril")) if trans.get("tiene_carril") is not None else None,
+            ),
+            "score_dinamismo_zona":      vz.get("score_dinamismo_zona"),
+            "ratio_apertura_cierre_1a":  vz.get("ratio_apertura_cierre_1a"),
+            "tasa_supervivencia_3a":     vz.get("tasa_supervivencia_3a"),
+            "renta_variacion_3a":        vz.get("renta_variacion_3a"),
+            "hhi_sectorial":             vz.get("hhi_sectorial"),
+            "gini":                      vz.get("gini"),
+            "p80_p20":                   vz.get("p80_p20"),
+            "tamano_hogar":              vz.get("tamano_hogar"),
+            "hogares_con_menores":       vz.get("hogares_con_menores"),
+            "personas_solas":            vz.get("personas_solas"),
+            "renta_media_uc":            vz.get("renta_media_uc"),
+            "renta_mediana_uc":          vz.get("renta_mediana_uc"),
+            "seasonality_summer_lift":   vz.get("seasonality_summer_lift"),
+            "seasonality_christmas_lift": vz.get("seasonality_christmas_lift"),
+            "seasonality_rebajas_lift":  vz.get("seasonality_rebajas_lift"),
+            "seasonality_volatility":    vz.get("seasonality_volatility"),
+            "seasonality_peak_concentration": vz.get("seasonality_peak_concentration"),
+            "weekend_lift":              vz.get("weekend_lift"),
+            "sunday_lift":               vz.get("sunday_lift"),
+            "weekday_midday_share":      vz.get("weekday_midday_share"),
+            "weekend_evening_share":     vz.get("weekend_evening_share"),
+            "late_night_share":          vz.get("late_night_share"),
+            "holiday_proxy_score":       vz.get("holiday_proxy_score"),
+            "temporal_confianza":        vz.get("temporal_confianza"),
         }
+        raw["indice_potencial_consumo"] = (
+            None
+            if any(raw.get(feature) is None for feature in ("densidad_hab_km2", "pct_poblacio_25_44", "renta_media_hogar"))
+            else float(
+                (
+                    min(1.0, float(raw["densidad_hab_km2"]) / 30000.0) ** 0.40
+                    * min(1.0, float(raw["pct_poblacio_25_44"]) / 0.42) ** 0.35
+                    * min(1.0, max(0.0, (float(raw["renta_media_hogar"]) - 17000.0) / (60000.0 - 17000.0))) ** 0.25
+                )
+                * 100.0
+            )
+        )
 
         # Imputar con medias del dataset de entrenamiento donde haya None
         vec = [
@@ -534,13 +672,35 @@ async def _construir_features_historicas_detalladas(
             SELECT
                 z.id AS zona_id,
                 COUNT(DISTINCT pl.linea_id)::int AS num_lineas,
-                COUNT(DISTINCT pt.id)::int        AS num_paradas
+                COUNT(DISTINCT pt.id)::int        AS num_paradas,
+                COALESCE(b.num_bicing, 0)::int   AS num_bicing,
+                COALESCE(cb.tiene_carril, FALSE)::boolean AS tiene_carril
             FROM zonas z
             JOIN paradas_transporte pt
                 ON ST_DWithin(pt.geometria::geography, z.geometria::geography, 500)
             JOIN paradas_lineas pl ON pl.parada_id = pt.id
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*)::int AS num_bicing
+                FROM estaciones_bicing eb
+                WHERE ST_DWithin(
+                    eb.geometria::geography,
+                    ST_Centroid(z.geometria)::geography,
+                    400
+                )
+            ) b ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM carriles_bici cb
+                    WHERE ST_DWithin(
+                        cb.geometria::geography,
+                        ST_Centroid(z.geometria)::geography,
+                        200
+                    )
+                ) AS tiene_carril
+            ) cb ON TRUE
             WHERE z.id = ANY($1)
-            GROUP BY z.id
+            GROUP BY z.id, b.num_bicing, cb.tiene_carril
         """
 
         vz_per_negocio_query = """
@@ -557,6 +717,8 @@ async def _construir_features_historicas_detalladas(
                 vz.score_turismo, vz.incidencias_por_1000hab,
                 vz.nivel_ruido_db, vz.score_equipamientos, vz.m2_zonas_verdes_cercanas,
                 vz.ratio_locales_comerciales,
+                vz.hurtos_por_1000hab, vz.robatoris_por_1000hab, vz.danys_por_1000hab,
+                vz.incidencias_noche_pct, vz.comisarias_1km, vz.mercados_municipales_1km,
                 vz.airbnb_density_500m,
                 vz.airbnb_occupancy_est,
                 vz.licencias_nuevas_1a,
@@ -572,6 +734,11 @@ async def _construir_features_historicas_detalladas(
                 vz.personas_solas,
                 vz.renta_media_uc,
                 vz.renta_mediana_uc,
+                vz.score_dinamismo_zona,
+                vz.ratio_apertura_cierre_1a,
+                vz.tasa_supervivencia_3a,
+                vz.renta_variacion_3a,
+                vz.hhi_sectorial,
                 vz.seasonality_summer_lift,
                 vz.seasonality_christmas_lift,
                 vz.seasonality_rebajas_lift,
@@ -603,16 +770,41 @@ async def _construir_features_historicas_detalladas(
                 FROM unnest($1::text[], $2::text[], $3::date[]) WITH ORDINALITY
                     AS t(zone_id, sec, fecha_ref, ordinality)
             )
-            SELECT DISTINCT ON (i.idx)
+            SELECT
                 i.idx,
-                cp.num_competidores, cp.rating_medio, cp.score_saturacion
+                COALESCE(cdz.num_directos, cp.num_competidores) AS num_competidores,
+                COALESCE(cdz.rating_medio_directos, cp.rating_medio) AS rating_medio,
+                COALESCE(cdz.score_competencia_v2, cp.score_saturacion) AS score_saturacion,
+                cdz.cluster_score,
+                cdz.pct_vulnerables,
+                cdz.ratio_complementarios
             FROM input i
-            JOIN competencia_por_local cp
-                ON cp.zona_id = i.zone_id
-                AND cp.sector_codigo = i.sec
-                AND cp.radio_m = 300
-                AND cp.fecha_calculo <= i.fecha_ref
-            ORDER BY i.idx, cp.fecha_calculo DESC
+            LEFT JOIN LATERAL (
+                SELECT
+                    num_directos,
+                    rating_medio_directos,
+                    score_competencia_v2,
+                    cluster_score,
+                    pct_vulnerables,
+                    ratio_complementarios
+                FROM competencia_detalle_zona
+                WHERE zona_id = i.zone_id
+                  AND sector_codigo = i.sec
+                  AND radio_m = 500
+                  AND fecha <= i.fecha_ref
+                ORDER BY fecha DESC
+                LIMIT 1
+            ) cdz ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT num_competidores, rating_medio, score_saturacion
+                FROM competencia_por_local
+                WHERE zona_id = i.zone_id
+                  AND sector_codigo = i.sec
+                  AND radio_m = 300
+                  AND fecha_calculo <= i.fecha_ref
+                ORDER BY fecha_calculo DESC
+                LIMIT 1
+            ) cp ON TRUE
         """
 
         precio_per_negocio_query = """
@@ -630,19 +822,6 @@ async def _construir_features_historicas_detalladas(
             ORDER BY i.idx, paz.fecha DESC
         """
 
-        google_reviews_query = """
-            SELECT
-                z.id AS zona_id,
-                AVG(na.review_count)::float AS avg_reviews
-            FROM zonas z
-            JOIN negocios_activos na
-                ON na.activo = TRUE
-               AND ST_DWithin(na.geometria::geography, z.geometria::geography, 300)
-               AND na.review_count > 0
-            WHERE z.id = ANY($1)
-            GROUP BY z.id
-        """
-
         zona_ids_unicos = list(set(zona_ids))
         trans_rows = await conn.fetch(trans_query, zona_ids_unicos)
         trans_dict: dict[str, dict] = {r["zona_id"]: dict(r) for r in trans_rows}
@@ -656,11 +835,6 @@ async def _construir_features_historicas_detalladas(
         precio_rows = await conn.fetch(precio_per_negocio_query, zona_ids, fechas)
         precio_by_idx: dict[int, Optional[float]] = {
             r["idx"]: float(r["precio_m2"]) for r in precio_rows
-        }
-
-        google_rows = await conn.fetch(google_reviews_query, zona_ids_unicos)
-        google_reviews_dict: dict[str, Optional[float]] = {
-            r["zona_id"]: r["avg_reviews"] for r in google_rows
         }
 
     resultados: list[Optional[dict]] = []
@@ -698,17 +872,34 @@ async def _construir_features_historicas_detalladas(
             "num_lineas_transporte": trans.get("num_lineas"),
             "num_paradas_500m": trans.get("num_paradas"),
             "m2_zonas_verdes_cercanas": vz.get("m2_zonas_verdes_cercanas"),
+            "hurtos_por_1000hab": vz.get("hurtos_por_1000hab"),
+            "robatoris_por_1000hab": vz.get("robatoris_por_1000hab"),
+            "danys_por_1000hab": vz.get("danys_por_1000hab"),
+            "incidencias_noche_pct": vz.get("incidencias_noche_pct"),
+            "comisarias_1km": vz.get("comisarias_1km"),
             "dist_playa_m": vz.get("dist_playa_m"),
             "ratio_locales_comerciales": vz.get("ratio_locales_comerciales"),
             "airbnb_density_500m": vz.get("airbnb_density_500m"),
             "airbnb_occupancy_est": vz.get("airbnb_occupancy_est"),
-            "google_review_count_medio": google_reviews_dict.get(zona_id),
+            "google_review_count_medio": None,
             "licencias_nuevas_1a": vz.get("licencias_nuevas_1a"),
             "eventos_culturales_500m": vz.get("eventos_culturales_500m"),
             "booking_hoteles_500m": vz.get("booking_hoteles_500m"),
             "pct_poblacio_25_44": vz.get("pct_poblacio_25_44"),
             "delta_renta_3a": vz.get("delta_renta_3a"),
             "nivel_estudios_alto_pct": vz.get("nivel_estudios_alto_pct"),
+            "score_aglomeracion": comp.get("cluster_score"),
+            "pct_vulnerables": comp.get("pct_vulnerables"),
+            "ratio_complementarios": comp.get("ratio_complementarios"),
+            "mercados_municipales_1km": vz.get("mercados_municipales_1km"),
+            "num_bicing_400m": trans.get("num_bicing"),
+            "tiene_carril_bici": float(trans.get("tiene_carril")) if trans.get("tiene_carril") is not None else None,
+            "score_transporte_calculado": _score_transporte_proxy(
+                trans.get("num_lineas"),
+                trans.get("num_paradas"),
+                trans.get("num_bicing"),
+                float(trans.get("tiene_carril")) if trans.get("tiene_carril") is not None else None,
+            ),
             "gini": vz.get("gini"),
             "p80_p20": vz.get("p80_p20"),
             "tamano_hogar": vz.get("tamano_hogar"),
@@ -716,6 +907,11 @@ async def _construir_features_historicas_detalladas(
             "personas_solas": vz.get("personas_solas"),
             "renta_media_uc": vz.get("renta_media_uc"),
             "renta_mediana_uc": vz.get("renta_mediana_uc"),
+            "score_dinamismo_zona": vz.get("score_dinamismo_zona"),
+            "ratio_apertura_cierre_1a": vz.get("ratio_apertura_cierre_1a"),
+            "tasa_supervivencia_3a": vz.get("tasa_supervivencia_3a"),
+            "renta_variacion_3a": vz.get("renta_variacion_3a"),
+            "hhi_sectorial": vz.get("hhi_sectorial"),
             "seasonality_summer_lift": vz.get("seasonality_summer_lift"),
             "seasonality_christmas_lift": vz.get("seasonality_christmas_lift"),
             "seasonality_rebajas_lift": vz.get("seasonality_rebajas_lift"),

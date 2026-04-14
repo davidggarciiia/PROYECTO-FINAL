@@ -89,7 +89,12 @@ class Settings(BaseSettings):
     # ── App ───────────────────────────────────────────────────────────────────
     ENVIRONMENT: str = "development"
     SENTRY_DSN: str = ""
-    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ]
     EXPORTS_DIR: str = "/data/exports"
     OPTUNA_DIR: str = "/data/optuna"
     PORT: int = 8000

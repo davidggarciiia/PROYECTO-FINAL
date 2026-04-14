@@ -58,6 +58,101 @@
   color: var(--text-subtle);
 }
 
+/* ── Desglose inversión ── */
+.desgloseGrid {
+  display: grid;
+  gap: 10px;
+}
+
+.desgloseItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+
+  transition: all 0.2s ease;
+}
+
+.desgloseItem:hover {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.1);
+}
+
+.desgloseTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.desgloseLabel {
+  font-size: 12px;
+  color: #94A3B8;
+  font-weight: 500;
+}
+
+.desgloseValue {
+  font-size: 13px;
+  font-weight: 700;
+  color: #E2E8F0;
+  font-variant-numeric: tabular-nums;
+}
+
+.desgloseBar {
+  height: 4px;
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+
+.desgloseBarFill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6366F1, #10B981);
+  transition: width 0.4s ease;
+}
+
+.desglosePct {
+  font-size: 10px;
+  color: #64748B;
+  text-align: right;
+  font-weight: 600;
+}
+
+.totalBadge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #A78BFA;
+
+  background: rgba(167,139,250,0.1);
+  border: 1px solid rgba(167,139,250,0.25);
+
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.empleadosBox {
+  margin-top: 12px;
+  padding: 8px 10px;
+
+  font-size: 12px;
+  font-weight: 500;
+  color: #CBD5F5;
+
+  background: rgba(99,102,241,0.08);
+  border: 1px solid rgba(99,102,241,0.2);
+  border-radius: 8px;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* ── Rent alert ── */
 .rentAlert {
   display: flex;
