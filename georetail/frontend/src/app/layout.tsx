@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "GeoRetail — Ubica tu negocio en Barcelona",
-  description: "Análisis de viabilidad de ubicaciones comerciales en tiempo real",
+  title: "KnowPoints — Ubica tu negocio en Barcelona",
+  description: "Inteligencia de ubicación comercial para Barcelona. Analiza tráfico peatonal, competidores y viabilidad financiera en tiempo real.",
 };
 
 export const viewport: Viewport = {

@@ -14,7 +14,9 @@
       "Bash(curl -s -X POST http://localhost:8000/api/buscar -H \"Content-Type: application/json\" -d \"{\"\"descripcion\"\": \"\"restaurante de tapas con terraza en el centro\"\", \"\"session_id\"\": null}\" -w \"\\\\nHTTP_STATUS: %{http_code}\")",
       "Bash(grep -v \"^$\")",
       "Bash(curl -s -X POST http://localhost:8000/api/buscar -H \"Content-Type: application/json\" -d '{\"\"\"\"descripcion\"\"\"\": \"\"\"\"restaurante de tapas con terraza\"\"\"\"}' -w \"\\\\nHTTP: %{http_code}\")",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(npx tsc *)",
+      "Bash(./node_modules/.bin/tsc --noEmit)"
     ]
   }
 }
