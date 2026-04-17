@@ -21,7 +21,11 @@
       "Bash(cmd /c \"dir c:\\\\Users\\\\Alumno\\\\Documents\\\\GitHub\\\\PROYECTO-FINAL\\\\georetail\\\\frontend\\\\node_modules 2>&1 | head -5\")",
       "Bash(cmd /c \"dir C:\\\\Users\\\\Alumno\\\\Documents\\\\GitHub\\\\PROYECTO-FINAL\\\\georetail\\\\frontend\\\\node_modules\\\\react 2>&1\")",
       "Bash(cmd /c \"cd C:\\\\Users\\\\Alumno\\\\Documents\\\\GitHub\\\\PROYECTO-FINAL\\\\georetail\\\\frontend && dir node_modules 2>&1\")",
-      "Bash(cmd /c \"dir \\\\\"C:\\\\Users\\\\Alumno\\\\Documents\\\\GitHub\\\\PROYECTO-FINAL\\\\georetail\\\\frontend\\\\node_modules\\\\\" 2>&1\")"
+      "Bash(cmd /c \"dir \\\\\"C:\\\\Users\\\\Alumno\\\\Documents\\\\GitHub\\\\PROYECTO-FINAL\\\\georetail\\\\frontend\\\\node_modules\\\\\" 2>&1\")",
+      "WebFetch(domain:api.anthropic.com)",
+      "Bash(tar -tzf \"webfetch-1776446063453-m27n08.bin\")",
+      "Bash(tar -xzf \"webfetch-1776446063453-m27n08.bin\" --exclude=\"*.jpg\" --exclude=\"*.png\")",
+      "Bash(npm run *)"
     ]
   }
 }

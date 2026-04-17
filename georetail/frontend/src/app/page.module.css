@@ -246,16 +246,17 @@
   color: var(--kp-purple-light);
   letter-spacing: 0.02em;
   margin-bottom: 28px;
+  animation: kp-fade-up 0.6s cubic-bezier(0.16,1,0.3,1) 0.1s both;
 }
 
 .heroBadgeDot {
   width: 6px; height: 6px;
   background: var(--kp-purple-light);
   border-radius: 50%;
-  animation: pulse 2s ease-in-out infinite;
+  animation: kp-pulse 2s ease-in-out infinite;
 }
 
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+/* Pulse handled by global kp-pulse keyframe */
 
 .heroTitle {
   font-size: clamp(38px, 5.5vw, 68px);
@@ -264,6 +265,7 @@
   letter-spacing: -0.04em;
   color: var(--kp-text);
   margin-bottom: 24px;
+  animation: kp-fade-up 0.8s cubic-bezier(0.16,1,0.3,1) 0.2s both;
 }
 
 .heroTitleAccent {
@@ -279,6 +281,7 @@
   color: var(--kp-muted);
   max-width: 500px;
   margin-bottom: 36px;
+  animation: kp-fade-up 0.8s cubic-bezier(0.16,1,0.3,1) 0.35s both;
 }
 
 .heroCtas {
@@ -287,6 +290,7 @@
   gap: 14px;
   flex-wrap: wrap;
   margin-bottom: 48px;
+  animation: kp-fade-up 0.8s cubic-bezier(0.16,1,0.3,1) 0.5s both;
 }
 
 .heroCtaPrimary {
@@ -332,6 +336,7 @@
   display: flex;
   align-items: center;
   gap: 24px;
+  animation: kp-fade-up 0.8s cubic-bezier(0.16,1,0.3,1) 0.65s both;
 }
 
 .heroStat {
@@ -424,9 +429,15 @@
   padding: 72px 0;
   border-bottom: 1px solid var(--kp-border);
   opacity: 0;
-  will-change: opacity, transform;
+  transform: translateY(40px);
+  transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1);
 }
 .featureRow:last-child { border-bottom: none; }
+
+.featureRowVisible {
+  opacity: 1;
+  transform: translateY(0);
+}
 
 .featureRowReverse .featureRowText { order: 2; }
 .featureRowReverse .featureRowImage { order: 1; }
@@ -828,6 +839,112 @@
   color: var(--kp-subtle);
 }
 
+/* ══ SOURCES STRIP ══════════════════════════════════════ */
+.sources {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 40px 24px 0;
+}
+
+.sourcesLabel {
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--kp-subtle);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 18px;
+}
+
+.sourcesGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.sourceCard {
+  padding: 16px 14px;
+  background: var(--kp-surface);
+  border: 1px solid var(--kp-border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.sourceCard:hover {
+  border-color: rgba(124,58,237,0.28);
+  transform: translateY(-2px);
+}
+
+.sourceCardName {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--kp-text);
+  letter-spacing: -0.01em;
+}
+
+.sourceCardType {
+  font-size: 10px;
+  color: var(--kp-subtle);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ══ FEATURE BULLETS ════════════════════════════════════ */
+.featureBullets {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 4px;
+}
+
+.featureBullet {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13.5px;
+  color: var(--kp-muted);
+  line-height: 1.55;
+}
+
+.featureBulletMark {
+  color: var(--kp-purple-light);
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ══ STEP BADGE ═════════════════════════════════════════ */
+.stepBadge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--kp-purple-light);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* ══ TESTIMONIAL METRIC ══════════════════════════════════ */
+.testimonialMetric {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--kp-purple-light);
+  background: rgba(124,58,237,0.10);
+  border: 1px solid rgba(124,58,237,0.20);
+  padding: 4px 10px;
+  border-radius: 100px;
+  align-self: flex-start;
+}
+
+/* ══ SKYLINE WINDOW TWINKLE ══════════════════════════════ */
+.skylineWindow {
+  animation: kp-twinkle var(--tw-dur, 4s) ease-in-out var(--tw-delay, 0s) infinite;
+}
+
 /* ══ RESPONSIVE ═════════════════════════════════════════ */
 @media (max-width: 900px) {
   .hero {
@@ -836,6 +953,9 @@
   .heroSkyline {
     width: 100%;
     opacity: 0.45;
+  }
+  .sourcesGrid {
+    grid-template-columns: repeat(2, 1fr);
   }
   .stepsGrid {
     grid-template-columns: 1fr;

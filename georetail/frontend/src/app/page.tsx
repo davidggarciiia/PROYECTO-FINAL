@@ -11,7 +11,7 @@ function winFill(seed: number, threshold: number, litColor: string, dimColor: st
 }
 function winOpacity(seed: number) { return 0.5 + pr(seed * 7) * 0.5; }
 
-/* ── Theme hook (syncs with rest of app via localStorage + data-theme) ── */
+/* ── Theme hook ── */
 function useTheme(): [string, (t: string) => void] {
   const [theme, setThemeState] = useState<string>("dark");
   useEffect(() => {
@@ -29,7 +29,45 @@ function useTheme(): [string, (t: string) => void] {
   return [theme, setTheme];
 }
 
-/* ── Inline KnowPoints logo SVG ── */
+/* ── Counter: rolls from 0 → target when triggered ── */
+function Counter({ to, suffix = "", duration = 1400, trigger = true }: {
+  to: number; suffix?: string; duration?: number; trigger?: boolean;
+}) {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    if (!trigger) return;
+    let raf: number;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setValue(Math.round(to * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [to, duration, trigger]);
+  return <>{value.toLocaleString("es-ES")}{suffix}</>;
+}
+
+/* ── useInView: fires once when element enters viewport ── */
+function useInView(threshold = 0.2) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || seen) return;
+    const io = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) { setSeen(true); io.disconnect(); } },
+      { threshold }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [seen, threshold]);
+  return [ref, seen] as const;
+}
+
+/* ── KnowPoints logo ── */
 function KPLogo({ size = 36 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -39,9 +77,7 @@ function KPLogo({ size = 36 }: { size?: number }) {
           <stop offset="100%" stopColor="#C026D3" />
         </linearGradient>
       </defs>
-      {/* Building — vertical bar of K */}
       <rect x="4" y="8" width="26" height="58" rx="4" fill="url(#kpGrad)" />
-      {/* Window grid */}
       <rect x="10" y="15" width="6" height="6" rx="1" fill="white" opacity="0.75" />
       <rect x="19" y="15" width="6" height="6" rx="1" fill="white" opacity="0.75" />
       <rect x="10" y="25" width="6" height="6" rx="1" fill="white" opacity="0.75" />
@@ -50,21 +86,17 @@ function KPLogo({ size = 36 }: { size?: number }) {
       <rect x="19" y="35" width="6" height="6" rx="1" fill="white" opacity="0.75" />
       <rect x="10" y="45" width="6" height="6" rx="1" fill="white" opacity="0.75" />
       <rect x="19" y="45" width="6" height="6" rx="1" fill="white" opacity="0.75" />
-      {/* K diagonal up */}
       <path d="M30 37 L56 10" stroke="url(#kpGrad)" strokeWidth="9" strokeLinecap="round" />
-      {/* K diagonal down */}
       <path d="M30 43 L50 62" stroke="url(#kpGrad)" strokeWidth="9" strokeLinecap="round" />
-      {/* Location pin circle (the "o") */}
       <circle cx="62" cy="46" r="13" fill="url(#kpGrad)" />
       <circle cx="62" cy="46" r="6" fill="#09060F" />
-      {/* Pin tail */}
       <path d="M62 59 L58 72" stroke="url(#kpGrad)" strokeWidth="7" strokeLinecap="round" />
     </svg>
   );
 }
 
-/* ── Feature illustrations ── */
-function IllustrationTrafico() {
+/* ── Animated illustrations ── */
+function IllustrationTrafico({ animate = false }: { animate?: boolean }) {
   const bars = [
     { h: 20, label: "6h",  peak: false },
     { h: 48, label: "8h",  peak: false },
@@ -87,7 +119,11 @@ function IllustrationTrafico() {
             stroke="rgba(255,255,255,0.05)" strokeWidth="1"/>
         ))}
         {bars.map((b, i) => (
-          <g key={b.label}>
+          <g key={b.label} style={{
+            transformOrigin: `${28 + i * 32 + 11}px 145px`,
+            transform: animate ? "scaleY(1)" : "scaleY(0)",
+            transition: `transform 0.8s cubic-bezier(0.22,1,0.36,1) ${i * 0.06}s`,
+          }}>
             <rect x={28 + i * 32} y={145 - b.h} width="22" height={b.h} rx="3"
               fill={b.peak ? "url(#trafGrad)" : "rgba(124,58,237,0.22)"}/>
             {b.peak && (
@@ -97,8 +133,10 @@ function IllustrationTrafico() {
           </g>
         ))}
         <line x1="24" y1="145" x2="304" y2="145" stroke="rgba(255,255,255,0.12)" strokeWidth="1"/>
-        <rect x="198" y="174" width="106" height="18" rx="9" fill="rgba(124,58,237,0.15)"/>
-        <text x="251" y="186" fontSize="8.5" fill="#A855F7" textAnchor="middle">Aforadors BCN</text>
+        <g style={{ opacity: animate ? 1 : 0, transition: "opacity 0.5s ease 0.7s" }}>
+          <rect x="198" y="174" width="106" height="18" rx="9" fill="rgba(124,58,237,0.15)"/>
+          <text x="251" y="186" fontSize="8.5" fill="#A855F7" textAnchor="middle">Aforadors BCN</text>
+        </g>
         <defs>
           <linearGradient id="trafGrad" x1="0" y1="0" x2="0" y2="1">
             <stop stopColor="#C084FC"/><stop offset="1" stopColor="#7C3AED"/>
@@ -109,70 +147,98 @@ function IllustrationTrafico() {
   );
 }
 
-function IllustrationCompetencia() {
+function IllustrationCompetencia({ animate = false }: { animate?: boolean }) {
+  const competitors = [
+    { cx: 130, cy: 85  },
+    { cx: 186, cy: 91  },
+    { cx: 145, cy: 141 },
+    { cx: 196, cy: 136 },
+    { cx: 115, cy: 115 },
+    { cx: 202, cy: 104 },
+  ];
   return (
     <div className={styles.illustrationWrap}>
       <svg viewBox="0 0 320 200" fill="none" xmlns="http://www.w3.org/2000/svg" className={styles.illustrationSvg}>
         <rect width="320" height="200" fill="#120C1C"/>
         <text x="16" y="25" fontSize="9" fill="#A78BC8" fontFamily="monospace" letterSpacing="0.1em">COMPETENCIA · RADIO 1 KM</text>
         <line x1="16" y1="33" x2="304" y2="33" stroke="rgba(255,255,255,0.06)" strokeWidth="1"/>
-        {[70, 100, 130, 160, 190].map((x) => (
+        {[70,100,130,160,190].map((x) => (
           <line key={`vl${x}`} x1={x} y1="38" x2={x} y2="190" stroke="rgba(255,255,255,0.04)" strokeWidth="1"/>
         ))}
-        {[60, 88, 116, 144, 172].map((y) => (
+        {[60,88,116,144,172].map((y) => (
           <line key={`hl${y}`} x1="16" y1={y} x2="304" y2={y} stroke="rgba(255,255,255,0.04)" strokeWidth="1"/>
         ))}
-        <circle cx="162" cy="113" r="56" stroke="rgba(124,58,237,0.30)" strokeWidth="1.5" strokeDasharray="4 3"/>
-        <circle cx="130" cy="85"  r="6" fill="rgba(59,130,246,0.9)"/>
-        <circle cx="186" cy="91"  r="6" fill="rgba(59,130,246,0.9)"/>
-        <circle cx="145" cy="141" r="6" fill="rgba(59,130,246,0.9)"/>
-        <circle cx="196" cy="136" r="6" fill="rgba(59,130,246,0.9)"/>
-        <circle cx="115" cy="115" r="5" fill="rgba(245,158,11,0.9)"/>
-        <circle cx="202" cy="104" r="5" fill="rgba(245,158,11,0.9)"/>
-        <circle cx="162" cy="113" r="11" fill="rgba(124,58,237,0.20)" stroke="rgba(124,58,237,0.40)" strokeWidth="1"/>
-        <circle cx="162" cy="113" r="6"  fill="#7C3AED"/>
-        <circle cx="162" cy="113" r="3"  fill="white"/>
-        <circle cx="26"  cy="178" r="5" fill="rgba(59,130,246,0.9)"/>
-        <text x="36"  y="182" fontSize="8.5" fill="#A78BC8">Restaurantes (4)</text>
-        <circle cx="120" cy="178" r="4" fill="rgba(245,158,11,0.9)"/>
-        <text x="129" y="182" fontSize="8.5" fill="#A78BC8">Cafés (2)</text>
-        <circle cx="194" cy="178" r="5" fill="#7C3AED"/>
-        <text x="204" y="182" fontSize="8.5" fill="#A78BC8">Tu ubicación</text>
+        {/* radius ring */}
+        <circle cx="162" cy="113" r="56"
+          stroke="rgba(124,58,237,0.30)" strokeWidth="1.5" strokeDasharray="4 3"
+          style={{ opacity: animate ? 1 : 0, transition: "opacity 0.4s ease 0.1s" }}/>
+        {/* competitors */}
+        {competitors.map((d, i) => (
+          <circle key={i} cx={d.cx} cy={d.cy} r={i >= 4 ? 5 : 6}
+            fill={i >= 4 ? "rgba(245,158,11,0.9)" : "rgba(59,130,246,0.9)"}
+            style={{
+              opacity: animate ? 1 : 0,
+              transform: animate ? "scale(1)" : "scale(0)",
+              transformOrigin: `${d.cx}px ${d.cy}px`,
+              transition: `all 0.4s cubic-bezier(0.34,1.56,0.64,1) ${0.2 + i * 0.07}s`,
+            }}/>
+        ))}
+        {/* my location */}
+        <g style={{ opacity: animate ? 1 : 0, transition: "opacity 0.5s ease 0.1s" }}>
+          <circle cx="162" cy="113" r="11" fill="rgba(124,58,237,0.20)" stroke="rgba(124,58,237,0.40)" strokeWidth="1"/>
+          <circle cx="162" cy="113" r="6"  fill="#7C3AED"/>
+          <circle cx="162" cy="113" r="3"  fill="white"/>
+        </g>
+        {/* legend */}
+        <g style={{ opacity: animate ? 1 : 0, transition: "opacity 0.5s ease 0.8s" }}>
+          <circle cx="26"  cy="178" r="5" fill="rgba(59,130,246,0.9)"/>
+          <text x="36"  y="182" fontSize="8.5" fill="#A78BC8">Restaurantes (4)</text>
+          <circle cx="120" cy="178" r="4" fill="rgba(245,158,11,0.9)"/>
+          <text x="129" y="182" fontSize="8.5" fill="#A78BC8">Cafés (2)</text>
+          <circle cx="194" cy="178" r="5" fill="#7C3AED"/>
+          <text x="204" y="182" fontSize="8.5" fill="#A78BC8">Tu ubicación</text>
+        </g>
       </svg>
     </div>
   );
 }
 
-function IllustrationScore() {
+function IllustrationScore({ animate = false }: { animate?: boolean }) {
   const shap = [
     { label: "Tráfico peatonal", pct: 85, color: "#A855F7" },
     { label: "Precio m² zona",   pct: 72, color: "#60A5FA" },
     { label: "Demografía",       pct: 68, color: "#34D399" },
     { label: "Competencia",      pct: 45, color: "#FBBF24" },
   ];
+  const R = 50;
+  const circumference = Math.PI * R * 270 / 180; // 270° arc
   return (
     <div className={styles.illustrationWrap}>
       <svg viewBox="0 0 320 200" fill="none" xmlns="http://www.w3.org/2000/svg" className={styles.illustrationSvg}>
         <rect width="320" height="200" fill="#120C1C"/>
         <text x="16" y="25" fontSize="9" fill="#A78BC8" fontFamily="monospace" letterSpacing="0.1em">SCORE IA · XGBOOST + SHAP</text>
         <line x1="16" y1="33" x2="304" y2="33" stroke="rgba(255,255,255,0.06)" strokeWidth="1"/>
-        {/* Gauge background arc — 270° */}
+        {/* gauge bg */}
         <path d="M 44.6 160.4 A 50 50 0 1 1 115.4 160.4"
           stroke="rgba(255,255,255,0.08)" strokeWidth="10" strokeLinecap="round" fill="none"
           strokeDasharray="235.6" strokeDashoffset="0"/>
-        {/* Gauge value arc — 87% → offset = 235.6 * 0.13 ≈ 30.6 */}
+        {/* gauge fill */}
         <path d="M 44.6 160.4 A 50 50 0 1 1 115.4 160.4"
           stroke="url(#scoreGrad)" strokeWidth="10" strokeLinecap="round" fill="none"
-          strokeDasharray="235.6" strokeDashoffset="30.6"/>
+          strokeDasharray="235.6"
+          strokeDashoffset={animate ? 30.6 : 235.6}
+          style={{ transition: "stroke-dashoffset 1.5s cubic-bezier(0.22,1,0.36,1) 0.3s" }}/>
         <text x="80"  y="120" fontSize="34" fill="#F3EEFF" fontWeight="700" textAnchor="middle">87</text>
         <text x="80"  y="137" fontSize="10"  fill="#A78BC8" textAnchor="middle">sobre 100</text>
         <text x="80"  y="152" fontSize="9"   fill="#22C55E" textAnchor="middle">▲ Alta viabilidad</text>
+        {/* SHAP bars */}
         <text x="168" y="52" fontSize="9" fill="#A78BC8">Factores SHAP</text>
         {shap.map((f, i) => (
           <g key={f.label} transform={`translate(162, ${62 + i * 30})`}>
             <text y="12" fontSize="9" fill="#A78BC8">{f.label}</text>
             <rect y="16" width="130" height="8" rx="4" fill="rgba(255,255,255,0.06)"/>
-            <rect y="16" width={f.pct * 1.3} height="8" rx="4" fill={f.color} opacity="0.8"/>
+            <rect y="16" width={animate ? f.pct * 1.3 : 0} height="8" rx="4" fill={f.color} opacity="0.8"
+              style={{ transition: `width 0.9s ease ${0.5 + i * 0.12}s` }}/>
             <text x="133" y="25" fontSize="8" fill="#6B5A8A" textAnchor="end">{f.pct}%</text>
           </g>
         ))}
@@ -186,7 +252,7 @@ function IllustrationScore() {
   );
 }
 
-function IllustrationFinanciero() {
+function IllustrationFinanciero({ animate = false }: { animate?: boolean }) {
   const chartX = 36, chartY = 44, chartW = 258, chartH = 106, maxVal = 130;
   const toX = (i: number) => chartX + (i / 6) * chartW;
   const toY = (v: number) => chartY + chartH - (v / maxVal) * chartH;
@@ -197,6 +263,7 @@ function IllustrationFinanciero() {
   const revArea  = `${revPath} L ${toX(6).toFixed(1)} ${toY(0).toFixed(1)} L ${toX(0).toFixed(1)} ${toY(0).toFixed(1)} Z`;
   const breakX   = toX(2);
   const labels   = ["Mes 0", "6m", "12m", "18m", "24m", "30m", "36m"];
+  const pathLen  = 480;
   return (
     <div className={styles.illustrationWrap}>
       <svg viewBox="0 0 320 200" fill="none" xmlns="http://www.w3.org/2000/svg" className={styles.illustrationSvg}>
@@ -208,17 +275,28 @@ function IllustrationFinanciero() {
             stroke="rgba(255,255,255,0.05)" strokeWidth="1"/>
         ))}
         <line x1={breakX} y1={chartY} x2={breakX} y2={chartY + chartH}
-          stroke="rgba(34,197,94,0.45)" strokeWidth="1" strokeDasharray="3 2"/>
-        <text x={breakX + 3} y={chartY + 10} fontSize="7" fill="#22C55E">break-even</text>
-        <path d={revArea} fill="url(#revFill)" opacity="0.18"/>
-        <path d={revPath}  stroke="#A855F7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d={costPath} stroke="#FBBF24" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 2"/>
+          stroke="rgba(34,197,94,0.45)" strokeWidth="1" strokeDasharray="3 2"
+          style={{ opacity: animate ? 1 : 0, transition: "opacity 0.5s ease 0.8s" }}/>
+        <text x={breakX + 3} y={chartY + 10} fontSize="7" fill="#22C55E"
+          style={{ opacity: animate ? 1 : 0, transition: "opacity 0.5s ease 0.9s" }}>break-even</text>
+        {/* area fill */}
+        <path d={revArea} fill="url(#revFill)" opacity="0"
+          style={{ opacity: animate ? 0.18 : 0, transition: "opacity 1s ease 1s" }}/>
+        {/* revenue curve */}
+        <path d={revPath} stroke="#A855F7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          strokeDasharray={pathLen} strokeDashoffset={animate ? 0 : pathLen}
+          style={{ transition: `stroke-dashoffset 1.6s cubic-bezier(0.22,1,0.36,1) 0.2s` }}/>
+        {/* cost line */}
+        <path d={costPath} stroke="#FBBF24" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 2"
+          style={{ opacity: animate ? 1 : 0, transition: "opacity 0.5s ease 1.2s" }}/>
         <line x1={chartX} y1={chartY + chartH} x2={chartX + chartW} y2={chartY + chartH} stroke="rgba(255,255,255,0.12)" strokeWidth="1"/>
         {labels.map((l, i) => (
           <text key={l} x={toX(i)} y={chartY + chartH + 13} fontSize="7.5" fill="#6B5A8A" textAnchor="middle">{l}</text>
         ))}
-        <rect x="218" y="44" width="76" height="22" rx="11" fill="rgba(34,197,94,0.15)"/>
-        <text x="256" y="59" fontSize="10" fill="#22C55E" textAnchor="middle" fontWeight="700">ROI +127%</text>
+        <g style={{ opacity: animate ? 1 : 0, transition: "opacity 0.5s ease 1.6s" }}>
+          <rect x="218" y="44" width="76" height="22" rx="11" fill="rgba(34,197,94,0.15)"/>
+          <text x="256" y="59" fontSize="10" fill="#22C55E" textAnchor="middle" fontWeight="700">ROI +127%</text>
+        </g>
         <line x1="36"  y1="180" x2="54"  y2="180" stroke="#A855F7" strokeWidth="2.5"/>
         <text x="58"  y="184" fontSize="8.5" fill="#A78BC8">Ingresos</text>
         <line x1="112" y1="180" x2="130" y2="180" stroke="#FBBF24" strokeWidth="1.5" strokeDasharray="4 2"/>
@@ -233,7 +311,77 @@ function IllustrationFinanciero() {
   );
 }
 
-const FEATURES = [
+/* ── Sources strip ── */
+const SOURCES = [
+  { name: "INE",           type: "Renta · Demografía" },
+  { name: "TMB",           type: "Transporte público" },
+  { name: "Ajuntament BCN",type: "Licencias · Locales" },
+  { name: "OpenStreetMap", type: "Geometría · POIs" },
+  { name: "Idealista",     type: "Precios m²" },
+];
+
+function Sources() {
+  return (
+    <div className={styles.sources}>
+      <div className={styles.sourcesLabel}>Integrado con fuentes oficiales</div>
+      <div className={styles.sourcesGrid}>
+        {SOURCES.map((s) => (
+          <div key={s.name} className={styles.sourceCard}>
+            <div className={styles.sourceCardName}>{s.name}</div>
+            <div className={styles.sourceCardType}>{s.type}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Feature row wrapper with IntersectionObserver ── */
+interface FeatureData {
+  icon: React.ReactNode;
+  label: string;
+  title: string;
+  desc: string;
+  bullets: string[];
+  tag: string;
+  tagColor: string;
+  Illustration: React.ComponentType<{ animate?: boolean }>;
+}
+
+function FeatureRow({ feature, index }: { feature: FeatureData; index: number }) {
+  const [ref, inView] = useInView(0.15);
+  const isReverse = index % 2 === 1;
+  return (
+    <div
+      ref={ref}
+      className={`${styles.featureRow} ${isReverse ? styles.featureRowReverse : ""} ${inView ? styles.featureRowVisible : ""}`}
+    >
+      <div className={styles.featureRowText}>
+        <div className={styles.featureIcon}>{feature.icon}</div>
+        <div className={styles.featureEyebrow}>{feature.label}</div>
+        <h3 className={styles.featureTitle}>{feature.title}</h3>
+        <p className={styles.featureDesc}>{feature.desc}</p>
+        <div className={styles.featureBullets}>
+          {feature.bullets.map((b) => (
+            <div key={b} className={styles.featureBullet}>
+              <span className={styles.featureBulletMark}>→</span>
+              <span>{b}</span>
+            </div>
+          ))}
+        </div>
+        <span className={`${styles.featureTag} ${styles[`featureTag_${feature.tagColor}` as keyof typeof styles]}`}>
+          {feature.tag}
+        </span>
+      </div>
+      <div className={styles.featureRowImage}>
+        <feature.Illustration animate={inView} />
+      </div>
+    </div>
+  );
+}
+
+/* ── Data ── */
+const FEATURES: FeatureData[] = [
   {
     icon: (
       <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
@@ -244,9 +392,14 @@ const FEATURES = [
     label: "Tráfico Peatonal",
     title: "Datos reales de afluencia",
     desc: "Analiza el flujo de personas a lo largo del día con datos de sensores municipales. Identifica las horas pico y elige la calle que más te conviene.",
+    bullets: [
+      "Heatmaps 24/7 con 3 meses de histórico",
+      "Segmentación por perfil: residente, turista, trabajador",
+      "Alertas cuando el tráfico cae bajo tu umbral",
+    ],
     tag: "Aforadors BCN",
     tagColor: "purple",
-    illustration: <IllustrationTrafico />,
+    Illustration: IllustrationTrafico,
   },
   {
     icon: (
@@ -256,11 +409,16 @@ const FEATURES = [
       </svg>
     ),
     label: "Competencia",
-    title: "Proximidad a competidores",
+    title: "Mapa de competencia directa",
     desc: "Detecta negocios similares en un radio de 1 km. Identifica zonas saturadas y nichos sin explotar antes de comprometerte con un local.",
+    bullets: [
+      "Cobertura de 47.000 locales activos en Barcelona",
+      "Categorización por tipo, precio medio y rating",
+      "Cambios de licencia y aperturas en tiempo real",
+    ],
     tag: "Google Places + Foursquare",
     tagColor: "blue",
-    illustration: <IllustrationCompetencia />,
+    Illustration: IllustrationCompetencia,
   },
   {
     icon: (
@@ -269,11 +427,16 @@ const FEATURES = [
       </svg>
     ),
     label: "Score IA",
-    title: "Potencial de crecimiento",
-    desc: "Score de viabilidad 0-100 calculado con XGBoost sobre 21 variables. Compara barrios al instante y filtra por tu presupuesto de alquiler.",
+    title: "Score de viabilidad KnowPoints",
+    desc: "Un único número del 0 al 100 que combina demanda, margen y riesgo. Compara dos calles en segundos y justifica tu decisión con datos, no intuición.",
+    bullets: [
+      "Modelo entrenado con 12.000 aperturas y cierres reales",
+      "Explicabilidad SHAP: ves qué mueve cada punto del score",
+      "Benchmark contra tu sector en el mismo barrio",
+    ],
     tag: "XGBoost + SHAP",
     tagColor: "green",
-    illustration: <IllustrationScore />,
+    Illustration: IllustrationScore,
   },
   {
     icon: (
@@ -282,27 +445,35 @@ const FEATURES = [
       </svg>
     ),
     label: "Financiero",
-    title: "Proyección financiera automática",
-    desc: "Estimación de ROI a 36 meses sin introducir datos manualmente. Ajusta ticket medio, alquiler y nº de empleados con sliders para explorar escenarios.",
+    title: "Proyección financiera a 36 meses",
+    desc: "Estimación de ROI sin introducir datos manualmente. Ajusta ticket medio, alquiler y empleados con sliders para explorar escenarios.",
+    bullets: [
+      "Proyección de ingresos, costes fijos y break-even",
+      "Escenarios conservador · base · optimista",
+      "Alerta si el alquiler supera el 15% de las ventas",
+    ],
     tag: "36 meses · ROI · Payback",
     tagColor: "amber",
-    illustration: <IllustrationFinanciero />,
+    Illustration: IllustrationFinanciero,
   },
 ];
 
 const STEPS = [
   {
     num: "01",
+    badge: "~2 min",
     title: "Define tu negocio",
     desc: "Describe tu idea en lenguaje natural: tipo de negocio, tamaño, presupuesto, preferencias de barrio. KnowPoints entiende el contexto sin formularios complejos.",
   },
   {
     num: "02",
+    badge: "Automático",
     title: "Analiza las métricas",
     desc: "Revisamos cientos de ubicaciones en tiempo real. Tráfico peatonal, competidores cercanos, demografía, precios de alquiler y datos de supervivencia de negocios similares.",
   },
   {
     num: "03",
+    badge: "Ilimitado",
     title: "Encuentra tu lugar",
     desc: "Recibe un mapa interactivo con zonas rankeadas por viabilidad. Explora el análisis detallado y exporta el informe completo en PDF para presentarlo a inversores.",
   },
@@ -310,18 +481,21 @@ const STEPS = [
 
 const TESTIMONIALS = [
   {
+    metric: "+34% facturación vs plan",
     quote: "El análisis de tráfico peatonal de KnowPoints nos ahorró meses de investigación. Encontramos nuestra ubicación en una semana y la proyección financiera fue casi exacta.",
     name: "Marta Vidal",
     role: "Fundadora, Café Saló — Gràcia",
     initials: "MV",
   },
   {
+    metric: "6 aperturas fallidas evitadas",
     quote: "Usamos KnowPoints para comparar 8 locales en el Eixample. El score de competidores fue clave: descubrimos un nicho en una calle secundaria que ninguna consultora nos habría señalado.",
     name: "Jordi Puigdomènech",
     role: "CEO, Studio Ink BCN",
     initials: "JP",
   },
   {
+    metric: "Ticket medio +22%",
     quote: "La proyección financiera automática fue lo que nos convenció al banco. En 40 minutos teníamos un informe PDF profesional con ROI y payback. Increíble.",
     name: "Elena Ros",
     role: "Directora, Espai Wellness Diagonal",
@@ -331,44 +505,7 @@ const TESTIMONIALS = [
 
 export default function LandingPage() {
   const [theme, setTheme] = useTheme();
-  const featuresRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const ZONE = 280;
-    let rafId: number;
-
-    const update = () => {
-      const container = featuresRef.current;
-      if (!container) return;
-      const wh = window.innerHeight;
-      Array.from(container.children).forEach((child, i) => {
-        const el = child as HTMLElement;
-        const rect = el.getBoundingClientRect();
-        const center = rect.top + rect.height / 2;
-        const dir = i % 2 === 0 ? -1 : 1;
-        const progressIn  = Math.min(1, Math.max(0, (wh - center) / ZONE));
-        const progressOut = Math.min(1, Math.max(0, center / ZONE));
-        const p = Math.min(progressIn, progressOut);
-        el.style.opacity = String(p);
-        el.style.transform = `translateX(${dir * (1 - p) * 64}px)`;
-      });
-    };
-
-    const onScroll = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(update);
-    };
-
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
-    update();
-
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      cancelAnimationFrame(rafId);
-    };
-  }, []);
+  const [heroRef, heroInView] = useInView(0.3);
 
   return (
     <div className={styles.landing}>
@@ -417,13 +554,12 @@ export default function LandingPage() {
       </nav>
 
       {/* ══ HERO ══ */}
-      <section className={styles.hero}>
-        {/* Background decorations */}
+      <section className={styles.hero} ref={heroRef}>
         <div className={styles.heroBg}>
           <div className={styles.heroGlow1} />
           <div className={styles.heroGlow2} />
           <div className={styles.heroGrid} />
-          {/* City skyline SVG */}
+          {/* City skyline with twinkling windows */}
           <svg
             className={styles.heroSkyline}
             viewBox="0 0 950 600"
@@ -448,95 +584,139 @@ export default function LandingPage() {
                 <stop offset="0%" stopColor="#3D1A70" />
                 <stop offset="100%" stopColor="#1A0F38" />
               </linearGradient>
-              <filter id="bldGlow">
-                <feGaussianBlur stdDeviation="2" result="blur" />
-                <feComposite in="SourceGraphic" in2="blur" operator="over" />
-              </filter>
               <linearGradient id="groundFade" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#09060F" stopOpacity="0" />
                 <stop offset="100%" stopColor="#09060F" stopOpacity="1" />
               </linearGradient>
             </defs>
 
-            {/* ── Background buildings (far / dark) ── */}
             <rect x="510" y="180" width="100" height="420" fill="url(#bldGrad2)" />
             <rect x="620" y="230" width="85"  height="370" fill="url(#bldGrad2)" />
             <rect x="660" y="150" width="115" height="450" fill="url(#bldGrad2)" />
             <rect x="440" y="270" width="90"  height="330" fill="url(#bldGrad2)" />
 
-            {/* ── Mid buildings ── */}
-            {/* Tall left */}
             <rect x="380" y="100" width="130" height="500" fill="url(#bldGrad1)" />
-            {/* Windows left — 5 cols */}
             {[130,160,190,220,250,280,310,340,370,400,430,460].map((y, i) =>
-              [395,415,435,455,475].map((x, j) => (
-                <rect key={`wL${i}${j}`} x={x} y={y} width="11" height="14" rx="1"
-                  fill={winFill(i*5+j+1, 0.35, "rgba(192,130,255,0.55)", "rgba(124,58,237,0.15)")}
-                  opacity={winOpacity(i*5+j+10)}
-                />
-              ))
+              [395,415,435,455,475].map((x, j) => {
+                const seed = i * 5 + j + 1;
+                const delay = ((seed * 13) % 80) / 10;
+                const dur = 4 + (seed % 6);
+                const tmin = 0.15 + (seed % 3) * 0.05;
+                const tmax = 0.5 + (seed % 4) * 0.08;
+                return (
+                  <rect key={`wL${i}${j}`} x={x} y={y} width="11" height="14" rx="1"
+                    fill={winFill(seed, 0.35, "rgba(192,130,255,0.55)", "rgba(124,58,237,0.15)")}
+                    className={styles.skylineWindow}
+                    style={{
+                      "--tw-min": tmin,
+                      "--tw-max": tmax,
+                      "--tw-dur": `${dur}s`,
+                      "--tw-delay": `${delay}s`,
+                    } as React.CSSProperties}
+                  />
+                );
+              })
             )}
 
-            {/* Tall center-right */}
             <rect x="530" y="60" width="150" height="540" fill="url(#bldGrad3)" />
-            {/* Windows center — 6 cols */}
             {[90,120,150,180,210,240,270,300,330,360,390,420,450,480].map((y, i) =>
-              [542,563,584,605,626,647].map((x, j) => (
-                <rect key={`wC${i}${j}`} x={x} y={y} width="11" height="14" rx="1"
-                  fill={winFill(i*6+j+100, 0.30, "rgba(168,85,247,0.60)", "rgba(88,28,135,0.20)")}
-                  opacity={winOpacity(i*6+j+200)}
-                />
-              ))
+              [542,563,584,605,626,647].map((x, j) => {
+                const seed = i * 6 + j + 100;
+                const delay = ((seed * 13) % 80) / 10;
+                const dur = 4 + (seed % 6);
+                const tmin = 0.15 + (seed % 3) * 0.05;
+                const tmax = 0.5 + (seed % 4) * 0.08;
+                return (
+                  <rect key={`wC${i}${j}`} x={x} y={y} width="11" height="14" rx="1"
+                    fill={winFill(seed, 0.30, "rgba(168,85,247,0.60)", "rgba(88,28,135,0.20)")}
+                    className={styles.skylineWindow}
+                    style={{
+                      "--tw-min": tmin,
+                      "--tw-max": tmax,
+                      "--tw-dur": `${dur}s`,
+                      "--tw-delay": `${delay}s`,
+                    } as React.CSSProperties}
+                  />
+                );
+              })
             )}
 
-            {/* Right tower */}
             <rect x="690" y="40" width="130" height="560" fill="url(#bldAccent)" />
-            {/* Windows right — 5 cols */}
             {[70,100,130,160,190,220,250,280,310,340,370,400,430,460,490].map((y, i) =>
-              [702,722,742,762,782].map((x, j) => (
-                <rect key={`wR${i}${j}`} x={x} y={y} width="11" height="14" rx="1"
-                  fill={winFill(i*5+j+300, 0.25, "rgba(216,180,254,0.65)", "rgba(124,58,237,0.20)")}
-                  opacity={winOpacity(i*5+j+400)}
-                />
-              ))
+              [702,722,742,762,782].map((x, j) => {
+                const seed = i * 5 + j + 300;
+                const delay = ((seed * 13) % 80) / 10;
+                const dur = 4 + (seed % 6);
+                const tmin = 0.15 + (seed % 3) * 0.05;
+                const tmax = 0.5 + (seed % 4) * 0.08;
+                return (
+                  <rect key={`wR${i}${j}`} x={x} y={y} width="11" height="14" rx="1"
+                    fill={winFill(seed, 0.25, "rgba(216,180,254,0.65)", "rgba(124,58,237,0.20)")}
+                    className={styles.skylineWindow}
+                    style={{
+                      "--tw-min": tmin,
+                      "--tw-max": tmax,
+                      "--tw-dur": `${dur}s`,
+                      "--tw-delay": `${delay}s`,
+                    } as React.CSSProperties}
+                  />
+                );
+              })
             )}
 
-            {/* Far right wide slab */}
             <rect x="825" y="110" width="90" height="490" fill="url(#bldGrad1)" />
             {[138,166,194,222,250,278,306,334,362,390].map((y, i) =>
-              [836,856,876].map((x, j) => (
-                <rect key={`wFR${i}${j}`} x={x} y={y} width="10" height="13" rx="1"
-                  fill="rgba(192,130,255,0.45)"
-                  opacity={winOpacity(i*3+j+500)}
-                />
-              ))
+              [836,856,876].map((x, j) => {
+                const seed = i * 3 + j + 500;
+                const delay = ((seed * 13) % 80) / 10;
+                const dur = 4 + (seed % 6);
+                const tmin = 0.15 + (seed % 3) * 0.05;
+                const tmax = 0.5 + (seed % 4) * 0.08;
+                return (
+                  <rect key={`wFR${i}${j}`} x={x} y={y} width="10" height="13" rx="1"
+                    fill="rgba(192,130,255,0.45)"
+                    className={styles.skylineWindow}
+                    style={{
+                      "--tw-min": tmin,
+                      "--tw-max": tmax,
+                      "--tw-dur": `${dur}s`,
+                      "--tw-delay": `${delay}s`,
+                    } as React.CSSProperties}
+                  />
+                );
+              })
             )}
 
-            {/* ── Foreground building (nearest, left of cluster) ── */}
             <rect x="330" y="210" width="100" height="390" fill="#1A0F38" />
             {[235,262,289,316,343,370,397,424,451,478].map((y, i) =>
-              [342,362,382,402].map((x, j) => (
-                <rect key={`wFG${i}${j}`} x={x} y={y} width="10" height="13" rx="1"
-                  fill={winFill(i*4+j+600, 0.4, "rgba(216,180,254,0.70)", "rgba(88,28,135,0.15)")}
-                  opacity={winOpacity(i*4+j+700)}
-                />
-              ))
+              [342,362,382,402].map((x, j) => {
+                const seed = i * 4 + j + 600;
+                const delay = ((seed * 13) % 80) / 10;
+                const dur = 4 + (seed % 6);
+                const tmin = 0.15 + (seed % 3) * 0.05;
+                const tmax = 0.5 + (seed % 4) * 0.08;
+                return (
+                  <rect key={`wFG${i}${j}`} x={x} y={y} width="10" height="13" rx="1"
+                    fill={winFill(seed, 0.4, "rgba(216,180,254,0.70)", "rgba(88,28,135,0.15)")}
+                    className={styles.skylineWindow}
+                    style={{
+                      "--tw-min": tmin,
+                      "--tw-max": tmax,
+                      "--tw-dur": `${dur}s`,
+                      "--tw-delay": `${delay}s`,
+                    } as React.CSSProperties}
+                  />
+                );
+              })
             )}
 
-            {/* ── Antenna / spire on tallest ── */}
             <line x1="605" y1="60" x2="605" y2="10" stroke="rgba(192,130,255,0.40)" strokeWidth="2" />
             <circle cx="605" cy="10" r="3" fill="rgba(216,180,254,0.80)" />
             <circle cx="605" cy="10" r="7" fill="rgba(168,85,247,0.20)" />
-
             <line x1="755" y1="40" x2="755" y2="-10" stroke="rgba(192,130,255,0.35)" strokeWidth="2" />
             <circle cx="755" cy="-10" r="3" fill="rgba(216,180,254,0.70)" />
-
-            {/* ── Ground / base fade ── */}
             <rect x="0" y="540" width="950" height="60" fill="url(#groundFade)" />
-
-            {/* ── Subtle purple haze at building tops ── */}
-            <ellipse cx="660" cy="180" rx="280" ry="70"
-              fill="rgba(124,58,237,0.07)" />
+            <ellipse cx="660" cy="180" rx="280" ry="70" fill="rgba(124,58,237,0.07)" />
           </svg>
         </div>
 
@@ -572,7 +752,9 @@ export default function LandingPage() {
 
           <div className={styles.heroStats}>
             <div className={styles.heroStat}>
-              <span className={styles.heroStatNum}>21</span>
+              <span className={styles.heroStatNum}>
+                <Counter to={21} trigger={heroInView} />
+              </span>
               <span className={styles.heroStatLabel}>variables por zona</span>
             </div>
             <div className={styles.heroStatDivider} />
@@ -587,8 +769,10 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
-
       </section>
+
+      {/* ══ SOURCES STRIP ══ */}
+      <Sources />
 
       {/* ══ FEATURES ══ */}
       <section id="features" className={styles.features}>
@@ -602,30 +786,10 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className={styles.featureRows} ref={featuresRef}>
-            {FEATURES.map((f, i) => {
-              const isReverse = i % 2 === 1;
-              const rowCls = [
-                styles.featureRow,
-                isReverse ? styles.featureRowReverse : "",
-              ].filter(Boolean).join(" ");
-              return (
-                <div key={f.label} className={rowCls}>
-                  <div className={styles.featureRowText}>
-                    <div className={styles.featureIcon}>{f.icon}</div>
-                    <div className={styles.featureEyebrow}>{f.label}</div>
-                    <h3 className={styles.featureTitle}>{f.title}</h3>
-                    <p className={styles.featureDesc}>{f.desc}</p>
-                    <span className={`${styles.featureTag} ${styles[`featureTag_${f.tagColor}`]}`}>
-                      {f.tag}
-                    </span>
-                  </div>
-                  <div className={styles.featureRowImage}>
-                    {f.illustration}
-                  </div>
-                </div>
-              );
-            })}
+          <div className={styles.featureRows}>
+            {FEATURES.map((f, i) => (
+              <FeatureRow key={f.label} feature={f} index={i} />
+            ))}
           </div>
         </div>
       </section>
@@ -647,6 +811,7 @@ export default function LandingPage() {
                 <div className={styles.stepNum}>{s.num}</div>
                 <h3 className={styles.stepTitle}>{s.title}</h3>
                 <p className={styles.stepDesc}>{s.desc}</p>
+                <div className={styles.stepBadge}>{s.badge}</div>
               </div>
             ))}
           </div>
@@ -664,6 +829,12 @@ export default function LandingPage() {
           <div className={styles.testimonialsGrid}>
             {TESTIMONIALS.map((t) => (
               <div key={t.name} className={styles.testimonialCard}>
+                <div className={styles.testimonialMetric}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  {t.metric}
+                </div>
                 <div className={styles.testimonialQuote}>
                   <svg width="20" height="16" viewBox="0 0 20 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M0 16V9.6C0 4.267 2.933 1.067 8.8 0L9.6 1.6C7.2 2.133 5.467 3.2 4.4 4.8C3.333 6.4 2.933 8 3.2 9.6H6.4V16H0ZM11.2 16V9.6C11.2 4.267 14.133 1.067 20 0L20.8 1.6C18.4 2.133 16.667 3.2 15.6 4.8C14.533 6.4 14.133 8 14.4 9.6H17.6V16H11.2Z" fill="currentColor" opacity="0.4" />
