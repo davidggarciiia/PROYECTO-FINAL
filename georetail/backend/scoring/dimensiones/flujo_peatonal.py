@@ -190,6 +190,13 @@ def flujo_peatonal_explain(
     def _norm_rl(v: Optional[float]) -> Optional[float]:
         return float(min(100.0, max(0.0, v * 100.0))) if v is not None else None
 
+    _PESOS_EXPLAIN: dict[str, float] = {
+        "popular_times": 0.25,
+        "vcity":         0.50,
+        "vianants":      0.15,
+        "ratio_locales": 0.10,
+    }
+
     norm_values: dict[str, Optional[float]] = {
         "popular_times": _norm_pt(pt_raw),
         "vcity":         _norm_vc(vc_raw),
@@ -202,17 +209,16 @@ def flujo_peatonal_explain(
     n_disponibles = len(disponibles)
 
     if not disponibles:
-        # Fallback conservador: sin datos
         sources = {
             k: {"value": None, "weight": 0.0, "contribution": 0.0, "missing": True}
-            for k in PESOS_BASE
+            for k in _PESOS_EXPLAIN
         }
         return {"score": 30.0, "sources": sources, "sources_available": 0}
 
-    peso_disponible = sum(PESOS_BASE[k] for k in disponibles)
+    peso_disponible = sum(_PESOS_EXPLAIN[k] for k in disponibles)
     pesos_adj: dict[str, float] = {
-        k: (PESOS_BASE[k] / peso_disponible if k in disponibles else 0.0)
-        for k in PESOS_BASE
+        k: (_PESOS_EXPLAIN[k] / peso_disponible if k in disponibles else 0.0)
+        for k in _PESOS_EXPLAIN
     }
 
     score = round(float(min(100.0, max(0.0, sum(
@@ -220,7 +226,7 @@ def flujo_peatonal_explain(
     )))), 2)
 
     sources = {}
-    for k in PESOS_BASE:
+    for k in _PESOS_EXPLAIN:
         val = norm_values[k]
         w   = pesos_adj[k]
         sources[k] = {

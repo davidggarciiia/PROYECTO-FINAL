@@ -586,8 +586,10 @@ async def post_legal_roadmap(body: RoadmapRequest) -> dict:
     async with get_db() as conn:
         zona_row = await conn.fetchrow(
             """
-            SELECT z.nombre, z.distrito, z.barrio
+            SELECT z.nombre, d.nombre AS distrito, b.nombre AS barrio
             FROM zonas z
+            JOIN barrios b ON b.id = z.barrio_id
+            JOIN distritos d ON d.id = b.distrito_id
             WHERE z.id = $1
             """,
             body.zona_id,

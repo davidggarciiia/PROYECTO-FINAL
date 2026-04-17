@@ -100,7 +100,7 @@ async def calcular_scores_batch(
                     SELECT score_dinamismo
                     FROM dinamismo_zonal
                     WHERE zona_id = sz.zona_id
-                    ORDER BY fecha_calculo DESC
+                    ORDER BY updated_at DESC
                     LIMIT 1
                 ) dz ON true
                 WHERE sz.zona_id = ANY($1)
@@ -184,9 +184,22 @@ async def get_scores_zona(
     async with get_db() as conn:
         row = await conn.fetchrow(
             """
-            SELECT sz.*, s.codigo AS sector_codigo
+            SELECT sz.*, s.codigo AS sector_codigo,
+                   dz.score_dinamismo, dz.tendencia,
+                   dz.negocios_historico_count, dz.tasa_supervivencia_3a,
+                   dz.ratio_apertura_cierre_1a, dz.renta_variacion_3a,
+                   dz.hhi_sectorial
             FROM scores_zona sz
             JOIN sectores s ON s.id = sz.sector_id
+            LEFT JOIN LATERAL (
+                SELECT score_dinamismo, tendencia, negocios_historico_count,
+                       tasa_supervivencia_3a, ratio_apertura_cierre_1a,
+                       renta_variacion_3a, hhi_sectorial
+                FROM dinamismo_zonal
+                WHERE zona_id = sz.zona_id
+                ORDER BY updated_at DESC
+                LIMIT 1
+            ) dz ON true
             WHERE sz.zona_id = $1
               AND s.codigo   = $2
             ORDER BY CASE sz.modelo_version
@@ -215,6 +228,17 @@ async def get_scores_zona(
         return _format_scores_for_api(raw)
 
     raw = dict(row)
+
+    # Escalar score_dinamismo de 0-10 (escala pipeline) a 0-100 (escala API)
+    # usando el scorer de dimensión que también aplica ajustes por tendencia
+    if raw.get("score_dinamismo") is not None:
+        try:
+            from scoring.dimensiones.dinamismo import calcular_dinamismo
+            din_result = calcular_dinamismo(raw)
+            raw["score_dinamismo"] = din_result["score_dinamismo"]
+        except Exception:
+            raw["score_dinamismo"] = round(float(raw["score_dinamismo"]) * 10.0, 1)
+
     # Solo recalcular si el registro no tiene NINGUNA dimensión manual (registro xgboost puro sin enriquecer)
     if all(raw.get(dim) is None for dim in _DIMENSION_KEYS):
         resultados = await calcular_scores_batch(
