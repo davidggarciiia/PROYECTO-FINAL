@@ -50,21 +50,42 @@ function Counter({ to, suffix = "", duration = 1400, trigger = true }: {
   return <>{value.toLocaleString("es-ES")}{suffix}</>;
 }
 
-/* ── useInView: fires once when element enters viewport ── */
-function useInView(threshold = 0.2) {
+/* ── useScrollProgress: 0 entering bottom → 1 centered → 0.45 leaving top ── */
+function useScrollProgress() {
   const ref = useRef<HTMLDivElement>(null);
-  const [seen, setSeen] = useState(false);
+  const [progress, setProgress] = useState(0);
   useEffect(() => {
     const el = ref.current;
-    if (!el || seen) return;
-    const io = new IntersectionObserver(
-      ([e]) => { if (e.isIntersecting) { setSeen(true); io.disconnect(); } },
-      { threshold }
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [seen, threshold]);
-  return [ref, seen] as const;
+    if (!el) return;
+    const PARTIAL_MIN = 0.45;
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      const vh = window.innerHeight;
+      const elCenter = rect.top + rect.height / 2;
+      let p: number;
+      if (elCenter >= vh) {
+        p = 0;
+      } else if (elCenter <= 0) {
+        p = PARTIAL_MIN;
+      } else {
+        const half = vh / 2;
+        if (elCenter >= half) {
+          p = 1 - (elCenter - half) / (vh - half);
+        } else {
+          p = 1 - ((half - elCenter) / half) * (1 - PARTIAL_MIN);
+        }
+      }
+      setProgress(p);
+    };
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+  return [ref, progress] as const;
 }
 
 /* ── KnowPoints logo ── */
@@ -228,9 +249,12 @@ function IllustrationScore({ animate = false }: { animate?: boolean }) {
           strokeDasharray="235.6"
           strokeDashoffset={animate ? 30.6 : 235.6}
           style={{ transition: "stroke-dashoffset 1.5s cubic-bezier(0.22,1,0.36,1) 0.3s" }}/>
-        <text x="80"  y="120" fontSize="34" fill="#F3EEFF" fontWeight="700" textAnchor="middle">87</text>
-        <text x="80"  y="137" fontSize="10"  fill="#A78BC8" textAnchor="middle">sobre 100</text>
-        <text x="80"  y="152" fontSize="9"   fill="#22C55E" textAnchor="middle">▲ Alta viabilidad</text>
+        <text x="80"  y="118" fontSize="34" fill="#F3EEFF" fontWeight="700" textAnchor="middle">87</text>
+        <text x="80"  y="135" fontSize="10"  fill="#A78BC8" textAnchor="middle">sobre 100</text>
+        <g style={{ opacity: animate ? 1 : 0, transition: "opacity 0.5s ease 1.8s" }}>
+          <rect x="36" y="165" width="88" height="18" rx="9" fill="rgba(34,197,94,0.15)"/>
+          <text x="80" y="178" fontSize="8.5" fill="#22C55E" textAnchor="middle">▲ Alta viabilidad</text>
+        </g>
         {/* SHAP bars */}
         <text x="168" y="52" fontSize="9" fill="#A78BC8">Factores SHAP</text>
         {shap.map((f, i) => (
@@ -349,12 +373,14 @@ interface FeatureData {
 }
 
 function FeatureRow({ feature, index }: { feature: FeatureData; index: number }) {
-  const [ref, inView] = useInView(0.15);
+  const [ref, progress] = useScrollProgress();
   const isReverse = index % 2 === 1;
+  const animate = progress > 0.45;
   return (
     <div
       ref={ref}
-      className={`${styles.featureRow} ${isReverse ? styles.featureRowReverse : ""} ${inView ? styles.featureRowVisible : ""}`}
+      className={`${styles.featureRow} ${isReverse ? styles.featureRowReverse : ""}`}
+      style={{ opacity: progress, transform: `translateY(${(1 - progress) * 36}px)` }}
     >
       <div className={styles.featureRowText}>
         <div className={styles.featureIcon}>{feature.icon}</div>
@@ -374,7 +400,7 @@ function FeatureRow({ feature, index }: { feature: FeatureData; index: number })
         </span>
       </div>
       <div className={styles.featureRowImage}>
-        <feature.Illustration animate={inView} />
+        <feature.Illustration animate={animate} />
       </div>
     </div>
   );
@@ -505,7 +531,6 @@ const TESTIMONIALS = [
 
 export default function LandingPage() {
   const [theme, setTheme] = useTheme();
-  const [heroRef, heroInView] = useInView(0.3);
 
   return (
     <div className={styles.landing}>
@@ -554,7 +579,7 @@ export default function LandingPage() {
       </nav>
 
       {/* ══ HERO ══ */}
-      <section className={styles.hero} ref={heroRef}>
+      <section className={styles.hero}>
         <div className={styles.heroBg}>
           <div className={styles.heroGlow1} />
           <div className={styles.heroGlow2} />
@@ -715,7 +740,7 @@ export default function LandingPage() {
             <circle cx="605" cy="10" r="7" fill="rgba(168,85,247,0.20)" />
             <line x1="755" y1="40" x2="755" y2="-10" stroke="rgba(192,130,255,0.35)" strokeWidth="2" />
             <circle cx="755" cy="-10" r="3" fill="rgba(216,180,254,0.70)" />
-            <rect x="0" y="540" width="950" height="60" fill="url(#groundFade)" />
+            <rect x="0" y="540" width="950" height="60" fill="url(#groundFade)" className={styles.skylineGround} />
             <ellipse cx="660" cy="180" rx="280" ry="70" fill="rgba(124,58,237,0.07)" />
           </svg>
         </div>
@@ -753,7 +778,7 @@ export default function LandingPage() {
           <div className={styles.heroStats}>
             <div className={styles.heroStat}>
               <span className={styles.heroStatNum}>
-                <Counter to={21} trigger={heroInView} />
+                <Counter to={21} trigger={true} />
               </span>
               <span className={styles.heroStatLabel}>variables por zona</span>
             </div>

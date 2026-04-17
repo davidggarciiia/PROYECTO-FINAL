@@ -61,8 +61,10 @@
   background: radial-gradient(circle, rgba(192,38,211,0.06) 0%, transparent 70%);
 }
 [data-theme="light"] .heroSkyline {
-  opacity: 0.12;
-  filter: brightness(0);
+  opacity: 0.30;
+}
+[data-theme="light"] .skylineGround {
+  display: none;
 }
 [data-theme="light"] .features {
   background: var(--kp-surface);
@@ -429,15 +431,8 @@
   padding: 72px 0;
   border-bottom: 1px solid var(--kp-border);
   opacity: 0;
-  transform: translateY(40px);
-  transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1);
 }
 .featureRow:last-child { border-bottom: none; }
-
-.featureRowVisible {
-  opacity: 1;
-  transform: translateY(0);
-}
 
 .featureRowReverse .featureRowText { order: 2; }
 .featureRowReverse .featureRowImage { order: 1; }
