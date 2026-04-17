@@ -15,6 +15,13 @@ interface Props {
   onOpenChange?: (open: boolean) => void;
 }
 
+interface CuestionarioState {
+  active: boolean;
+  pregunta: string;
+  progreso: number;
+  sessionId: string;
+}
+
 export default function SearchBox({
   onResults,
   sessionId,
@@ -28,6 +35,7 @@ export default function SearchBox({
   const [input, setInput]     = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
+  const [cuestionario, setCuestionario] = useState<CuestionarioState | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const openSearchBox = useCallback((value: boolean) => {
@@ -76,9 +84,16 @@ export default function SearchBox({
         }));
         onResults(zonasPreview, res.session_id);
         setInput("");
+        setCuestionario(null);
         openSearchBox(false);
       } else if (res.estado === "cuestionario") {
-        setError("Describe tu negocio con más detalle: tipo, público y presupuesto.");
+        setCuestionario({
+          active: true,
+          pregunta: res.pregunta ?? "¿Puedes darme más detalles sobre tu negocio?",
+          progreso: res.progreso_cuestionario ?? 0,
+          sessionId: res.session_id,
+        });
+        setInput("");
       } else if (res.estado === "error_tipo_negocio") {
         setError(res.motivo || "No puedo identificar el tipo de negocio. Sé más específico.");
       } else if (res.estado === "inviable_legal") {
@@ -96,16 +111,83 @@ export default function SearchBox({
     } finally {
       setLoading(false);
     }
-  }, [sessionId, onResults]);
+  }, [sessionId, onResults, openSearchBox]);
+
+  const responderCuestionario = useCallback(async (respuesta: string) => {
+    if (!respuesta.trim() || !cuestionario) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await api.cuestionario({
+        session_id: cuestionario.sessionId,
+        respuesta,
+      });
+      if (res.trigger_busqueda) {
+        // Cuestionario completo — lanzar búsqueda con la sesión acumulada
+        const buscarRes = await api.buscar({
+          descripcion: "",
+          session_id: cuestionario.sessionId,
+        });
+        const zonas = buscarRes.zonas ?? [];
+        if (buscarRes.estado === "ok" && zonas.length > 0) {
+          const zonasPreview = zonas.map(z => ({
+            zona_id: z.zona_id,
+            nombre: z.nombre,
+            barrio: z.barrio,
+            distrito: z.distrito,
+            lat: z.lat,
+            lng: z.lng,
+            score_global: z.score_global,
+            alquiler_mensual: z.alquiler_estimado,
+            m2: z.m2_disponibles,
+            color: z.color,
+          }));
+          onResults(zonasPreview, cuestionario.sessionId);
+          setInput("");
+          setCuestionario(null);
+          openSearchBox(false);
+        } else {
+          setError("No se encontraron zonas tras el cuestionario. Intenta otra descripción.");
+          setCuestionario(null);
+        }
+      } else {
+        // Siguiente pregunta
+        setCuestionario(prev => prev ? {
+          ...prev,
+          pregunta: res.pregunta ?? prev.pregunta,
+          progreso: res.progreso_pct,
+        } : null);
+        setInput("");
+      }
+    } catch (e) {
+      setError("Error procesando la respuesta. Intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  }, [cuestionario, onResults, openSearchBox]);
 
   const handleSubmit = (e: { preventDefault(): void }) => {
     e.preventDefault();
-    buscar(input);
+    if (cuestionario?.active) {
+      responderCuestionario(input);
+    } else {
+      buscar(input);
+    }
   };
 
   const handleKeyDown = (e: { key: string; shiftKey: boolean; preventDefault(): void }) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); buscar(input); }
-    if (e.key === "Escape") { openSearchBox(false); setError(""); }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit({ preventDefault: () => {} }); }
+    if (e.key === "Escape") {
+      openSearchBox(false);
+      setError("");
+      setCuestionario(null);
+    }
+  };
+
+  const cancelarCuestionario = () => {
+    setCuestionario(null);
+    setInput("");
+    setError("");
   };
 
   return (
@@ -114,7 +196,7 @@ export default function SearchBox({
       {/* ── Floating ball ── */}
       <button
         className={styles.ball}
-        onClick={() => { openSearchBox(!open); setError(""); }}
+        onClick={() => { openSearchBox(!open); setError(""); setCuestionario(null); }}
         title={open ? "Cerrar búsqueda" : "Buscar ubicación"}
         aria-label="Buscar"
         aria-expanded={open}
@@ -132,30 +214,59 @@ export default function SearchBox({
         }
       </button>
 
-      {/* ── Expanding panel — only mounted when open, no ghost elements ── */}
+      {/* ── Expanding panel ── */}
       {open && (
         <div className={styles.panel}>
+
+          {/* Cuestionario header */}
+          {cuestionario?.active && (
+            <div className={styles.cuestionarioHeader}>
+              <div className={styles.cuestionarioProgress}>
+                <div
+                  className={styles.cuestionarioProgressBar}
+                  style={{ width: `${cuestionario.progreso}%` }}
+                />
+              </div>
+              <p className={styles.cuestionarioPregunta}>{cuestionario.pregunta}</p>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className={styles.form}>
             <textarea
               ref={textareaRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Describe tu negocio: tipo, público, estilo..."
+              placeholder={
+                cuestionario?.active
+                  ? "Escribe tu respuesta..."
+                  : "Describe tu negocio: tipo, público, estilo..."
+              }
               rows={3}
               disabled={loading}
               className={styles.textarea}
             />
-            <button
-              type="submit"
-              disabled={loading || !input.trim()}
-              className={`btn btn-primary ${styles.sendBtn}`}
-            >
-              {loading
-                ? <><div className="spinner" /><span>Analizando...</span></>
-                : "Buscar ubicación →"
-              }
-            </button>
+            <div className={styles.formActions}>
+              <button
+                type="submit"
+                disabled={loading || !input.trim()}
+                className={`btn btn-primary ${styles.sendBtn}`}
+              >
+                {loading
+                  ? <><div className="spinner" /><span>Analizando...</span></>
+                  : cuestionario?.active ? "Responder →" : "Buscar ubicación →"
+                }
+              </button>
+              {cuestionario?.active && (
+                <button
+                  type="button"
+                  onClick={cancelarCuestionario}
+                  className={styles.cancelBtn}
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
           </form>
 
           {error && (
@@ -168,7 +279,7 @@ export default function SearchBox({
             </div>
           )}
 
-          {!hasResults && examples && examples.length > 0 && (
+          {!cuestionario?.active && !hasResults && examples && examples.length > 0 && (
             <div className={styles.examples}>
               <div className={styles.examplesLabel}>Ejemplos</div>
               <div className={styles.exampleChips}>

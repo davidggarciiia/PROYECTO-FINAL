@@ -26,6 +26,7 @@ from typing import Optional
 
 import httpx
 
+from config import settings
 from db.conexion import get_db
 
 logger = logging.getLogger(__name__)
@@ -365,7 +366,7 @@ async def _nominatim_geocode(llicencies: list[dict]) -> None:
                                 lic["zona_id"] = row["zona_id"]
                 except Exception as exc:
                     logger.debug("Nominatim error per %s: %s", adreca[:50], exc)
-                await asyncio.sleep(1.05)  # respetar 1 req/s Nominatim
+                await asyncio.sleep(settings.SCRAPING_DELAY_MIN or 1.05)  # respetar 1 req/s Nominatim
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

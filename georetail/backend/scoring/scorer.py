@@ -355,19 +355,6 @@ def _score_manual(datos: dict, sector: dict) -> dict:
             turismo_base = max(turismo_base, 55.0)   # zona marítima amplia
     s_turismo = min(100.0, max(0.0, turismo_base))
 
-    # ENTORNO COMERCIAL — fórmula compuesta multivariable (v8); delega a módulo dedicado si disponible
-    try:
-        from scoring.dimensiones.entorno import calcular_score_entorno
-        _ent_result = calcular_score_entorno(datos, perfil_negocio=perfil_negocio)
-        s_entorno = _ent_result["score_entorno"]
-    except Exception as _e:
-        logger.warning("Error entorno_score: %s", _e)
-        _v = datos.get("pct_locales_vacios")
-        vacios = _v if _v is not None else 0.15
-        _r = datos.get("tasa_rotacion_anual")
-        rotacion = _r if _r is not None else 0.18
-        s_entorno = max(0.0, 100.0 - vacios * 200.0 - rotacion * 100.0)
-
     # DINAMISMO — trayectoria histórica de la zona (v13, pipeline mensual)
     try:
         from scoring.dimensiones.dinamismo import calcular_dinamismo
@@ -382,11 +369,10 @@ def _score_manual(datos: dict, sector: dict) -> dict:
     # Sus 15 puntos se redistribuyen: +5 entorno, +5 dinamismo, +5 transporte.
     dims = {
         "flujo":      (s_flujo,     sector.get("peso_flujo",      0.25)),
-        "demografia": (s_demo,      sector.get("peso_demo",       0.20)),
+        "demografia": (s_demo,      sector.get("peso_demo",       0.25)),
         "competencia":(s_comp,      sector.get("peso_competencia",0.15)),
         "transporte": (s_trans,     sector.get("peso_transporte", 0.15)),
-        "entorno":    (s_entorno,   sector.get("peso_entorno",    0.10)),
-        "dinamismo":  (s_dinamismo, sector.get("peso_dinamismo",  0.05)),
+        "dinamismo":  (s_dinamismo, sector.get("peso_dinamismo",  0.10)),
         "seguridad":  (s_seg,       sector.get("peso_seguridad",  0.05)),
         "turismo":    (s_turismo,   sector.get("peso_turismo",    0.05)),
     }
@@ -402,7 +388,6 @@ def _score_manual(datos: dict, sector: dict) -> dict:
         "score_transporte":         round(s_trans, 1),
         "score_seguridad":          round(s_seg, 1),
         "score_turismo":            round(s_turismo, 1),
-        "score_entorno_comercial":  round(s_entorno, 1),
         "score_dinamismo":          round(s_dinamismo, 1),
         "probabilidad_supervivencia": None,
         "shap_values":              None,
@@ -527,7 +512,7 @@ async def _get_datos_zona_completos(zona_id: str, sector: str, idea_tags: list[s
             FROM v_variables_zona vz
             JOIN zonas z ON z.id = vz.zona_id
             LEFT JOIN competencia_por_local cp ON cp.zona_id=vz.zona_id
-                AND cp.sector_codigo=$2 AND cp.radio_m=300
+                AND cp.sector_codigo=$2 AND cp.radio_m=500
             LEFT JOIN LATERAL (
                 SELECT cdz.score_competencia_v2
                 FROM competencia_detalle_zona cdz

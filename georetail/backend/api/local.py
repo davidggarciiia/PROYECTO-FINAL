@@ -352,7 +352,6 @@ def _scores_fallback(zona: dict) -> dict:
             "transporte": 50.0,
             "seguridad": 50.0,
             "turismo": 50.0,
-            "entorno_comercial": 50.0,
             "dinamismo": 50.0,
         },
         "explicaciones_shap": [],

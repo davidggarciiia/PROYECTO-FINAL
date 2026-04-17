@@ -164,7 +164,7 @@ async def _check_llm() -> ServiceStatus:
     """
     from db.redis_client import get_redis
 
-    proveedores_fallback = ["claude", "openai", "groq", "gemini", "ollama"]
+    proveedores_fallback = ["deepseek", "openai"]
 
     try:
         t0 = time.perf_counter()
@@ -173,7 +173,7 @@ async def _check_llm() -> ServiceStatus:
         # Verificar proveedor activo
         proveedor_activo = await r.get("llm:proveedor_activo")
         proveedor_activo = (
-            proveedor_activo.decode() if proveedor_activo else "claude"
+            proveedor_activo.decode() if isinstance(proveedor_activo, bytes) else (proveedor_activo or "deepseek")
         )
 
         # Verificar si todos los proveedores están marcados como exhausted

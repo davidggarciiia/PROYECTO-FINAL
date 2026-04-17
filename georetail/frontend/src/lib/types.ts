@@ -129,7 +129,6 @@ export interface ScoresDimensiones {
   transporte?: number;
   seguridad?: number;
   turismo?: number;
-  entorno_comercial?: number;
   dinamismo?: number;
 }
 

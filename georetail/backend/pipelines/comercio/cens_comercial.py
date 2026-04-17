@@ -196,7 +196,7 @@ def _cargar_negocios_2016(ids_supervivientes: set[str]) -> list[dict]:
                 "lat":             lat,
                 "lng":             lng,
                 "fecha_apertura":  fecha_apertura,
-                "activo_3_anos":   bid in ids_supervivientes,
+                "activo_3_anos":   bool(bid) and bid in ids_supervivientes,
                 "zona_id":         None,  # se rellena en paso 3
             })
 
