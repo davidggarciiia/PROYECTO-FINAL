@@ -38,10 +38,10 @@ _DIMENSION_KEYS = (
     "score_flujo_peatonal",
     "score_demografia",
     "score_competencia",
-    "score_precio_alquiler",
     "score_transporte",
     "score_seguridad",
     "score_turismo",
+    "score_dinamismo",
 )
 
 

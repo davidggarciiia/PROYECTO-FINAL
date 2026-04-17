@@ -85,7 +85,7 @@ async def _calcular_scores(zona_ids, sector, session_id):
     return {"ok": len(resultados), "zona_ids": list(resultados.keys())}
 
 
-@celery_app.task(bind=True, max_retries=1)
+@celery_app.task(bind=True, max_retries=2)
 def generar_pdf_task(self, pdf_id: str, session_id: str, zona_ids: list[str],
                      opciones: dict):
     """Genera el PDF en background y actualiza el estado en BD."""
