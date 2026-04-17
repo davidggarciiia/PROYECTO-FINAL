@@ -91,7 +91,6 @@ const DIMS: Array<{ key: keyof ScoresDimensiones; label: string; Icon: () => JSX
   { key: "transporte",        label: "Transporte",         Icon: IconTransporte },
   { key: "seguridad",         label: "Seguridad",          Icon: IconSeguridad },
   { key: "turismo",           label: "Turismo",            Icon: IconTurismo },
-  { key: "entorno_comercial", label: "Entorno comercial",  Icon: IconEntornoComercial },
   { key: "dinamismo",         label: "Dinamismo",          Icon: IconDinamismo },
 ];
 

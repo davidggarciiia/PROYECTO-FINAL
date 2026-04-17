@@ -188,7 +188,6 @@ class ScoreDetalle(BaseModel):
     transporte:        Optional[float] = None
     seguridad:         Optional[float] = None
     turismo:           Optional[float] = None
-    entorno_comercial: Optional[float] = None
 
 
 class SeguridadDetalle(BaseModel):
@@ -274,7 +273,6 @@ class ScoresDimensiones(BaseModel):
     transporte:        Optional[float] = None
     seguridad:         Optional[float] = None
     turismo:           Optional[float] = None
-    entorno_comercial: Optional[float] = None
     dinamismo:         Optional[float] = None
 
 

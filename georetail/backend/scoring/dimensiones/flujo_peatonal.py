@@ -1,50 +1,39 @@
 """
-scoring/flujo_peatonal.py — Fusión ponderada de fuentes de flujo peatonal.
+scoring/flujo_peatonal.py — Score de flujo peatonal basado en VCity + gosom popular_times.
 
-Combina 4 fuentes con pesos adaptativos (si falta una, redistribuye):
-  1. popular_times  (35%) — Google Maps Popular Times (ya en 0-100)
-  2. vcity          (30%) — VCity BSC promedio diario (peatones/día, normalizar)
-  3. vianants       (20%) — Sensores BCN Open Data (personas/día, normalizar)
-  4. ratio_locales  (15%) — proxy estructural (fracción 0-1, siempre disponible)
+Fuentes:
+  1. vcity          (70%) — VCity BSC promedio diario (peatones/día). Fuente base.
+  2. popular_times  (30%) — Picos de afluencia de Google Maps vía gosom scraper (0-100).
 
-Output: flujo_peatonal_score [0-100] listo para usar en XGBoost v4.
+Lógica:
+  - vcity es la fuente principal. Sin vcity → fallback 40.0.
+  - popular_times captura CUÁNDO hay gente (picos horarios/diarios). Modifica el score base.
+  - Si falta popular_times, se usa solo vcity al 100%.
+  - Si falta vcity pero hay popular_times → se usa popular_times al 100% (fallback degradado).
 
-Fórmula de fusión:
-  1. Normalizar cada fuente disponible a escala 0-100.
-  2. Calcular peso_disponible = suma de PESOS_BASE de las fuentes presentes.
-  3. Redistribuir proporcionalmente: peso_adj[k] = PESOS_BASE[k] / peso_disponible.
-  4. score = Σ(peso_adj[k] × valor_norm[k]), acotado a [0, 100].
-  Si no hay ninguna fuente disponible, devuelve el fallback conservador (30.0).
-
-Normalización por fuente:
-  - popular_times_score: ya en escala 0-100 (sin transformación).
+Normalización:
   - vcity_flujo_peatonal: peatones/día ÷ VCITY_MAX_BARCELONA × 100.
-  - flujo_peatonal_total (vianants): personas/día ÷ VIANANTS_MAX_BARCELONA × 100.
-  - ratio_locales_comerciales: fracción 0-1 × 100.
+  - popular_times_score: ya en escala 0-100 (gosom lo normaliza internamente).
 
-Constantes de normalización configurables a nivel de módulo:
-  VCITY_MAX_BARCELONA    = 50 000  peatones/día (percentil 99 estimado BCN)
-  VIANANTS_MAX_BARCELONA = 15 000  personas/día (sensor máximo BCN Open Data)
+Constante de normalización:
+  VCITY_MAX_BARCELONA = 50 000  peatones/día (percentil 99 estimado BCN)
 """
 from __future__ import annotations
 
 from typing import Optional
 
 
-# Pesos base por fuente
+# Pesos base por fuente (vcity es la fuente principal, popular_times el modificador de picos)
 PESOS_BASE: dict[str, float] = {
-    "popular_times": 0.35,
-    "vcity":         0.30,
-    "vianants":      0.20,
-    "ratio_locales": 0.15,
+    "vcity":         0.70,
+    "popular_times": 0.30,
 }
 
-# Valores de referencia para normalización (percentil 99 estimado en BCN).
-# Modificar aquí para ajustar la escala global sin tocar las funciones.
-VCITY_MAX_BARCELONA:    float = 50_000.0  # peatones/día zona muy transitada
-VIANANTS_MAX_BARCELONA: float = 15_000.0  # personas/día sensor máximo BCN Open Data
+# Valor de referencia para normalización vcity (percentil 99 estimado en BCN).
+VCITY_MAX_BARCELONA: float = 50_000.0  # peatones/día zona muy transitada
 
-# Alias privados mantenidos por compatibilidad interna
+# Alias para compatibilidad con código externo que importa VIANANTS_MAX_BARCELONA
+VIANANTS_MAX_BARCELONA: float = 15_000.0
 _VCITY_MAX_BCN    = VCITY_MAX_BARCELONA
 _VIANANTS_MAX_BCN = VIANANTS_MAX_BARCELONA
 
@@ -54,78 +43,49 @@ _VIANANTS_MAX_BCN = VIANANTS_MAX_BARCELONA
 # ---------------------------------------------------------------------------
 
 def calcular_flujo_score(
-    popular_times_score: Optional[float],   # 0-100
-    vcity_flujo: Optional[float],           # peatones/día (raw, normalizar)
-    vianants_intensitat: Optional[float],   # personas/día (raw, normalizar)
-    ratio_locales: Optional[float],         # 0.0-1.0
+    popular_times_score: Optional[float],   # 0-100, de gosom
+    vcity_flujo: Optional[float],           # peatones/día (raw, normalizar con VCITY_MAX)
+    vianants_intensitat: Optional[float] = None,  # ignorado, mantenido por compatibilidad
+    ratio_locales: Optional[float] = None,         # ignorado, mantenido por compatibilidad
     vcity_max_barcelona: float = VCITY_MAX_BARCELONA,
-    vianants_max_barcelona: float = VIANANTS_MAX_BARCELONA,
+    vianants_max_barcelona: float = VIANANTS_MAX_BARCELONA,  # ignorado, mantenido por compatibilidad
 ) -> float:
     """
     Devuelve flujo_peatonal_score [0-100].
 
-    Si una fuente es None, redistribuye su peso proporcionalmente entre las
-    fuentes disponibles. ratio_locales es el proxy estructural y siempre se
-    trata como disponible cuando es un float (puede ser 0.0 legítimo).
+    Fuente base (70%): vcity_flujo normalizado (peatones/día ÷ VCITY_MAX_BARCELONA × 100).
+    Modificador de picos (30%): popular_times_score de gosom (ya en 0-100).
 
-    Args:
-        popular_times_score: pico de popular times Google Maps (0-100).
-        vcity_flujo: promedio diario de peatones de VCity BSC (peatones/día).
-        vianants_intensitat: intensidad de los sensores BCN Open Data (personas/día).
-        ratio_locales: fracción de locales comerciales en la zona (0.0-1.0).
-        vcity_max_barcelona: valor de referencia para normalizar vcity_flujo.
-        vianants_max_barcelona: valor de referencia para normalizar vianants_intensitat.
-
-    Returns:
-        Puntuación de flujo peatonal en escala 0-100.
+    Si no hay vcity → fallback 40.0.
+    Si no hay popular_times → solo vcity al 100%.
     """
-    # ── Normalizar cada fuente a escala 0-100 ────────────────────────────────
-    scores: dict[str, Optional[float]] = {}
-
-    # 1. popular_times: ya en 0-100
-    scores["popular_times"] = (
-        float(min(100.0, max(0.0, popular_times_score)))
-        if popular_times_score is not None
-        else None
-    )
-
-    # 2. vcity: peatones/día → 0-100
-    scores["vcity"] = (
+    # Normalizar vcity a 0-100
+    s_vcity: Optional[float] = (
         float(min(100.0, max(0.0, vcity_flujo / vcity_max_barcelona * 100.0)))
         if vcity_flujo is not None
         else None
     )
 
-    # 3. vianants BCN: personas/día → 0-100
-    scores["vianants"] = (
-        float(min(100.0, max(0.0, vianants_intensitat / vianants_max_barcelona * 100.0)))
-        if vianants_intensitat is not None
+    # popular_times ya viene en 0-100 del pipeline gosom
+    s_pt: Optional[float] = (
+        float(min(100.0, max(0.0, popular_times_score)))
+        if popular_times_score is not None
         else None
     )
 
-    # 4. ratio_locales: fracción 0-1 → 0-100 (proxy estructural)
-    #    None solo si no existe el dato; 0.0 es un valor legítimo
-    scores["ratio_locales"] = (
-        float(min(100.0, max(0.0, ratio_locales * 100.0)))
-        if ratio_locales is not None
-        else None
-    )
+    if s_vcity is None and s_pt is None:
+        return 40.0  # sin ninguna fuente: fallback conservador
 
-    # ── Redistribución adaptativa de pesos ───────────────────────────────────
-    disponibles = {k: v for k, v in scores.items() if v is not None}
+    if s_vcity is None:
+        # Solo popular_times disponible (degradado)
+        return round(float(s_pt), 2)  # type: ignore[arg-type]
 
-    if not disponibles:
-        # Sin datos en absoluto: fallback conservador
-        return 30.0
+    if s_pt is None:
+        # Solo vcity: score base completo
+        return round(float(s_vcity), 2)
 
-    peso_disponible = sum(PESOS_BASE[k] for k in disponibles)
-    if peso_disponible == 0.0:
-        return 30.0
-
-    # Normalizar pesos para que sumen 1.0 entre los disponibles
-    pesos_adj = {k: PESOS_BASE[k] / peso_disponible for k in disponibles}
-
-    resultado = sum(pesos_adj[k] * disponibles[k] for k in disponibles)
+    # Fusión ponderada: vcity 70% + popular_times 30%
+    resultado = s_vcity * 0.70 + s_pt * 0.30
     return round(float(min(100.0, max(0.0, resultado))), 2)
 
 
@@ -139,10 +99,8 @@ def calcular_flujo_score_batch(rows: list[dict]) -> list[float]:
 
     Args:
         rows: lista de dicts con keys:
-              - popular_times_score      (float | None)
-              - vcity_flujo_peatonal     (float | None)
-              - flujo_peatonal_total     (float | None)   — vianants BCN
-              - ratio_locales_comerciales (float | None)
+              - vcity_flujo_peatonal      (float | None)  — fuente principal
+              - popular_times_score / flujo_popular_times_score  (float | None)  — picos gosom
 
     Returns:
         Lista de flujo_peatonal_score [0-100], una entrada por fila.
@@ -152,8 +110,6 @@ def calcular_flujo_score_batch(rows: list[dict]) -> list[float]:
             popular_times_score=row.get("popular_times_score")
                 or row.get("flujo_popular_times_score"),
             vcity_flujo=row.get("vcity_flujo_peatonal"),
-            vianants_intensitat=row.get("flujo_peatonal_total"),
-            ratio_locales=row.get("ratio_locales_comerciales"),
         )
         for row in rows
     ]
@@ -164,32 +120,13 @@ def calcular_flujo_score_batch(rows: list[dict]) -> list[float]:
 # ---------------------------------------------------------------------------
 
 def fuentes_disponibles(row: dict) -> list[str]:
-    """
-    Devuelve qué fuentes tienen datos para una zona dada.
-
-    Args:
-        row: dict con claves del esquema variables_zona:
-             flujo_popular_times_score, vcity_flujo_peatonal,
-             flujo_peatonal_total, ratio_locales_comerciales.
-
-    Returns:
-        Lista de nombres de fuente presentes (subconjunto de PESOS_BASE.keys()).
-    """
+    """Devuelve qué fuentes tienen datos para una zona dada."""
     fuentes: list[str] = []
-
+    if row.get("vcity_flujo_peatonal") is not None:
+        fuentes.append("vcity")
     pt = row.get("flujo_popular_times_score") or row.get("popular_times_score")
     if pt is not None:
         fuentes.append("popular_times")
-
-    if row.get("vcity_flujo_peatonal") is not None:
-        fuentes.append("vcity")
-
-    if row.get("flujo_peatonal_total") is not None:
-        fuentes.append("vianants")
-
-    if row.get("ratio_locales_comerciales") is not None:
-        fuentes.append("ratio_locales")
-
     return fuentes
 
 

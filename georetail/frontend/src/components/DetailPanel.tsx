@@ -44,7 +44,6 @@ const DIMENSION_ORDER: Array<{ key: keyof ScoresDimensiones; label: string }> = 
   { key: "transporte", label: "Transporte" },
   { key: "seguridad", label: "Seguridad" },
   { key: "turismo", label: "Turismo" },
-  { key: "entorno_comercial", label: "Entorno comercial" },
   { key: "dinamismo", label: "Dinamismo" },
 ];
 

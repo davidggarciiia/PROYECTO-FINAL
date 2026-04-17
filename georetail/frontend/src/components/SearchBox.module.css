@@ -113,12 +113,58 @@
 .textarea::placeholder { color: var(--text-subtle); }
 .textarea:disabled { opacity: 0.6; cursor: not-allowed; }
 
+.formActions {
+  display: flex;
+  gap: 6px;
+}
+
 .sendBtn {
-  width: 100%;
+  flex: 1;
   padding: 10px;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.01em;
+}
+
+.cancelBtn {
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.cancelBtn:hover {
+  border-color: var(--red-border);
+  color: var(--red);
+}
+
+/* ── Cuestionario ── */
+.cuestionarioHeader {
+  padding: 10px 12px 0;
+}
+.cuestionarioProgress {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.cuestionarioProgressBar {
+  height: 100%;
+  background: linear-gradient(90deg, #6366F1, #8B5CF6);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+.cuestionarioPregunta {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+  margin: 0 0 8px;
+  font-weight: 500;
 }
 
 /* ── Error ── */

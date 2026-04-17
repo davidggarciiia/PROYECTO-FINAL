@@ -18,10 +18,16 @@ import importlib
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from config import settings
 from db.conexion import get_db
+
+
+async def _require_admin(x_admin_key: str = Header(..., alias="X-Admin-Key")) -> None:
+    if not settings.ADMIN_API_KEY or x_admin_key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="Admin key required")
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["admin"])
@@ -131,6 +137,7 @@ async def estado_pipeline(nombre: str) -> Optional[EjecucionResponse]:
     "/admin/pipelines/{nombre}",
     response_model=PipelineRunResponse,
     summary="Lanzar un pipeline manualmente",
+    dependencies=[Depends(_require_admin)],
 )
 async def lanzar_pipeline(nombre: str) -> PipelineRunResponse:
     """

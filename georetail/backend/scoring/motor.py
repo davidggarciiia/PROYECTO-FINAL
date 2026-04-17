@@ -42,7 +42,6 @@ _DIMENSION_KEYS = (
     "score_transporte",
     "score_seguridad",
     "score_turismo",
-    "score_entorno_comercial",
 )
 
 
@@ -91,7 +90,6 @@ async def calcular_scores_batch(
                        sz.score_transporte,
                        sz.score_seguridad,
                        sz.score_turismo,
-                       sz.score_entorno_comercial,
                        sz.probabilidad_supervivencia,
                        sz.shap_values,
                        sz.modelo_version
@@ -456,7 +454,6 @@ def _build_fallback_row(zona_id: str, modelo_version: str = "fallback_error") ->
         "score_transporte": 50.0,
         "score_seguridad": 50.0,
         "score_turismo": 50.0,
-        "score_entorno_comercial": 50.0,
         "probabilidad_supervivencia": 0.50,
         "shap_values": {},
         "modelo_version": modelo_version,
@@ -554,14 +551,13 @@ def _recalcular_global(scores: dict, pesos: dict) -> float:
     Solo los valores None usan fallback neutro. Un 0.0 real se preserva.
     """
     dims = {
-        "score_flujo_peatonal": pesos.get("peso_flujo", 0.25),
-        "score_demografia": pesos.get("peso_demo", 0.20),
-        "score_competencia": pesos.get("peso_competencia", 0.15),
-        "score_precio_alquiler": pesos.get("peso_precio", 0.15),
-        "score_transporte": pesos.get("peso_transporte", 0.10),
-        "score_seguridad": pesos.get("peso_seguridad", 0.05),
-        "score_turismo": pesos.get("peso_turismo", 0.05),
-        "score_entorno_comercial": pesos.get("peso_entorno", 0.05),
+        "score_flujo_peatonal":    pesos.get("peso_flujo",        0.25),
+        "score_demografia":        pesos.get("peso_demo",         0.25),
+        "score_competencia":       pesos.get("peso_competencia",  0.15),
+        "score_transporte":        pesos.get("peso_transporte",   0.15),
+        "score_dinamismo":         pesos.get("peso_dinamismo",    0.10),
+        "score_seguridad":         pesos.get("peso_seguridad",    0.05),
+        "score_turismo":           pesos.get("peso_turismo",      0.05),
     }
     total = sum(_valor_score(scores, dim) * peso for dim, peso in dims.items())
     return round(total, 1)
@@ -650,7 +646,6 @@ def _format_scores_for_api(raw: dict) -> dict:
         "transporte": raw.get("score_transporte"),
         "seguridad": raw.get("score_seguridad"),
         "turismo": raw.get("score_turismo"),
-        "entorno_comercial": raw.get("score_entorno_comercial"),
     }
 
     afinidad = raw.get("score_afinidad_concepto")

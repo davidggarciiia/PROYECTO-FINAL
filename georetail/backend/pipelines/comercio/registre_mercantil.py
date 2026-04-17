@@ -73,9 +73,15 @@ async def _procesar_empresa(emp: dict) -> int:
     if not fecha_ap_str or len(fecha_ap_str) < 10:
         return 0
 
-    fecha_ap = date.fromisoformat(fecha_ap_str[:10])
+    try:
+        fecha_ap = date.fromisoformat(fecha_ap_str[:10])
+    except ValueError:
+        return 0
     fecha_ci_str = emp.get("fecha_disolucion")
-    fecha_ci = date.fromisoformat(fecha_ci_str[:10]) if fecha_ci_str else None
+    try:
+        fecha_ci = date.fromisoformat(fecha_ci_str[:10]) if fecha_ci_str else None
+    except ValueError:
+        fecha_ci = None
 
     # activo_3_anos = no se disolvió antes de los 3 años
     hoy = date.today()
@@ -91,7 +97,9 @@ async def _procesar_empresa(emp: dict) -> int:
     if not coords:
         return 0
 
-    lat, lng, prec = coords
+    if len(coords) < 2:
+        return 0
+    lat, lng = coords[0], coords[1]
 
     # Encontrar zona
     async with get_db() as conn:

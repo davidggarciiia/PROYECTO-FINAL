@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     TMB_APP_KEY: str = ""
 
     # ── App ───────────────────────────────────────────────────────────────────
+    ADMIN_API_KEY: str = ""   # Obligatorio en producción para /api/admin/*
     ENVIRONMENT: str = "development"
     SENTRY_DSN: str = ""
     CORS_ORIGINS: list[str] = [

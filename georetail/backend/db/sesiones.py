@@ -46,9 +46,9 @@ async def get_sesion(session_id: str) -> Optional[dict]:
         return json.loads(raw)
     try:
         async with get_db() as conn:
-            row = await conn.fetchrow("SELECT id, perfil FROM sesiones WHERE id=$1", session_id)
+            row = await conn.fetchrow("SELECT id, ip_hash, perfil FROM sesiones WHERE id=$1", session_id)
         if row:
-            s = {"session_id": row["id"], "perfil": row["perfil"] or {}, "zonas_actuales": []}
+            s = {"session_id": row["id"], "ip_hash": row["ip_hash"] or "", "perfil": row["perfil"] or {}, "zonas_actuales": []}
             await r.setex(f"sesion:{session_id}", _TTL, json.dumps(s, ensure_ascii=False))
             return s
     except Exception as e:

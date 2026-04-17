@@ -26,6 +26,11 @@ async def calcular_proyeccion(params: dict) -> dict:
     """
     p = params
 
+    if p.get("clientes_dia_conservador", 0) > p.get("clientes_dia_optimista", 0):
+        raise ValueError("clientes_dia_conservador no puede superar clientes_dia_optimista")
+    if p.get("coste_mercancia_pct", 0) >= 0.99:
+        raise ValueError("coste_mercancia_pct debe ser < 0.99")
+
     # ── Inversión inicial ──────────────────────────────────────────────────────
     inversion = (p["reforma_local"] + p["equipamiento"] +
                  p["deposito_fianza"] + p["otros_iniciales"])

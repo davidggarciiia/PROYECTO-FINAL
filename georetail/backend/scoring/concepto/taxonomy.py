@@ -30,7 +30,7 @@ SCORE_DIMENSIONS = (
     "score_transporte",
     "score_seguridad",
     "score_turismo",
-    "score_entorno_comercial",
+    "score_dinamismo",
 )
 
 WEIGHT_FIELD_BY_DIM = {
@@ -41,18 +41,18 @@ WEIGHT_FIELD_BY_DIM = {
     "score_transporte": "peso_transporte",
     "score_seguridad": "peso_seguridad",
     "score_turismo": "peso_turismo",
-    "score_entorno_comercial": "peso_entorno",
+    "score_dinamismo": "peso_dinamismo",
 }
 
 DEFAULT_SECTOR_WEIGHTS = {
     "peso_flujo": 0.25,
-    "peso_demo": 0.20,
+    "peso_demo": 0.25,
     "peso_competencia": 0.15,
     "peso_precio": 0.15,
-    "peso_transporte": 0.10,
+    "peso_transporte": 0.15,
     "peso_seguridad": 0.05,
     "peso_turismo": 0.05,
-    "peso_entorno": 0.05,
+    "peso_dinamismo": 0.10,
 }
 
 NEUTRAL_PROFILE = {
@@ -257,7 +257,7 @@ def score_bias_desde_perfil(perfil_negocio: dict | None) -> dict[str, float]:
         "score_transporte": 0.75 + (1.0 - clientela_vecindario) * 0.70 + citas_previas * 0.35,
         "score_seguridad": 0.75 + max(horario_nocturno, clientela_vecindario) * 0.95,
         "score_turismo": 0.70 + clientela_turismo * 1.55,
-        "score_entorno_comercial": 0.75 + experiencial * 0.85 + dependencia_flujo * 0.20,
+        "score_dinamismo": 0.75 + dependencia_flujo * 0.35 + clientela_vecindario * 0.30,
     }
     return {key: round(max(0.40, min(2.50, value)), 3) for key, value in multipliers.items()}
 

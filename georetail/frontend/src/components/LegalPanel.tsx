@@ -195,21 +195,21 @@ function FaseAccordion({ fase, index }: { fase: FaseRoadmap; index: number }) {
 export default function LegalPanel({ zona, sessionId }: Props) {
   const [roadmap, setRoadmap] = useState<LegalRoadmapResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string>("");
   const hasFetched = useRef(false);
 
   const load = useCallback(async () => {
     if (hasFetched.current) return;
     hasFetched.current = true;
     setLoading(true);
-    setError(false);
+    setError("");
     try {
       const data = await api.legal(zona.zona_id, sessionId);
       setRoadmap(data);
     } catch (e) {
       console.error("Error cargando roadmap legal:", e);
       hasFetched.current = false; // permitir reintento manual
-      setError(true);
+      setError(e instanceof Error ? e.message : "No se pudo cargar el análisis legal.");
     } finally {
       setLoading(false);
     }
@@ -232,7 +232,7 @@ export default function LegalPanel({ zona, sessionId }: Props) {
   }
 
   // ── Error state ──
-  if (error) {
+  if (error !== "") {
     return (
       <div className={styles.container}>
         <div className={styles.errorState}>

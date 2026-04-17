@@ -141,7 +141,12 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
                     sz.score_competencia, sz.score_precio_alquiler, sz.score_transporte,
                     sz.score_seguridad, sz.score_turismo AS score_turismo_dim,
                     sz.score_entorno_comercial, sz.probabilidad_supervivencia,
-                    sz.shap_values, sz.modelo_version
+                    sz.shap_values, sz.modelo_version,
+                    -- dinamismo comercial histórico (pipeline mensual día 6)
+                    dz.score_dinamismo, dz.tendencia,
+                    dz.tasa_supervivencia_3a, dz.renta_variacion_3a,
+                    dz.hhi_sectorial, dz.negocios_historico_count,
+                    dz.ratio_apertura_cierre_1a
                 FROM zonas z
                 JOIN barrios b      ON b.id = z.barrio_id
                 JOIN distritos d    ON d.id = b.distrito_id
@@ -161,6 +166,18 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
                     WHERE sz2.zona_id=z.id AND (s.codigo=$2 OR $2 IS NULL)
                     ORDER BY sz2.fecha_calculo DESC LIMIT 1
                 ) sz ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT
+                        dz2.score_dinamismo,
+                        dz2.tendencia,
+                        dz2.tasa_supervivencia_3a,
+                        dz2.renta_variacion_3a,
+                        dz2.hhi_sectorial,
+                        dz2.negocios_historico_count,
+                        dz2.ratio_apertura_cierre_1a
+                    FROM v_dinamismo_zona dz2
+                    WHERE dz2.zona_id = z.id
+                ) dz ON TRUE
                 WHERE z.id=$1
             """, zona_id, sector)
 
@@ -420,7 +437,7 @@ async def get_competencia_zona(zona_id: str, sector: str, radio_m: int = 500) ->
         # 1. Intentar leer scores pre-calculados (pipeline mensual de competencia)
         scores_row = await conn.fetchrow("""
             SELECT score_competencia_v2, cluster_score, amenaza_incumbentes,
-                   oportunidad_mercado, ratio_complementarios,
+                   oportunidad_mercado, ratio_complementarios, score_complementarios,
                    num_directos, pct_vulnerables, hhi_index, fuente
             FROM competencia_detalle_zona
             WHERE zona_id=$1 AND sector_codigo=$2 AND radio_m=$3
@@ -464,7 +481,17 @@ async def get_competencia_zona(zona_id: str, sector: str, radio_m: int = 500) ->
             "score_cluster":         float(scores_row["cluster_score"] or 50.0),
             "amenaza_incumbentes":   float(scores_row["amenaza_incumbentes"] or 50.0),
             "oportunidad_mercado":   float(scores_row["oportunidad_mercado"] or 50.0),
-            "score_complementarios": round(float(scores_row["ratio_complementarios"] or 0.0) * 100.0, 1),
+            # score_complementarios: use the exact value stored by the pipeline when
+            # available (migration 028+). For older rows where the column is NULL,
+            # fall back to the ratio approximation (ratio/1.5*100 ≈ ratio*66.67).
+            # The *100 approximation used previously overestimated by 1.5× vs the
+            # fly-calc path which calls _score_complementarios() directly.
+            "score_complementarios": round(
+                float(scores_row["score_complementarios"])
+                if scores_row["score_complementarios"] is not None
+                else min(100.0, float(scores_row["ratio_complementarios"] or 0.0) * 66.67),
+                1,
+            ),
             "num_directos":          int(scores_row["num_directos"] or 0),
             "pct_vulnerables":       float(scores_row["pct_vulnerables"] or 0.0),
             "hhi_index":             float(scores_row["hhi_index"] or 0.0),
