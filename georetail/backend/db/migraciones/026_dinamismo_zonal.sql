@@ -4,7 +4,7 @@
 -- tendencia demográfica y mercado inmobiliario.
 
 CREATE TABLE IF NOT EXISTS dinamismo_zonal (
-    zona_id  INTEGER NOT NULL REFERENCES zonas(id) ON DELETE CASCADE,
+    zona_id  VARCHAR(20) NOT NULL REFERENCES zonas(id) ON DELETE CASCADE,
     periodo  DATE    NOT NULL DEFAULT CURRENT_DATE,
 
     -- ── Apertura/cierre de licencias ─────────────────────────────────────────
