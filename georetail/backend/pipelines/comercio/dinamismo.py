@@ -121,7 +121,7 @@ async def _supervivencia_zona(conn, zona_id: int) -> dict[str, Any]:
         """
         SELECT
             COUNT(*)            AS total,
-            AVG(supervivio::int) AS tasa
+            AVG(activo_3_anos::int) AS tasa
         FROM negocios_historico
         WHERE zona_id = $1
         """,

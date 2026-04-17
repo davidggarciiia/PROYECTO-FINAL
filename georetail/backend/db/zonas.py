@@ -140,7 +140,7 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
                     sz.score_global, sz.score_flujo_peatonal, sz.score_demografia,
                     sz.score_competencia, sz.score_precio_alquiler, sz.score_transporte,
                     sz.score_seguridad, sz.score_turismo AS score_turismo_dim,
-                    sz.score_entorno_comercial, sz.probabilidad_supervivencia,
+                    sz.probabilidad_supervivencia,
                     sz.shap_values, sz.modelo_version,
                     -- dinamismo comercial histórico (pipeline mensual día 6)
                     dz.score_dinamismo, dz.tendencia,

@@ -460,7 +460,6 @@ def _score_neutro() -> dict:
         "score_transporte":           50.0,
         "score_seguridad":            50.0,
         "score_turismo":              50.0,
-        "score_entorno_comercial":    50.0,
         "score_dinamismo":            50.0,
         "probabilidad_supervivencia": None,
         "shap_values":                None,
@@ -581,9 +580,8 @@ async def guardar_scores(zona_id: str, sector_id: int, scores: dict) -> None:
                 (zona_id, sector_id, modelo_version, score_global,
                  score_flujo_peatonal, score_demografia, score_competencia,
                  score_precio_alquiler, score_transporte, score_seguridad,
-                 score_turismo, score_entorno_comercial,
-                 probabilidad_supervivencia, shap_values)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                 score_turismo, probabilidad_supervivencia, shap_values)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
             ON CONFLICT (zona_id, sector_id, modelo_version)
             DO UPDATE SET
                 score_global=EXCLUDED.score_global,
@@ -594,7 +592,6 @@ async def guardar_scores(zona_id: str, sector_id: int, scores: dict) -> None:
                 score_transporte=EXCLUDED.score_transporte,
                 score_seguridad=EXCLUDED.score_seguridad,
                 score_turismo=EXCLUDED.score_turismo,
-                score_entorno_comercial=EXCLUDED.score_entorno_comercial,
                 probabilidad_supervivencia=EXCLUDED.probabilidad_supervivencia,
                 shap_values=EXCLUDED.shap_values,
                 fecha_calculo=NOW()
@@ -604,5 +601,5 @@ async def guardar_scores(zona_id: str, sector_id: int, scores: dict) -> None:
         scores.get("score_demografia"), scores.get("score_competencia"),
         scores.get("score_precio_alquiler"), scores.get("score_transporte"),
         scores.get("score_seguridad"), scores.get("score_turismo"),
-        scores.get("score_entorno_comercial"), scores.get("probabilidad_supervivencia"),
+        scores.get("probabilidad_supervivencia"),
         json.dumps(scores.get("shap_values")) if scores.get("shap_values") else None)

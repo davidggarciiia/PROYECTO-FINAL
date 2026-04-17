@@ -290,9 +290,9 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
     # ── Alerta alquiler/ventas (regla del 15%) ────────────────────────────────
     # Se calcula sobre ingresos en régimen estable (mes 13+, sin rampa de arranque).
     ingresos_mes_estable = v["ticket_medio"] * v["clientes_dia_conservador"] * v["dias_apertura_mes"]
-    alquiler_sobre_ventas = (
-        v["alquiler_mensual"] / ingresos_mes_estable if ingresos_mes_estable > 0 else 1.0
-    )
+    ingresos_fallback = v["ticket_medio"] * v.get("clientes_dia_optimista", 0) * v["dias_apertura_mes"]
+    ingresos_referencia = ingresos_mes_estable or ingresos_fallback or 1.0
+    alquiler_sobre_ventas = v["alquiler_mensual"] / ingresos_referencia
 
     # ── Guardar en BD ────────────────────────────────────────────────────────
     # Tabla `analisis_financieros` — para el PDF y para analytics.

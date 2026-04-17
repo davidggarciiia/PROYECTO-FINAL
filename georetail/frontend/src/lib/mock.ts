@@ -168,16 +168,6 @@ function buildBaseExplanations(): Record<string, ExplicacionDimension> {
       ["Indicadores turísticos"],
       "media"
     ),
-    entorno_comercial: dim(
-      95,
-      "Entorno comercial muy consolidado",
-      "El local se apoya en una calle con masa comercial suficiente y poca señal de vacío, lo que refuerza la sensación de zona activa.",
-      ["Alta densidad de negocios alrededor.", "Pocos locales vacíos."],
-      [],
-      ["105 negocios activos", "8% de locales vacíos"],
-      "Es uno de los motores principales de la recomendación.",
-      ["Censo comercial BCN", "Licencias de actividad"]
-    ),
   };
 }
 
@@ -201,10 +191,6 @@ function buildBaseImpact(): Record<string, ImpactoModeloDimension> {
     ]),
     seguridad: impact(0.03, "neutral", []),
     turismo: impact(-0.02, "neutral", []),
-    entorno_comercial: impact(0.14, "empuja_a_favor", [
-      { feature: "num_negocios_activos", valor: 105, descripcion: "Masa comercial alrededor." },
-      { feature: "pct_locales_vacios", valor: 8, descripcion: "Poca señal de debilidad comercial." },
-    ]),
   };
 }
 

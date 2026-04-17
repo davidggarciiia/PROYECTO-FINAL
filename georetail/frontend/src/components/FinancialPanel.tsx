@@ -85,7 +85,7 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
   }
 
   const f = financiero;
-  const params: Record<string, any> = f.parametros || {};
+  const params = f.parametros || {};
 
   // Chart data — every 3 months
   const chartData = f.proyeccion
@@ -177,12 +177,6 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
               })}
           </div>
 
-          {false && params.num_empleados && (
-            <div className={styles.empleadosBox}>
-              👥 {params.num_empleados} empleado
-              {params.num_empleados.valor_usado > 1 ? "s" : ""}
-            </div>
-          )}
           {params.num_empleados?.valor_usado ? (
             <div className={styles.empleadosBox}>
               Equipo estimado: {params.num_empleados.valor_usado} empleado

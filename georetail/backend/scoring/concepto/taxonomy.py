@@ -48,7 +48,7 @@ DEFAULT_SECTOR_WEIGHTS = {
     "peso_flujo": 0.25,
     "peso_demo": 0.25,
     "peso_competencia": 0.15,
-    "peso_precio": 0.15,
+    "peso_precio": 0.00,   # stored in DB but excluded from global score formula
     "peso_transporte": 0.15,
     "peso_seguridad": 0.05,
     "peso_turismo": 0.05,

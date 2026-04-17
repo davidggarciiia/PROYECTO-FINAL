@@ -330,8 +330,8 @@ async def _run_entorno_comercial():
 async def _run_dinamismo():
     """Mensual día 6, 03:00 — negocios_historico + llicencies + variables_zona → dinamismo_zonal."""
     try:
-        from pipelines.comercio.dinamismo import run
-        result = await run()
+        from pipelines.comercio.dinamismo import ejecutar
+        result = await ejecutar()
         logger.info("Pipeline dinamismo_comercial — %s", result)
     except Exception as e:
         logger.error("Pipeline dinamismo_comercial error: %s", e)
