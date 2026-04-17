@@ -66,15 +66,6 @@ const IconTurismo = () => (
   </svg>
 );
 
-const IconEntornoComercial = () => (
-  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M1.5 5.5L3 2.5h8L12.5 5.5"/>
-    <rect x="1.5" y="5.5" width="11" height="7" rx="0.5"/>
-    <path d="M1.5 5.5C1.5 7 2.9 8 4.5 8S7.5 7 7.5 5.5M7.5 5.5C7.5 7 8.8 8 10.5 8S12.5 7 12.5 5.5"/>
-    <rect x="5" y="9" width="4" height="3.5" rx="0.5"/>
-  </svg>
-);
-
 const IconDinamismo = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
     <path d="M2 10.5L5 7.5 7.3 9.8 12 4.5" />

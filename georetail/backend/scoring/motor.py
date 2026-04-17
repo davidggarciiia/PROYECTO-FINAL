@@ -92,9 +92,17 @@ async def calcular_scores_batch(
                        sz.score_turismo,
                        sz.probabilidad_supervivencia,
                        sz.shap_values,
-                       sz.modelo_version
+                       sz.modelo_version,
+                       dz.score_dinamismo
                 FROM scores_zona sz
                 JOIN sectores s ON s.id = sz.sector_id
+                LEFT JOIN LATERAL (
+                    SELECT score_dinamismo
+                    FROM dinamismo_zonal
+                    WHERE zona_id = sz.zona_id
+                    ORDER BY fecha_calculo DESC
+                    LIMIT 1
+                ) dz ON true
                 WHERE sz.zona_id = ANY($1)
                   AND s.codigo   = $2
                 ORDER BY sz.zona_id,
@@ -454,6 +462,7 @@ def _build_fallback_row(zona_id: str, modelo_version: str = "fallback_error") ->
         "score_transporte": 50.0,
         "score_seguridad": 50.0,
         "score_turismo": 50.0,
+        "score_dinamismo": 50.0,
         "probabilidad_supervivencia": 0.50,
         "shap_values": {},
         "modelo_version": modelo_version,
@@ -646,6 +655,7 @@ def _format_scores_for_api(raw: dict) -> dict:
         "transporte": raw.get("score_transporte"),
         "seguridad": raw.get("score_seguridad"),
         "turismo": raw.get("score_turismo"),
+        "dinamismo": raw.get("score_dinamismo"),
     }
 
     afinidad = raw.get("score_afinidad_concepto")
