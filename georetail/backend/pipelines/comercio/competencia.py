@@ -260,6 +260,7 @@ async def _upsert_competencia_detalle(
                 hhi_index,
                 cluster_score,
                 ratio_complementarios,
+                score_complementarios,
                 num_sectores_complementarios,
                 amenaza_incumbentes,
                 oportunidad_mercado,
@@ -267,7 +268,7 @@ async def _upsert_competencia_detalle(
                 fuente
             ) VALUES (
                 $1,$2,$3,$4,
-                $5,$6,$7,$8,$9,$10,$11,$12,$13,
+                $5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
                 'google_places'
             )
             ON CONFLICT (zona_id, sector_codigo, radio_m, fecha) DO UPDATE SET
@@ -276,6 +277,7 @@ async def _upsert_competencia_detalle(
                 hhi_index                 = EXCLUDED.hhi_index,
                 cluster_score             = EXCLUDED.cluster_score,
                 ratio_complementarios     = EXCLUDED.ratio_complementarios,
+                score_complementarios     = EXCLUDED.score_complementarios,
                 num_sectores_complementarios = EXCLUDED.num_sectores_complementarios,
                 amenaza_incumbentes       = EXCLUDED.amenaza_incumbentes,
                 oportunidad_mercado       = EXCLUDED.oportunidad_mercado,
@@ -288,6 +290,7 @@ async def _upsert_competencia_detalle(
         resultado["hhi_index"],
         resultado["score_cluster"],
         resultado["ratio_complementarios"],
+        resultado["score_complementarios"],
         len(SECTORES_COMPLEMENTARIOS.get(sector, [])),
         resultado["amenaza_incumbentes"],
         resultado["score_oportunidad"],
