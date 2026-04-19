@@ -340,20 +340,15 @@ def _score_manual(datos: dict, sector: dict) -> dict:
         incidencias = datos.get("incidencias_por_1000hab") or 35
         s_seg = min(100.0, max(0.0, (120.0 - incidencias) / 1.15))
 
-    # TURISMO — corregido por proximidad real al litoral BCN.
-    # El campo score_turismo de variables_zona se agrega a nivel de barrio/distrito,
-    # lo que hace que zonas junto al mar reciban valores bajos (25) cuando deberían
-    # ser altos. dist_playa_m da granularidad real a nivel zona.
-    turismo_base = float(datos.get("score_turismo") or 40.0)
-    dist_playa = datos.get("dist_playa_m")
-    if dist_playa is not None:
-        if dist_playa < 300:
-            turismo_base = max(turismo_base, 85.0)   # frente al mar
-        elif dist_playa < 700:
-            turismo_base = max(turismo_base, 70.0)   # muy cerca del litoral
-        elif dist_playa < 1500:
-            turismo_base = max(turismo_base, 55.0)   # zona marítima amplia
-    s_turismo = min(100.0, max(0.0, turismo_base))
+    # TURISMO — combinación de Airbnb + hoteles + POIs culturales + costa
+    # (v14, mig 029). Delega a módulo dedicado siguiendo patrón de dinamismo/seguridad.
+    try:
+        from scoring.dimensiones.turismo import calcular_turismo
+        _tur_result = calcular_turismo(datos, perfil_negocio=perfil_negocio)
+        s_turismo = _tur_result["score_turismo"]
+    except Exception as _e:
+        logger.warning("Error turismo_score: %s", _e)
+        s_turismo = 50.0
 
     # DINAMISMO — trayectoria histórica de la zona (v13, pipeline mensual)
     try:
@@ -488,6 +483,11 @@ async def _get_datos_zona_completos(zona_id: str, sector: str, idea_tags: list[s
                 vz.nivel_ruido_db, vz.score_equipamientos,
                 vz.m2_zonas_verdes_cercanas, vz.licencias_nuevas_1a,
                 vz.mercados_municipales_1km, vz.eventos_culturales_500m,
+                -- v14: features turismo (mig 029) consumidas por dimensiones/turismo.py
+                vz.score_turismo_airbnb, vz.score_turismo_hut,
+                vz.airbnb_density_500m, vz.airbnb_occupancy_est,
+                vz.booking_hoteles_500m, vz.venues_musicales_500m,
+                vz.seasonality_summer_lift,
                 cp.score_saturacion,
                 cdz.score_competencia_v2,
                 paz.precio_m2,

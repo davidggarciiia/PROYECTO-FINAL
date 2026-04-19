@@ -1,5 +1,5 @@
 """
-pipelines/hut.py — Actualización de score_turismo desde Habitatges d'Ús Turístic (HUT).
+pipelines/hut.py — Actualización de score_turismo_hut desde Habitatges d'Ús Turístic (HUT).
 
 Fuente:
   CSV local: /data/csv/turisme/hut_apartaments_turistics.csv
@@ -15,13 +15,13 @@ Metodología:
   un radio de 500m desde el centroide de la zona.
 
   La densidad turística (aptmtos/km²) se normaliza a [0,100]:
-    score_turismo = 100 × (count_zona - min) / (max - min)
-  Zonas sin ningún HUT en radio obtienen score_turismo = 0.
+    score_turismo_hut = 100 × (count_zona - min) / (max - min)
+  Zonas sin ningún HUT en radio obtienen score_turismo_hut = 0.
 
-  El score se guarda en variables_zona para la fecha de referencia actual.
-  Se upserta en el registro existente del día o se crea uno nuevo.
+  El score se guarda en vz_turismo (tabla satélite post-split mig 017).
+  La columna score_turismo_hut existe a partir de la mig 029.
 
-Tabla destino: variables_zona.score_turismo
+Tabla destino: vz_turismo.score_turismo_hut
 """
 from __future__ import annotations
 
@@ -183,12 +183,12 @@ async def _actualizar_scores(
     scores: dict[str, float], fecha: date
 ) -> int:
     """
-    Actualiza score_turismo en variables_zona para todas las zonas.
+    Actualiza score_turismo_hut en vz_turismo para todas las zonas.
     - Las zonas con HUT cercanos reciben el score calculado.
-    - Las zonas sin HUT a menos de 500m reciben score_turismo = 0.0.
-    Hace UPSERT sobre (zona_id, fecha).
+    - Las zonas sin HUT a menos de 500m reciben score_turismo_hut = 0.0.
+    Hace UPSERT sobre (zona_id, fecha) tanto en variables_zona (anchor)
+    como en vz_turismo (datos), siguiendo el patrón post-mig 017.
     """
-    # Obtener todas las zonas para asignar 0 a las que no tienen HUT
     async with get_db() as conn:
         todas_zonas = await conn.fetch("SELECT id FROM zonas")
 
@@ -197,12 +197,26 @@ async def _actualizar_scores(
         for zona_row in todas_zonas:
             zona_id = zona_row["id"]
             score = scores.get(zona_id, 0.0)
+            # Anchor en variables_zona (tabla coordinadora delgada)
             await conn.execute(
                 """
-                INSERT INTO variables_zona (zona_id, fecha, score_turismo, fuente)
+                INSERT INTO variables_zona (zona_id, fecha, fuente)
+                VALUES ($1, $2, 'hut_bcn')
+                ON CONFLICT (zona_id, fecha) DO UPDATE
+                SET fuente = EXCLUDED.fuente, updated_at = NOW()
+                """,
+                zona_id, fecha,
+            )
+            # Score HUT en tabla satélite (mig 029: split writers)
+            await conn.execute(
+                """
+                INSERT INTO vz_turismo
+                    (zona_id, fecha, score_turismo_hut, fuente)
                 VALUES ($1, $2, $3, 'hut_bcn')
                 ON CONFLICT (zona_id, fecha) DO UPDATE
-                SET score_turismo = $3
+                SET score_turismo_hut = EXCLUDED.score_turismo_hut,
+                    fuente            = EXCLUDED.fuente,
+                    updated_at        = NOW()
                 """,
                 zona_id, fecha, score,
             )

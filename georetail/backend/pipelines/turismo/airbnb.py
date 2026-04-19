@@ -300,17 +300,19 @@ async def _actualizar_variables(
                     """,
                     zona_id, fecha,
                 )
-                # Datos de turismo en tabla satélite vz_turismo
+                # Datos de turismo en tabla satélite vz_turismo.
+                # Escribimos en score_turismo_airbnb (split writers, mig 029).
+                # No tocamos score_turismo (deprecated) ni score_turismo_hut (otro pipeline).
                 await conn.execute(
                     """
                     INSERT INTO vz_turismo
                         (zona_id, fecha,
-                         score_turismo,
+                         score_turismo_airbnb,
                          airbnb_density_500m, airbnb_occupancy_est,
                          fuente)
                     VALUES ($1, $2, $3, $4, $5, 'airbnb_insideairbnb')
                     ON CONFLICT (zona_id, fecha) DO UPDATE
-                    SET score_turismo       = EXCLUDED.score_turismo,
+                    SET score_turismo_airbnb = EXCLUDED.score_turismo_airbnb,
                         airbnb_density_500m  = EXCLUDED.airbnb_density_500m,
                         airbnb_occupancy_est = EXCLUDED.airbnb_occupancy_est,
                         fuente               = EXCLUDED.fuente,
@@ -318,7 +320,7 @@ async def _actualizar_variables(
                     """,
                     zona_id,
                     fecha,
-                    # Normalizar count a score_turismo (0-100): 200 listings → score 100
+                    # Normalizar count a score 0-100: 200 listings → 100
                     round(min(100.0, data["count"] / 2.0), 2),
                     data["count"],
                     round(data["avg_ocupacion"], 4),

@@ -252,44 +252,47 @@ class TestDimensionSeguridad:
 
 
 class TestDimensionTurismo:
-    def test_sin_dist_playa_usa_score_turismo_base(self):
-        datos = {"score_turismo": 60}
-        r = _score_manual(datos, {})
-        assert r["score_turismo"] == 60.0
+    """Integración del scorer con la dimensión turismo (v14, mig 029).
 
-    def test_dist_playa_menor_300_sube_a_85_minimo(self):
-        datos = {"score_turismo": 40, "dist_playa_m": 200}
-        r = _score_manual(datos, {})
-        assert r["score_turismo"] >= 85.0
+    El cálculo detallado vive en scoring/dimensiones/turismo.py y se testea
+    en test_turismo_dimension.py. Aquí solo verificamos que _score_manual
+    delega correctamente y produce la clave score_turismo en rango [0, 100].
+    """
 
-    def test_dist_playa_menor_700_sube_a_70_minimo(self):
-        datos = {"score_turismo": 30, "dist_playa_m": 500}
-        r = _score_manual(datos, {})
-        assert r["score_turismo"] >= 70.0
+    def test_score_manual_devuelve_clave_turismo_en_rango(self):
+        r = _score_manual({}, {})
+        assert "score_turismo" in r
+        assert 0.0 <= r["score_turismo"] <= 100.0
 
-    def test_dist_playa_menor_1500_sube_a_55_minimo(self):
-        datos = {"score_turismo": 20, "dist_playa_m": 1000}
-        r = _score_manual(datos, {})
-        assert r["score_turismo"] >= 55.0
-
-    def test_dist_playa_mayor_1500_no_bonus(self):
-        datos = {"score_turismo": 30, "dist_playa_m": 2000}
-        r = _score_manual(datos, {})
-        assert r["score_turismo"] == 30.0
-
-    def test_bonus_no_rebaja_score_alto(self):
-        """Si el score_turismo ya es 90 y dist_playa<300, se mantiene 90."""
-        datos = {"score_turismo": 90, "dist_playa_m": 100}
-        r = _score_manual(datos, {})
-        assert r["score_turismo"] == 90.0
-
-    def test_sin_score_turismo_usa_default_40(self):
-        datos = {}
-        r = _score_manual(datos, {})
-        assert r["score_turismo"] == 40.0
+    def test_zona_turistica_supera_zona_residencial(self):
+        datos_turistica = {
+            "airbnb_density_500m":     45,
+            "airbnb_occupancy_est":    0.85,
+            "booking_hoteles_500m":    12,
+            "eventos_culturales_500m": 5,
+            "dist_playa_m":            180,
+        }
+        datos_residencial = {
+            "airbnb_density_500m":     1,
+            "booking_hoteles_500m":    0,
+            "eventos_culturales_500m": 0,
+            "dist_playa_m":            5000,
+        }
+        s_tur = _score_manual(datos_turistica, {})["score_turismo"]
+        s_res = _score_manual(datos_residencial, {})["score_turismo"]
+        assert s_tur > s_res + 20.0
 
     def test_capping_100(self):
-        datos = {"score_turismo": 120}
+        """Con todos los stocks máximos, el score nunca rebasa 100."""
+        datos = {
+            "airbnb_density_500m":     500,
+            "airbnb_occupancy_est":    1.0,
+            "booking_hoteles_500m":    100,
+            "eventos_culturales_500m": 50,
+            "venues_musicales_500m":   20,
+            "dist_playa_m":            50,
+            "seasonality_summer_lift": 2.0,
+        }
         r = _score_manual(datos, {})
         assert r["score_turismo"] == 100.0
 
