@@ -1,195 +1,197 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import dynamic from "next/dynamic";
-import SearchBox from "@/components/SearchBox";
-import ZoneList from "@/components/ZoneList";
-import DetailPanel from "@/components/DetailPanel";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import Onboarding from "@/components/Onboarding";
+import Statusbar from "@/components/map/Statusbar";
+import MapCanvas, { type BasemapId } from "@/components/map/MapCanvas";
+import HudCoord from "@/components/map/HudCoord";
+import HudLegend from "@/components/map/HudLegend";
+import BasemapSwitcher from "@/components/map/BasemapSwitcher";
+import CommandBar from "@/components/map/CommandBar";
+import ZoneIndex from "@/components/map/ZoneIndex";
+import ActiveDock from "@/components/map/ActiveDock";
+import Dossier from "@/components/map/Dossier";
 import styles from "./page.module.css";
-import type { ZonaPreview, LocalDetalleResponse, Theme } from "@/lib/types";
+import type { ZonaPreview, LocalDetalleResponse } from "@/lib/types";
 import { api } from "@/lib/api";
 
-const MapView = dynamic(() => import("@/components/MapView"), {
-  ssr: false,
-  loading: () => <div className={styles.mapPlaceholder}><div className="spinner" /></div>,
-});
-
-const EXAMPLES = [
-  "Restaurante de tapas con terraza",
-  "Estudio de tatuajes en zona alternativa",
-  "Tienda de ropa vintage",
-  "Centro de estética y bienestar",
-];
-
-function useTheme(): [Theme, (t: Theme) => void] {
-  const [theme, setThemeState] = useState<Theme>("dark");
-
-  useEffect(() => {
-    const stored = localStorage.getItem("georetail-theme") as Theme | null;
-    if (stored === "light" || stored === "dark") {
-      setThemeState(stored);
-      document.documentElement.setAttribute("data-theme", stored);
-    }
-  }, []);
-
-  const setTheme = useCallback((t: Theme) => {
-    setThemeState(t);
-    document.documentElement.setAttribute("data-theme", t);
-    localStorage.setItem("georetail-theme", t);
-  }, []);
-
-  return [theme, setTheme];
-}
-
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 1023px)");
-    setIsMobile(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-  return isMobile;
-}
+const BCN_CENTER = { lat: 41.3851, lng: 2.1734, zoom: 13 };
 
 export default function AppPage() {
-  const isMobile = useIsMobile();
-  const [theme, setTheme] = useTheme();
+  const [started, setStarted]             = useState(false);
+  const [searchQuery, setSearchQuery]     = useState("");
+  const [sessionId, setSessionId]         = useState("");
+  const [zonas, setZonas]                 = useState<ZonaPreview[]>([]);
+  const [loading, setLoading]             = useState(false);
+  const [errorMsg, setErrorMsg]           = useState<string | null>(null);
 
-  const [started, setStarted]               = useState(false);
-  const [sessionId, setSessionId]           = useState("");
-  const [zonas, setZonas]                   = useState<ZonaPreview[]>([]);
-  const [selectedZona, setSelectedZona]     = useState<ZonaPreview | null>(null);
-  const [detalle, setDetalle]               = useState<LocalDetalleResponse | null>(null);
+  const [activeId, setActiveId]           = useState<string | null>(null);
+  const [detalle, setDetalle]             = useState<LocalDetalleResponse | null>(null);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
-  const [searchQuery, setSearchQuery]       = useState("");
-  const [showDetail, setShowDetail]         = useState(false);
-  const [hasSearched, setHasSearched]       = useState(false);
-  const [searchBoxOpen, setSearchBoxOpen]   = useState(false);
+  const [dossierOpen, setDossierOpen]     = useState(false);
 
-  const handleOnboardingSubmit = useCallback((query: string) => {
-    setSearchQuery(query);
-    setStarted(true);
+  const [basemap, setBasemap]             = useState<BasemapId>("dark");
+  const [coords, setCoords]               = useState(BCN_CENTER);
+
+  const activeZone = useMemo(
+    () => zonas.find((z) => z.zona_id === activeId) ?? null,
+    [zonas, activeId],
+  );
+
+  const fetchZonas = useCallback(
+    async (query: string) => {
+      if (!query.trim()) return;
+      setLoading(true);
+      setErrorMsg(null);
+      try {
+        const res = await api.buscar({ descripcion: query, session_id: sessionId || undefined });
+        if (res.estado === "ok" && Array.isArray(res.zonas)) {
+          setZonas(res.zonas);
+          if (res.session_id) setSessionId(res.session_id);
+          if (res.zonas.length > 0) setActiveId(res.zonas[0].zona_id);
+        } else if (res.estado === "cuestionario") {
+          setErrorMsg("El motor necesita más contexto. Por ahora, añade detalles a tu prompt.");
+        } else if (res.estado === "error_tipo_negocio") {
+          setErrorMsg("No reconocemos el tipo de negocio. Intenta con una descripción distinta.");
+        } else if (res.estado === "inviable_legal") {
+          setErrorMsg("La combinación negocio + zona no es viable legalmente.");
+        }
+      } catch (e) {
+        console.error("api.buscar error:", e);
+        setErrorMsg("Error conectando con el motor. ¿Backend corriendo en :8000?");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [sessionId],
+  );
+
+  // Onboarding submit -> start + first search
+  const handleOnboardingSubmit = useCallback(
+    (q: string) => {
+      setSearchQuery(q);
+      setStarted(true);
+      void fetchZonas(q);
+    },
+    [fetchZonas],
+  );
+
+  // Refine search: append text and re-query
+  const handleRefine = useCallback(
+    (text: string) => {
+      const merged = [searchQuery, text].filter(Boolean).join(" · ").slice(0, 240);
+      setSearchQuery(merged);
+      void fetchZonas(merged);
+    },
+    [searchQuery, fetchZonas],
+  );
+
+  const handleRestart = useCallback(() => {
+    setStarted(false);
+    setSearchQuery("");
+    setZonas([]);
+    setActiveId(null);
+    setDetalle(null);
+    setDossierOpen(false);
+    setErrorMsg(null);
   }, []);
 
-  const handleResults = useCallback((newZonas: ZonaPreview[], sid: string) => {
-    setZonas(newZonas);
-    setSessionId(sid);
-    setSelectedZona(null);
-    setDetalle(null);
-    setShowDetail(false);
-    setHasSearched(true);
-  }, []);
+  // Dock navigation (prev / next)
+  const handleNav = useCallback(
+    (dir: -1 | 1) => {
+      if (zonas.length === 0) return;
+      const idx = zonas.findIndex((z) => z.zona_id === activeId);
+      const nextIdx = ((idx < 0 ? 0 : idx) + dir + zonas.length) % zonas.length;
+      setActiveId(zonas[nextIdx].zona_id);
+    },
+    [zonas, activeId],
+  );
 
-  const handleZonaClick = useCallback(async (zona: ZonaPreview) => {
-    setSelectedZona(zona);
-    setDetalle(null);
+  // Fetch detalle lazily when dossier opens
+  useEffect(() => {
+    if (!dossierOpen || !activeId) return;
+    // Refetch if we don't have detalle for the current zone
+    if (detalle?.zona.zona_id === activeId) return;
+    let cancelled = false;
     setLoadingDetalle(true);
-    setShowDetail(true);
-    try {
-      const data = await api.localDetalle(zona.zona_id, sessionId);
-      setDetalle(data);
-    } catch (e) {
-      console.error("Error cargando detalle:", e);
-    } finally {
-      setLoadingDetalle(false);
-    }
-  }, [sessionId]);
-
-  const handleClosePanel = useCallback(() => {
-    setSelectedZona(null);
     setDetalle(null);
-    setShowDetail(false);
-  }, []);
+    api
+      .localDetalle(activeId, sessionId)
+      .then((d) => {
+        if (!cancelled) setDetalle(d);
+      })
+      .catch((e) => {
+        console.error("api.localDetalle error:", e);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingDetalle(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dossierOpen, activeId, sessionId, detalle]);
 
-  // Pre-stage: Signal onboarding. Al enviar, pasa la query al SearchBox.
+  // Onboarding stage
   if (!started) {
     return <Onboarding onSubmit={handleOnboardingSubmit} />;
   }
 
   return (
     <div className={styles.app}>
+      <Statusbar
+        query={searchQuery}
+        numZonas={zonas.length}
+        onRestart={handleRestart}
+      />
 
-      {/* ── Full-screen map ── */}
-      <main className={styles.mapContainer}>
-        <MapView
+      <main className={styles.canvas}>
+        <MapCanvas
           zonas={zonas}
-          selectedId={selectedZona?.zona_id}
-          onZonaClick={handleZonaClick}
-          theme={theme}
-          onThemeChange={setTheme}
+          activeId={activeId}
+          basemap={basemap}
+          onPick={(id) => setActiveId(id)}
+          onMove={(c) => setCoords(c)}
         />
 
-        {/* ── Floating overlay: search + zone list ── */}
-        <div className={styles.floatingOverlay}>
+        <div className={styles.scrim} aria-hidden="true" />
 
-          {/* Search ball */}
-          <SearchBox
-            onResults={handleResults}
-            sessionId={sessionId}
-            externalQuery={searchQuery}
-            onQueryUsed={() => setSearchQuery("")}
-            examples={EXAMPLES}
-            hasResults={zonas.length > 0}
-            onOpenChange={setSearchBoxOpen}
-          />
+        <HudCoord lat={coords.lat} lng={coords.lng} zoom={coords.zoom} label="BARCELONA" />
 
-          {/* Search hint — shown when no search done yet and box is closed */}
-          {!hasSearched && !searchBoxOpen && (
-            <div className={styles.searchHint}>
-              <div className={styles.searchHintBubble}>
-                <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                  <circle cx="6" cy="6" r="4.5"/>
-                  <path d="M9.5 9.5L12.5 12.5"/>
-                </svg>
-                Indica tu negocio en el buscador
-              </div>
-            </div>
-          )}
+        <CommandBar onRefine={handleRefine} loading={loading} />
 
-          {/* Zone list — desktop floating panel */}
-          {zonas.length > 0 && !isMobile && (
-            <ZoneList
-              zonas={zonas}
-              selectedId={selectedZona?.zona_id}
-              onSelect={handleZonaClick}
-              asFloatingPanel
-            />
-          )}
-        </div>
+        <ZoneIndex
+          zonas={zonas}
+          activeId={activeId}
+          onPick={(id) => setActiveId(id)}
+        />
 
-        {/* Desktop: detail panel overlays map from the right */}
-        {!isMobile && showDetail && selectedZona && (
-          <DetailPanel
-            zona={selectedZona}
-            detalle={detalle}
-            loading={loadingDetalle}
-            sessionId={sessionId}
-            onClose={handleClosePanel}
-          />
+        <BasemapSwitcher value={basemap} onChange={setBasemap} />
+
+        <ActiveDock
+          zone={activeZone}
+          zones={zonas}
+          dims={null}
+          loading={loading}
+          onExpand={() => setDossierOpen(true)}
+          onNav={handleNav}
+        />
+
+        <HudLegend />
+
+        {errorMsg && (
+          <div className={styles.errorToast} role="alert">
+            <span className={styles.errorTick}>●</span>
+            {errorMsg}
+          </div>
         )}
       </main>
 
-      {/* ── Mobile: bottom sheet zone list ── */}
-      {isMobile && zonas.length > 0 && !showDetail && (
-        <ZoneList
-          zonas={zonas}
-          selectedId={selectedZona?.zona_id}
-          onSelect={handleZonaClick}
-          asBottomSheet
-        />
-      )}
-
-      {/* ── Mobile: fullscreen detail panel ── */}
-      {isMobile && showDetail && selectedZona && (
-        <DetailPanel
-          zona={selectedZona}
+      {dossierOpen && activeZone && (
+        <Dossier
+          zone={activeZone}
           detalle={detalle}
           loading={loadingDetalle}
-          sessionId={sessionId}
-          onClose={handleClosePanel}
+          onClose={() => setDossierOpen(false)}
         />
       )}
     </div>

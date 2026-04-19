@@ -1,0 +1,33 @@
+.coord {
+  position: absolute;
+  top: 72px;
+  left: 20px;
+  z-index: 18;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1.6;
+  background: rgba(9, 6, 15, 0.7);
+  padding: 8px 12px;
+  border-left: 2px solid var(--accent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-variant-numeric: tabular-nums;
+}
+
+.coord strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .coord {
+    top: 54px;
+    left: 12px;
+    font-size: 9px;
+    padding: 6px 10px;
+  }
+}

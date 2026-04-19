@@ -1,0 +1,41 @@
+.legend {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 20;
+  display: flex;
+  gap: 14px;
+  padding: 8px 12px;
+  background: rgba(9, 6, 15, 0.82);
+  border: 1px solid var(--border-hover);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  box-shadow: var(--shadow-sm);
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+.active {
+  color: var(--accent-light);
+}
+
+@media (max-width: 900px) {
+  .legend {
+    gap: 10px;
+    font-size: 9px;
+    padding: 6px 10px;
+  }
+}

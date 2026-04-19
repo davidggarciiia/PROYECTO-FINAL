@@ -102,6 +102,70 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 .slideInRight { animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
 .fadeUp { animation: kp-fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
+/* ── KnowPoints markers (inyectados via Leaflet divIcon HTML) ─── */
+.kp-mk {
+  transform: translate(-50%, -100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  position: relative;
+}
+.kp-mk-ring {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  opacity: 0;
+  pointer-events: none;
+}
+.kp-mk.is-active .kp-mk-ring {
+  animation: kp-marker-ring 1.6s ease-out infinite;
+  opacity: 0.7;
+}
+.kp-mk-core {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: -0.02em;
+  min-width: 36px; height: 36px;
+  padding: 0 9px;
+  border-radius: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  color: var(--text);
+  border: 1.5px solid var(--text);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  transition: transform 0.15s, background 0.15s, border-color 0.15s, color 0.15s;
+  position: relative;
+  z-index: 1;
+}
+.kp-mk-tail { width: 2px; height: 14px; background: var(--text); }
+.kp-mk-dot  { width: 8px; height: 8px; border-radius: 50%; background: var(--text); margin-top: -3px; }
+
+.kp-mk.hi  .kp-mk-core { border-color: var(--green);  color: var(--green); }
+.kp-mk.hi  .kp-mk-tail, .kp-mk.hi  .kp-mk-dot { background: var(--green); }
+.kp-mk.mid .kp-mk-core { border-color: var(--yellow); color: var(--yellow); }
+.kp-mk.mid .kp-mk-tail, .kp-mk.mid .kp-mk-dot { background: var(--yellow); }
+.kp-mk.lo  .kp-mk-core { border-color: var(--red);    color: var(--red); }
+.kp-mk.lo  .kp-mk-tail, .kp-mk.lo  .kp-mk-dot { background: var(--red); }
+
+.kp-mk:hover .kp-mk-core { transform: scale(1.08); }
+.kp-mk.is-active .kp-mk-core {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  transform: scale(1.15);
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+.kp-mk.is-active .kp-mk-tail,
+.kp-mk.is-active .kp-mk-dot { background: var(--accent); }
+
 /* ── Skeleton loader ──────────────────────────────────────────── */
 .skeleton {
   background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);

@@ -1,0 +1,11 @@
+/* ══════════════════════════════════════════════════════════════
+   MapCanvas — pure map layer.
+   Los estilos de los markers (.kp-mk*) viven en globals.css
+   porque se inyectan via Leaflet divIcon HTML (necesitan ser globales).
+   ══════════════════════════════════════════════════════════════ */
+
+.map {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
