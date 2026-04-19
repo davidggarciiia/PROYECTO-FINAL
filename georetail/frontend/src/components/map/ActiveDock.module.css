@@ -246,7 +246,7 @@
 .actionPrimary:hover:not(:disabled) {
   background: var(--accent-light);
   border-color: var(--accent-light);
-  box-shadow: 0 0 18px var(--accent-glow);
+  box-shadow: 0 0 36px var(--accent-glow);
   transform: translateY(-1px);
 }
 

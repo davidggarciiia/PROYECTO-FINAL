@@ -134,5 +134,5 @@
 
 @keyframes hintPulse {
   0%, 100% { box-shadow: var(--shadow); }
-  50%       { box-shadow: 0 0 0 3px rgba(99,102,241,0.12), var(--shadow); }
+  50%       { box-shadow: 0 0 0 3px var(--accent-weak), var(--shadow); }
 }

@@ -51,12 +51,13 @@
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 
 .go:hover:not(:disabled) {
   background: var(--accent-light);
-  box-shadow: 0 0 14px var(--accent-glow);
+  box-shadow: 0 0 24px var(--accent-glow);
+  transform: translateY(-1px);
 }
 
 .go:disabled {

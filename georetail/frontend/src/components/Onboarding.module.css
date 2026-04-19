@@ -213,7 +213,7 @@
 }
 .btnSignal:hover:not(:disabled) {
   background: var(--accent-light);
-  box-shadow: 0 0 24px var(--accent-glow);
+  box-shadow: 0 0 36px var(--accent-glow);
   transform: translateY(-1px);
 }
 .btnSignal:disabled { opacity: 0.4; cursor: not-allowed; }

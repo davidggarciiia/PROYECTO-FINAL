@@ -89,7 +89,7 @@
 
 .primary:hover {
   background: var(--accent-light);
-  box-shadow: 0 0 24px var(--accent-glow);
+  box-shadow: 0 0 36px var(--accent-glow);
   transform: translateY(-1px);
   color: #fff;
 }

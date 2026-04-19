@@ -79,10 +79,10 @@ export default function ActiveDock({ zone, zones, dims, loading, onExpand, onNav
 
       <div className={styles.actions}>
         <button className={styles.actionGhost} type="button" disabled>
-          ⎘ Guardar
+          Guardar
         </button>
         <button className={styles.actionGhost} type="button" disabled>
-          ↗ Exportar
+          Exportar
         </button>
         <button
           className={styles.actionPrimary}
