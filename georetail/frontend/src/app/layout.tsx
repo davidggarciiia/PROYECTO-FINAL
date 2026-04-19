@@ -4,13 +4,15 @@ import "./globals.css";
 
 const inter = Inter({
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
   variable: "--font-inter",
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "GeoRetail — Ubica tu negocio en Barcelona",
-  description: "Análisis de viabilidad de ubicaciones comerciales en tiempo real",
+  title: "KnowPoints — Análisis de ubicación · Barcelona",
+  description:
+    "El análisis que haría una consultora de retail — en tiempo real, desde el navegador.",
 };
 
 export const viewport: Viewport = {
@@ -23,13 +25,6 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" className={inter.variable}>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('georetail-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();`,
-          }}
-        />
-      </head>
       <body>{children}</body>
     </html>
   );

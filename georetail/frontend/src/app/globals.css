@@ -1,205 +1,81 @@
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* ════════════════════════════════════════════════════════════════
+   globals.css — entry de estilos globales.
+   Importa los tokens de marca KnowPoints y añade overrides
+   específicos de la app (layout, Leaflet, animaciones legacy).
+   ════════════════════════════════════════════════════════════════ */
 
-/* ── Leaflet tooltip overrides ─────────────────────────────────────────────── */
-.leaflet-tooltip {
-  background: rgba(13,18,32,0.95) !important;
-  border: 1px solid rgba(255,255,255,0.1) !important;
-  border-radius: 10px !important;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
-  padding: 10px 12px !important;
-  color: #F1F5F9 !important;
-  backdrop-filter: blur(12px);
-  font-size: 13px;
-}
-.leaflet-tooltip-top::before {
-  border-top-color: rgba(255,255,255,0.1) !important;
-}
+@import '../styles/tokens.css';
 
+/* ── Layout-specific vars (no son de marca) ───────────────────── */
 :root {
-  /* Colors */
-  --bg:           #101518;
-  --surface:      #151C20;
-  --surface-2:    #1B2429;
-  --surface-3:    #243037;
-  --border:       rgba(255,255,255,0.08);
-  --border-hover: rgba(255,255,255,0.16);
-
-  /* Text */
-  --text:         #F3F1EB;
-  --text-muted:   #C1C7C3;
-  --text-subtle:  #82908B;
-
-  /* Accent — Indigo */
-  --accent:       #2C7A7B;
-  --accent-light: #39908F;
-  --accent-glow:  rgba(44,122,123,0.14);
-
-  /* Score colors */
-  --green:        #2A8C73;
-  --green-dim:    rgba(42,140,115,0.12);
-  --green-border: rgba(42,140,115,0.24);
-  --yellow:       #BC873E;
-  --yellow-dim:   rgba(188,135,62,0.14);
-  --yellow-border:rgba(188,135,62,0.24);
-  --red:          #B1534A;
-  --red-dim:      rgba(177,83,74,0.14);
-  --red-border:   rgba(177,83,74,0.22);
-
-  /* Layout */
-  --sidebar-w:    380px;
-  --panel-w:      440px;
-  --radius:       12px;
-  --radius-sm:    8px;
-  --radius-xs:    6px;
-  --shadow-sm:    0 1px 3px rgba(0,0,0,0.24);
-  --shadow:       0 8px 28px rgba(0,0,0,0.22);
-  --shadow-lg:    0 18px 48px rgba(0,0,0,0.24);
-
-  /* Typography */
-  --font: var(--font-inter, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  --sidebar-w: 380px;
+  --panel-w:   440px;
+  --font:      var(--font-inter, var(--font-sans));
 }
 
-/* ── Light mode variables ─────────────────────────────────────────────────── */
-[data-theme="light"] {
-  --bg:           #F2EEE6;
-  --surface:      #FBF8F2;
-  --surface-2:    #F4EFE6;
-  --surface-3:    #E8E1D5;
-  --border:       rgba(50,56,60,0.10);
-  --border-hover: rgba(50,56,60,0.18);
-  --text:         #172126;
-  --text-muted:   #55656B;
-  --text-subtle:  #7A8783;
-  --accent:       #1F5F68;
-  --accent-light: #2C7A7B;
-  --accent-glow:  rgba(31,95,104,0.10);
-  --green-dim:    rgba(42,140,115,0.10);
-  --green-border: rgba(42,140,115,0.22);
-  --yellow-dim:   rgba(188,135,62,0.10);
-  --yellow-border:rgba(188,135,62,0.22);
-  --red-dim:      rgba(177,83,74,0.10);
-  --red-border:   rgba(177,83,74,0.22);
-  --shadow-sm:    0 1px 3px rgba(24,28,30,0.08);
-  --shadow:       0 8px 24px rgba(24,28,30,0.08);
-  --shadow-lg:    0 18px 40px rgba(24,28,30,0.10);
-}
+*, *::before, *::after { margin: 0; padding: 0; }
 
 html, body {
   height: 100%;
-  background: var(--bg);
-  color: var(--text);
   font-family: var(--font);
-  font-size: 14px;
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
 }
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 4px; }
+/* ── Leaflet tooltip overrides (dark, KnowPoints-aware) ───────── */
+.leaflet-tooltip {
+  background: rgba(18,12,28,0.95) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: var(--shadow) !important;
+  padding: 10px 12px !important;
+  color: var(--text) !important;
+  backdrop-filter: blur(12px);
+  font-size: var(--fs-sm);
+}
+.leaflet-tooltip-top::before {
+  border-top-color: var(--border) !important;
+}
+
+/* ── Leaflet container + controls ─────────────────────────────── */
+.leaflet-container {
+  background: #0D0818 !important;
+  font-family: var(--font) !important;
+}
+.leaflet-control-zoom {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-sm) !important;
+  overflow: hidden;
+}
+.leaflet-control-zoom a {
+  background: transparent !important;
+  color: var(--text-muted) !important;
+  border-color: var(--border) !important;
+  width: 30px !important; height: 30px !important; line-height: 30px !important;
+  font-size: 16px !important;
+}
+.leaflet-control-zoom a:hover {
+  background: var(--surface-3) !important;
+  color: var(--text) !important;
+}
+.leaflet-control-attribution {
+  background: rgba(9,6,15,0.8) !important;
+  color: var(--text-subtle) !important;
+  font-size: 10px !important;
+  backdrop-filter: blur(8px);
+}
+.leaflet-control-attribution a { color: var(--text-muted) !important; }
+
+/* ── Scrollbar ────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
 
-/* ── Leaflet light mode overrides ── */
-[data-theme="light"] .leaflet-tooltip {
-  background: rgba(255,255,255,0.97) !important;
-  border: 1px solid rgba(0,0,0,0.10) !important;
-  color: #0F172A !important;
-}
-[data-theme="light"] .leaflet-tooltip-top::before {
-  border-top-color: rgba(0,0,0,0.10) !important;
-}
-[data-theme="light"] .leaflet-container {
-  background: #F8FAFC !important;
-}
-[data-theme="light"] .leaflet-control-attribution {
-  background: rgba(248,250,252,0.90) !important;
-  color: #64748B !important;
-}
-
-/* ── Leaflet dark theme ── */
-.leaflet-container { background: #0D1117 !important; font-family: var(--font) !important; }
-.leaflet-control-zoom { background: var(--surface-2) !important; border: 1px solid var(--border) !important; border-radius: var(--radius-sm) !important; overflow: hidden; }
-.leaflet-control-zoom a { background: transparent !important; color: var(--text-muted) !important; border-color: var(--border) !important; width: 30px !important; height: 30px !important; line-height: 30px !important; font-size: 16px !important; }
-.leaflet-control-zoom a:hover { background: var(--surface-3) !important; color: var(--text) !important; }
-.leaflet-control-attribution { background: rgba(8,12,20,0.8) !important; color: var(--text-subtle) !important; font-size: 10px !important; backdrop-filter: blur(8px); }
-.leaflet-control-attribution a { color: var(--text-muted) !important; }
-
-/* ── Buttons ── */
+/* ── Buttons (alias legacy) ───────────────────────────────────── */
 button { cursor: pointer; border: none; background: none; font-family: inherit; font-size: inherit; color: inherit; }
 
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 9px 18px;
-  border-radius: var(--radius-sm);
-  font-weight: 500;
-  font-size: 13px;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-.btn-primary {
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 6px 16px rgba(31,95,104,0.18);
-}
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-light);
-  box-shadow: 0 10px 24px rgba(31,95,104,0.22);
-  transform: translateY(-1px);
-}
-.btn-primary:active { transform: translateY(0); }
-.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
-
-.btn-ghost {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-}
-.btn-ghost:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface-2); }
-
-/* ── Inputs ── */
-input, textarea {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: var(--radius-sm);
-  padding: 10px 14px;
-  font-size: 14px;
-  font-family: inherit;
-  width: 100%;
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-input:focus, textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
-}
-input::placeholder, textarea::placeholder { color: var(--text-subtle); }
-
-/* ── Score badges ── */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 3px 10px;
-  border-radius: 100px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-}
-.badge-verde    { background: var(--green-dim);  color: var(--green);  border: 1px solid var(--green-border); }
-.badge-amarillo { background: var(--yellow-dim); color: var(--yellow); border: 1px solid var(--yellow-border); }
-.badge-rojo     { background: var(--red-dim);    color: var(--red);    border: 1px solid var(--red-border); }
-
-/* ── Animations ── */
-@keyframes markerRing {
-  0% { transform: scale(1); opacity: 0.7; }
-  100% { transform: scale(1.7); opacity: 0; }
-}
-
+/* ── Animaciones legacy usadas por componentes existentes ─────── */
+/* (kp-fade-up, kp-pulse, kp-shimmer, kp-marker-ring vienen en tokens.css) */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slideInRight { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
@@ -207,6 +83,10 @@ input::placeholder, textarea::placeholder { color: var(--text-subtle); }
 @keyframes shimmer {
   0% { background-position: -400px 0; }
   100% { background-position: 400px 0; }
+}
+@keyframes markerRing {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  100% { transform: scale(1.7); opacity: 0; }
 }
 
 .spinner {
@@ -220,8 +100,9 @@ input::placeholder, textarea::placeholder { color: var(--text-subtle); }
 
 .fadeIn { animation: fadeIn 0.2s ease; }
 .slideInRight { animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+.fadeUp { animation: kp-fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
-/* ── Skeleton loader ── */
+/* ── Skeleton loader ──────────────────────────────────────────── */
 .skeleton {
   background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
   background-size: 400px 100%;

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="48" viewBox="0 0 200 48" fill="none">
+  <defs>
+    <linearGradient id="kpGradMark" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6B21A8"></stop>
+      <stop offset="100%" stop-color="#C026D3"></stop>
+    </linearGradient>
+  </defs>
+  <g transform="translate(4 4) scale(0.5)">
+    <rect x="4" y="8" width="26" height="58" rx="4" fill="url(#kpGradMark)"></rect>
+    <rect x="10" y="15" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+    <rect x="19" y="15" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+    <rect x="10" y="25" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+    <rect x="19" y="25" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+    <rect x="10" y="35" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+    <rect x="19" y="35" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+    <rect x="10" y="45" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+    <rect x="19" y="45" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+    <path d="M30 37 L56 10" stroke="url(#kpGradMark)" stroke-width="9" stroke-linecap="round"></path>
+    <path d="M30 43 L50 62" stroke="url(#kpGradMark)" stroke-width="9" stroke-linecap="round"></path>
+    <circle cx="62" cy="46" r="13" fill="url(#kpGradMark)"></circle>
+    <circle cx="62" cy="46" r="6" fill="#09060F"></circle>
+    <path d="M62 59 L58 72" stroke="url(#kpGradMark)" stroke-width="7" stroke-linecap="round"></path>
+  </g>
+  <text x="50" y="32" font-family="Inter, sans-serif" font-weight="700" font-size="20" fill="#F3EEFF" letter-spacing="-0.02em">KnowPoints</text>
+</svg>

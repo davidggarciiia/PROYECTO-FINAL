@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" fill="none">
+  <defs>
+    <linearGradient id="kpGrad" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6B21A8"></stop>
+      <stop offset="100%" stop-color="#C026D3"></stop>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="8" width="26" height="58" rx="4" fill="url(#kpGrad)"></rect>
+  <rect x="10" y="15" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+  <rect x="19" y="15" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+  <rect x="10" y="25" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+  <rect x="19" y="25" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+  <rect x="10" y="35" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+  <rect x="19" y="35" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+  <rect x="10" y="45" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+  <rect x="19" y="45" width="6" height="6" rx="1" fill="white" opacity="0.75"></rect>
+  <path d="M30 37 L56 10" stroke="url(#kpGrad)" stroke-width="9" stroke-linecap="round"></path>
+  <path d="M30 43 L50 62" stroke="url(#kpGrad)" stroke-width="9" stroke-linecap="round"></path>
+  <circle cx="62" cy="46" r="13" fill="url(#kpGrad)"></circle>
+  <circle cx="62" cy="46" r="6" fill="#09060F"></circle>
+  <path d="M62 59 L58 72" stroke="url(#kpGrad)" stroke-width="7" stroke-linecap="round"></path>
+</svg>
