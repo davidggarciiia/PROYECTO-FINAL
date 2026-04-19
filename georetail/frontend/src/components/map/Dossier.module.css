@@ -300,6 +300,41 @@
 }
 .dimCellHint { opacity: 0.8; }
 
+.dimCellWeight {
+  color: var(--accent-light);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+/* ── Drawer: weight pill + weight explain ─────────────────────── */
+.drawerWeightPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-weak);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-light);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  margin-left: 4px;
+}
+
+.drawerWeightExplain {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: var(--accent-weak);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+}
+.drawerWeightExplain .drawerSectionLabel {
+  margin-bottom: 6px;
+  color: var(--accent-light);
+}
+
 .dimDrawer {
   padding: 16px;
   background: var(--surface);

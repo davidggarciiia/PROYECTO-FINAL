@@ -315,6 +315,11 @@ class ZonaDetalle(BaseModel):
     impacto_modelo_por_dimension: dict[str, ImpactoModeloDimension] = Field(default_factory=dict)
     resumen_global_llm: Optional[str] = None
 
+    # Pesos del modelo manual_v2 para el sector clasificado de esta busqueda.
+    # Permite al frontend mostrar "esta dimension pesa X% para tu idea".
+    sector_codigo:      Optional[str] = None
+    pesos_dimensiones:  dict[str, float] = Field(default_factory=dict)
+
 
 class LocalDetalle(BaseModel):
     """Datos completos para el panel de detalle de zona."""

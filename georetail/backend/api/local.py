@@ -229,6 +229,31 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
             "explicaciones_dimensiones": {},
         }
 
+    # ── Pesos del modelo para esta idea (sector clasificado) ──────────────────
+    # Permite al frontend mostrar "esta dimension pesa X% para tu idea".
+    pesos_dimensiones: dict[str, float] = {}
+    try:
+        from db.conexion import get_db
+        async with get_db() as conn:
+            sec_row = await conn.fetchrow(
+                "SELECT * FROM sectores WHERE codigo=$1", sector,
+            )
+        if sec_row:
+            sec = dict(sec_row)
+            pesos_dimensiones = {
+                "flujo_peatonal": float(sec.get("peso_flujo")    or 0.25),
+                "demografia":     float(sec.get("peso_demo")     or 0.20),
+                "competencia":    float(sec.get("peso_competencia") or 0.15),
+                "transporte":     float(sec.get("peso_transporte") or 0.15),
+                "entorno":        float(sec.get("peso_entorno")  or 0.10),
+                "dinamismo":      float(sec.get("peso_dinamismo") or 0.05),
+                "seguridad":      float(sec.get("peso_seguridad") or 0.05),
+                "turismo":        float(sec.get("peso_turismo")  or 0.05),
+                "precio_alquiler": float(sec.get("peso_precio")  or 0.0),
+            }
+    except Exception as exc:
+        logger.warning("No se pudieron cargar pesos del sector %s: %s", sector, exc)
+
     # ── Construir respuesta ───────────────────────────────────────────────────
     score_global = scores_data.get("score_global", zona.get("score_global", 50.0))
     prob = scores_data.get("probabilidad_supervivencia_3a")
@@ -256,6 +281,10 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
         explicaciones_dimensiones=analisis_data.get("explicaciones_dimensiones", {}),
         impacto_modelo_por_dimension=scores_data.get("impacto_modelo_por_dimension", {}),
         resumen_global_llm=analisis_data.get("resumen_global") or analisis_data.get("texto"),
+
+        # Pesos del modelo para el sector clasificado de la busqueda.
+        sector_codigo=sector,
+        pesos_dimensiones=pesos_dimensiones,
 
         # Variables demográficas y entorno
         flujo_peatonal_dia=zona.get("flujo_peatonal_dia"),

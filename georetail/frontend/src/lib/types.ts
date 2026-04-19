@@ -172,6 +172,11 @@ export interface ZonaDetalle {
   probabilidad_supervivencia?: number;
   shap_values?: Record<string, number> | null;
   modelo_version?: string | null;
+
+  // Pesos del modelo manual_v2 para el sector clasificado de esta busqueda.
+  // El frontend los muestra por dimension ("peso 23%") + explica por que.
+  sector_codigo?: string;
+  pesos_dimensiones?: Record<string, number>;
   flujo_peatonal_dia?: { manana: number; tarde: number; noche: number };
   renta_media_hogar?: number;
   edad_media?: number;

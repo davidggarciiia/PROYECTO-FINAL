@@ -53,9 +53,36 @@ interface DrawerProps {
   dim: DimensionMeta;
   value: number | null | undefined;
   explicacion?: ExplicacionDimension;
+  peso?: number;           // 0-1, peso de esta dimensión para el sector
+  sectorCodigo?: string;   // sector clasificado ("restauracion", etc.)
 }
 
-function DimDrawer({ dim, value, explicacion }: DrawerProps) {
+/**
+ * Explica por qué una dimensión tiene el peso que tiene para este sector.
+ * No viene del LLM — es heurística estable conocida por el modelo manual_v2.
+ */
+function razonPeso(
+  dimKey: DimensionKey,
+  sectorCodigo: string | undefined,
+  peso: number,
+): string {
+  const pct = Math.round(peso * 100);
+  const sector = sectorCodigo ?? "tu negocio";
+  const altoBajo = peso >= 0.18 ? "alto" : peso >= 0.10 ? "medio" : "bajo";
+  const intros: Partial<Record<DimensionKey, string>> = {
+    flujo_peatonal: `El flujo peatonal pesa ${pct}% (${altoBajo}) para ${sector} porque el volumen de paso determina cuántos clientes ven el escaparate cada día.`,
+    demografia: `La demografía pesa ${pct}% (${altoBajo}) para ${sector} porque la renta, edad y nivel educativo marcan el público objetivo y el ticket medio posible.`,
+    competencia: `La competencia pesa ${pct}% (${altoBajo}) para ${sector} — demasiados negocios del mismo tipo cerca reducen tu cuota y presionan precios.`,
+    transporte: `El transporte pesa ${pct}% (${altoBajo}) para ${sector} porque amplía el radio de captación más allá del barrio inmediato.`,
+    seguridad: `La seguridad pesa ${pct}% (${altoBajo}) para ${sector} — importa más cuanto más dure el servicio en franja tarde-noche.`,
+    turismo: `El turismo pesa ${pct}% (${altoBajo}) para ${sector} porque el perfil estacional condiciona ingresos recurrentes vs picos.`,
+    dinamismo: `El dinamismo pesa ${pct}% (${altoBajo}) para ${sector} — una zona emergente puede hacer crecer tu local, una en declive lo hunde.`,
+    precio_alquiler: `El precio del alquiler pesa ${pct}% (${altoBajo}) para ${sector} como restricción financiera: determina el punto muerto de tu P&L.`,
+  };
+  return intros[dimKey] ?? `Esta dimensión pesa ${pct}% para ${sector}.`;
+}
+
+function DimDrawer({ dim, value, explicacion, peso, sectorCodigo }: DrawerProps) {
   const band = scoreBand(value ?? null);
   const label = bandLabel(band);
 
@@ -102,6 +129,11 @@ function DimDrawer({ dim, value, explicacion }: DrawerProps) {
             <span className={`${styles.drawerBand} ${styles[`drawerBand_${band}`]}`}>
               {label}
             </span>
+            {peso != null && peso > 0 && (
+              <span className={styles.drawerWeightPill} title="Peso de esta dimensión en el score global para tu idea">
+                {Math.round(peso * 100)}% peso
+              </span>
+            )}
           </div>
           <p className={styles.drawerSubtitleNew}>{dim.subtitle}</p>
         </div>
@@ -151,13 +183,40 @@ function DimDrawer({ dim, value, explicacion }: DrawerProps) {
               )}
             </div>
           ) : (
-            <div className={styles.drawerInterpEmpty}>
-              <p className={styles.drawerInterpText}>
-                Aún no hay interpretación IA específica para este local en esta
-                dimensión. Revisa el desglose de la derecha para ver los
-                componentes que aporta el modelo.
+            <div className={styles.drawerInterp}>
+              <p className={styles.drawerInterpLead}>
+                <strong>
+                  {band === "hi"
+                    ? `${dim.name} es un punto fuerte en esta zona.`
+                    : band === "mid"
+                    ? `${dim.name} está en un nivel aceptable.`
+                    : band === "lo"
+                    ? `${dim.name} es un punto débil a vigilar.`
+                    : "Sin datos suficientes para evaluar esta dimensión."}
+                </strong>
               </p>
-              <span className={styles.drawerInterpMuted}>Datos no disponibles</span>
+              <p className={styles.drawerInterpText}>{dim.what}</p>
+              {value != null && (
+                <p className={styles.drawerInterpText}>
+                  Score obtenido: <strong>{Math.round(value)}/100</strong>. El
+                  modelo agrega tus resultados según los pesos específicos de tu
+                  idea — revisa la sección <em>Por qué pesa así</em> para ver
+                  cuánto influye esta dimensión en el score global.
+                </p>
+              )}
+              <span className={styles.drawerInterpMuted}>
+                Interpretación IA específica no disponible — texto genérico.
+              </span>
+            </div>
+          )}
+
+          {/* ── Razonamiento del peso para esta idea ──────────────────── */}
+          {peso != null && peso > 0 && (
+            <div className={styles.drawerWeightExplain}>
+              <div className={styles.drawerSectionLabel}>Por qué pesa así</div>
+              <p className={styles.drawerInterpText}>
+                {razonPeso(dim.key, sectorCodigo, peso)}
+              </p>
             </div>
           )}
 
@@ -211,6 +270,8 @@ export default function DossierTabScore({ zone, detalle, loading }: Props) {
     detalle?.zona.explicaciones_dimensiones ??
     detalle?.zona.analisis_ia?.explicaciones_dimensiones ??
     {};
+  const pesos = detalle?.zona.pesos_dimensiones ?? {};
+  const sectorCodigo = detalle?.zona.sector_codigo;
 
   if (loading && !detalle) {
     return (
@@ -289,7 +350,13 @@ export default function DossierTabScore({ zone, detalle, loading }: Props) {
                     </div>
                     <div className={styles.dimCellFoot}>
                       <span>{dim.short}</span>
-                      <span className={styles.dimCellHint}>{dim.hint}</span>
+                      {pesos[dim.key] != null && pesos[dim.key] > 0 ? (
+                        <span className={styles.dimCellWeight}>
+                          {Math.round(pesos[dim.key] * 100)}% peso
+                        </span>
+                      ) : (
+                        <span className={styles.dimCellHint}>{dim.hint}</span>
+                      )}
                     </div>
                   </button>
                 );
@@ -301,6 +368,8 @@ export default function DossierTabScore({ zone, detalle, loading }: Props) {
                 dim={openDim}
                 value={dims[openDim.key]}
                 explicacion={explicaciones[openDim.key]}
+                peso={pesos[openDim.key]}
+                sectorCodigo={sectorCodigo}
               />
             )}
           </Fragment>
