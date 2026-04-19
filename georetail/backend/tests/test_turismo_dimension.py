@@ -212,8 +212,10 @@ def test_proximidad_playa_levanta_score_con_stocks_bajos():
     }
     s_inland  = calcular_turismo({**base_datos, "dist_playa_m": 5000})["score_turismo"]
     s_playera = calcular_turismo({**base_datos, "dist_playa_m": 150})["score_turismo"]
-    # Misma estructura, solo cambia la costa: playa debe sumar al menos 10 puntos
-    assert s_playera >= s_inland + 10.0, (
+    # Misma estructura, solo cambia la costa: playa debe sumar al menos 6 puntos.
+    # Factor de amortiguación (calibración v2) reduce el boost cuando la base
+    # ya es alta; con base baja como aquí (~19), playa aún debe aportar >=+6.
+    assert s_playera >= s_inland + 6.0, (
         f"Costa debería elevar score: inland={s_inland} vs playa={s_playera}"
     )
 

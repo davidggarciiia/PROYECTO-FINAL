@@ -191,14 +191,26 @@ def calcular_turismo(
             except (TypeError, ValueError):
                 pass
 
-        # ── Ajuste por proximidad al litoral (sustituye max() inline) ───────
+        # ── Ajuste por proximidad al litoral ────────────────────────────────
+        # Calibración v2 (post validación Open Data BCN): la versión anterior
+        # (+12 a <300m) sobreestimaba Barceloneta ~50 puntos vs ground truth
+        # oficial. La playa sigue contribuyendo (es muy turística en BCN),
+        # pero el airbnb/hotel density ya captura buena parte del efecto
+        # cuando las stocks existen. El boost fuerte se preserva en el
+        # fallback path (líneas 135-141) para zonas sin stocks donde la
+        # proximidad al mar es el único proxy disponible.
+        # Factor de amortiguación: cuanto más alta la base de stocks,
+        # menor contribución relativa del boost de playa (evita double-count).
         if dist_playa_f is not None:
+            # Factor [0.4, 1.0]: cuanto más alta la base (0-100), más bajo
+            # (base=0 → factor=1.0, base=100 → factor=0.4)
+            factor_amortiguado = 1.0 - 0.6 * (base / 100.0)
             if dist_playa_f < 300:
-                score += 12.0
+                score += 10.0 * factor_amortiguado   # 4.0-10.0 según base
             elif dist_playa_f < 700:
-                score += 7.0
+                score += 5.0 * factor_amortiguado    # 2.0-5.0
             elif dist_playa_f < 1500:
-                score += 3.0
+                score += 2.0 * factor_amortiguado    # 0.8-2.0
 
         # ── Ajuste por proximidad a landmark turístico real (OSM+Wikidata) ──
         # Se aplica DESPUÉS del ajuste de playa para que los efectos compongan
