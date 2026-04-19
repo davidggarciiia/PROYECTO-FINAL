@@ -46,9 +46,22 @@ export default function AppPage() {
       try {
         const res = await api.buscar({ descripcion: query, session_id: sessionId || undefined });
         if (res.estado === "ok" && Array.isArray(res.zonas)) {
-          setZonas(res.zonas);
+          // API returns ZonaResumen (alquiler_estimado/m2_disponibles); HUD expects ZonaPreview (alquiler_mensual/m2)
+          const adapted: ZonaPreview[] = res.zonas.map((z) => ({
+            zona_id: z.zona_id,
+            nombre: z.nombre,
+            barrio: z.barrio,
+            distrito: z.distrito,
+            lat: z.lat,
+            lng: z.lng,
+            score_global: z.score_global,
+            m2: z.m2_disponibles,
+            alquiler_mensual: z.alquiler_estimado,
+            color: z.color,
+          }));
+          setZonas(adapted);
           if (res.session_id) setSessionId(res.session_id);
-          if (res.zonas.length > 0) setActiveId(res.zonas[0].zona_id);
+          if (adapted.length > 0) setActiveId(adapted[0].zona_id);
         } else if (res.estado === "cuestionario") {
           setErrorMsg("El motor necesita más contexto. Por ahora, añade detalles a tu prompt.");
         } else if (res.estado === "error_tipo_negocio") {
