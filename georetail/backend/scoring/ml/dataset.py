@@ -361,7 +361,7 @@ async def _construir_features_historicas(
                 vz.personas_solas,
                 vz.renta_media_uc,
                 vz.renta_mediana_uc,
-                vz.score_dinamismo_zona,
+                dz.score_dinamismo AS score_dinamismo_zona,
                 vz.ratio_apertura_cierre_1a,
                 vz.tasa_supervivencia_3a,
                 vz.renta_variacion_3a,
@@ -388,6 +388,11 @@ async def _construir_features_historicas(
             FROM input i
             JOIN v_variables_zona vz ON vz.zona_id = i.zone_id AND vz.fecha <= i.fecha_ref
             JOIN zonas z ON z.id = vz.zona_id
+            LEFT JOIN LATERAL (
+                SELECT score_dinamismo FROM v_dinamismo_zona
+                WHERE zona_id = i.zone_id
+                ORDER BY periodo DESC LIMIT 1
+            ) dz ON TRUE
             ORDER BY i.idx, vz.fecha DESC
         """
 
@@ -656,7 +661,7 @@ async def _construir_features_historicas_detalladas(
                 vz.personas_solas,
                 vz.renta_media_uc,
                 vz.renta_mediana_uc,
-                vz.score_dinamismo_zona,
+                dz.score_dinamismo AS score_dinamismo_zona,
                 vz.ratio_apertura_cierre_1a,
                 vz.tasa_supervivencia_3a,
                 vz.renta_variacion_3a,
@@ -683,6 +688,11 @@ async def _construir_features_historicas_detalladas(
             FROM input i
             JOIN v_variables_zona vz ON vz.zona_id = i.zone_id AND vz.fecha <= i.fecha_ref
             JOIN zonas z ON z.id = vz.zona_id
+            LEFT JOIN LATERAL (
+                SELECT score_dinamismo FROM v_dinamismo_zona
+                WHERE zona_id = i.zone_id
+                ORDER BY periodo DESC LIMIT 1
+            ) dz ON TRUE
             ORDER BY i.idx, vz.fecha DESC
         """
 
