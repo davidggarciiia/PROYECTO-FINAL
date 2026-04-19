@@ -362,10 +362,10 @@ async def _construir_features_historicas(
                 vz.renta_media_uc,
                 vz.renta_mediana_uc,
                 dz.score_dinamismo AS score_dinamismo_zona,
-                vz.ratio_apertura_cierre_1a,
-                vz.tasa_supervivencia_3a,
-                vz.renta_variacion_3a,
-                vz.hhi_sectorial,
+                dz.ratio_apertura_cierre_1a,
+                dz.tasa_supervivencia_3a,
+                dz.renta_variacion_3a,
+                dz.hhi_sectorial,
                 vz.seasonality_summer_lift,
                 vz.seasonality_christmas_lift,
                 vz.seasonality_rebajas_lift,
@@ -389,7 +389,13 @@ async def _construir_features_historicas(
             JOIN v_variables_zona vz ON vz.zona_id = i.zone_id AND vz.fecha <= i.fecha_ref
             JOIN zonas z ON z.id = vz.zona_id
             LEFT JOIN LATERAL (
-                SELECT score_dinamismo FROM v_dinamismo_zona
+                SELECT
+                    score_dinamismo,
+                    ratio_apertura_cierre_1a,
+                    tasa_supervivencia_3a,
+                    renta_variacion_3a,
+                    hhi_sectorial
+                FROM v_dinamismo_zona
                 WHERE zona_id = i.zone_id
                 ORDER BY periodo DESC LIMIT 1
             ) dz ON TRUE
@@ -662,10 +668,10 @@ async def _construir_features_historicas_detalladas(
                 vz.renta_media_uc,
                 vz.renta_mediana_uc,
                 dz.score_dinamismo AS score_dinamismo_zona,
-                vz.ratio_apertura_cierre_1a,
-                vz.tasa_supervivencia_3a,
-                vz.renta_variacion_3a,
-                vz.hhi_sectorial,
+                dz.ratio_apertura_cierre_1a,
+                dz.tasa_supervivencia_3a,
+                dz.renta_variacion_3a,
+                dz.hhi_sectorial,
                 vz.seasonality_summer_lift,
                 vz.seasonality_christmas_lift,
                 vz.seasonality_rebajas_lift,
@@ -689,7 +695,13 @@ async def _construir_features_historicas_detalladas(
             JOIN v_variables_zona vz ON vz.zona_id = i.zone_id AND vz.fecha <= i.fecha_ref
             JOIN zonas z ON z.id = vz.zona_id
             LEFT JOIN LATERAL (
-                SELECT score_dinamismo FROM v_dinamismo_zona
+                SELECT
+                    score_dinamismo,
+                    ratio_apertura_cierre_1a,
+                    tasa_supervivencia_3a,
+                    renta_variacion_3a,
+                    hhi_sectorial
+                FROM v_dinamismo_zona
                 WHERE zona_id = i.zone_id
                 ORDER BY periodo DESC LIMIT 1
             ) dz ON TRUE
