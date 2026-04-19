@@ -130,6 +130,7 @@ export interface ScoresDimensiones {
   seguridad?: number;
   turismo?: number;
   dinamismo?: number;
+  entorno_comercial?: number;
 }
 
 export interface SeguridadDetalle {

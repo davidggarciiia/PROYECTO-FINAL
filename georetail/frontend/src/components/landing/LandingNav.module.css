@@ -1,0 +1,105 @@
+/* ══════════════════════════════════════════════════════
+   LandingNav — sticky glassmorphism bar
+   ══════════════════════════════════════════════════════ */
+
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--nav-height, 64px);
+  z-index: 100;
+  background: rgba(9, 6, 15, 0.55);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border-bottom: 1px solid transparent;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.scrolled {
+  background: rgba(9, 6, 15, 0.82);
+  border-bottom: 1px solid var(--border);
+}
+
+.inner {
+  max-width: var(--container-max, 1160px);
+  margin: 0 auto;
+  height: 100%;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  margin-right: auto;
+  padding: 4px 0;
+}
+
+.brand img {
+  display: block;
+  height: 34px;
+  width: auto;
+}
+
+.links {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.links a {
+  font-size: var(--fs-sm, 13px);
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: -0.005em;
+  transition: color 0.15s ease;
+}
+
+.links a:hover {
+  color: var(--text);
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 16px;
+  border-radius: var(--radius-sm, 8px);
+  font-weight: 600;
+  font-size: var(--fs-sm, 13px);
+  letter-spacing: -0.005em;
+  transition: background 0.15s ease, box-shadow 0.2s ease, transform 0.2s ease, color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 0 var(--accent-glow);
+}
+
+.primary:hover {
+  background: var(--accent-light);
+  box-shadow: 0 0 24px var(--accent-glow);
+  transform: translateY(-1px);
+  color: #fff;
+}
+
+@media (max-width: 720px) {
+  .links {
+    display: none;
+  }
+  .inner {
+    gap: 12px;
+    padding: 0 16px;
+  }
+}
