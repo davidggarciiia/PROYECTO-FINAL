@@ -130,12 +130,6 @@ function observedFactsForDimension(key: keyof ScoresDimensiones, z: ZonaDetalle)
       ].filter(Boolean);
     case "turismo":
       return [z.score_turismo != null ? `Score turístico: ${formatNumber(z.score_turismo, 0)}` : ""].filter(Boolean);
-    case "entorno_comercial":
-      return [
-        z.num_negocios_activos != null ? `Negocios activos: ${formatNumber(z.num_negocios_activos, 0)}` : "",
-        z.pct_locales_vacios != null ? `Locales vacíos: ${formatNumber(z.pct_locales_vacios, 0)}%` : "",
-        z.entorno_detalle?.ratio_locales_comerciales != null ? `Ratio comercial: ${formatNumber(z.entorno_detalle.ratio_locales_comerciales, 2)}` : "",
-      ].filter(Boolean);
     default:
       return [];
   }
