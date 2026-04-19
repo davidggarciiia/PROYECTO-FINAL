@@ -12,6 +12,17 @@ interface Props {
 
 type CompTab = "amenaza" | "oportunidad" | "sinergicos";
 
+/**
+ * MiniMap — mapa Leaflet con:
+ *  - Buffers concéntricos 150/300/500 m alrededor de la zona objetivo.
+ *  - Un marker por cada competidor (rojo amenaza, verde oportunidad, azul sinérgico).
+ *    Se pintan cuando el backend envía lat/lng individuales (tras migración 029).
+ *  - FIFA-style links animados:
+ *      púrpura — clúster de "directos subsector" a <150 m entre sí
+ *      verde   — zona ↔ sus sinérgicos más cercanos
+ *      rojo    — anillo rotante sobre las 3 "cadenas dominantes" (top num_resenas)
+ *  - Respeta @media (prefers-reduced-motion: reduce).
+ */
 function MiniMap({ zona, amenaza, oportunidad, sinergicos }: {
   zona: ZonaPreview;
   amenaza: CompetidorDetalle[];
@@ -23,7 +34,6 @@ function MiniMap({ zona, amenaza, oportunidad, sinergicos }: {
 
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
-    // Dynamic require to avoid SSR issues
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const L = require("leaflet");
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -39,7 +49,20 @@ function MiniMap({ zona, amenaza, oportunidad, sinergicos }: {
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
 
-    // Zona objetivo — blue pulsing circle
+    // ── Buffers concéntricos 150/300/500 m (los tres radios del scorer) ─────
+    [500, 300, 150].forEach((r, i) => {
+      L.circle([zona.lat, zona.lng], {
+        radius: r,
+        fillColor: "rgba(59,130,246,0.04)",
+        color: "rgba(59,130,246,0.35)",
+        weight: 1,
+        opacity: 0.55 - i * 0.1,
+        fillOpacity: 0.05 - i * 0.012,
+        dashArray: "4,4",
+      }).addTo(map);
+    });
+
+    // ── Zona objetivo ───────────────────────────────────────────────────────
     L.circleMarker([zona.lat, zona.lng], {
       radius: 10,
       fillColor: "#3b82f6",
@@ -47,19 +70,86 @@ function MiniMap({ zona, amenaza, oportunidad, sinergicos }: {
       weight: 2,
       opacity: 1,
       fillOpacity: 0.8,
+      className: "kp-zona-target",  // animado via CSS
     }).addTo(map).bindTooltip("Tu zona", { permanent: false });
 
-    // NOTE: competitors don't have lat/lng in the response — they only have distancia_m.
-    // Show the 500m radius circle around the zona center as a visual indicator of the analysis area.
-    L.circle([zona.lat, zona.lng], {
-      radius: 500,
-      fillColor: "rgba(59,130,246,0.05)",
-      color: "rgba(59,130,246,0.3)",
-      weight: 1,
-      dashArray: "4,4",
-    }).addTo(map);
+    // ── Marcadores por competidor (sólo si el backend nos dio lat/lng) ──────
+    const pintar = (list: CompetidorDetalle[], color: string, border: string, tipoLabel: string) => {
+      list.forEach((c) => {
+        if (c.lat == null || c.lng == null) return;
+        L.circleMarker([c.lat, c.lng], {
+          radius: 6,
+          fillColor: color,
+          color: border,
+          weight: 1.5,
+          opacity: 0.9,
+          fillOpacity: 0.85,
+        }).addTo(map).bindTooltip(
+          `<b>${c.nombre}</b><br>${c.subsector ?? c.sector ?? tipoLabel}` +
+            (c.distancia_m != null ? ` · ${Math.round(c.distancia_m)} m` : "") +
+            (c.rating != null ? ` · ★${c.rating.toFixed(1)}` : ""),
+          { direction: "top", opacity: 0.95 },
+        );
+      });
+    };
+    pintar(amenaza,     "#ef4444", "#991b1b", "amenaza");
+    pintar(oportunidad, "#22c55e", "#166534", "oportunidad");
+    pintar(sinergicos,  "#3b82f6", "#1e40af", "sinérgico");
 
-    // Show summary text on the map
+    // ── FIFA link 1: clúster de directos del mismo subsector (púrpura) ──────
+    // Regla: pares de amenazas con misma subsector (o macro directo) a <150 m
+    // entre sí. Transmite "aquí hay un clúster saturado".
+    const directosMismoSub = amenaza.filter(
+      (c) => c.lat != null && c.lng != null &&
+             (c.es_competencia_directa_subsector || c.es_competencia_directa),
+    );
+    for (let i = 0; i < directosMismoSub.length; i++) {
+      for (let j = i + 1; j < directosMismoSub.length; j++) {
+        const a = directosMismoSub[i];
+        const b = directosMismoSub[j];
+        const dist = haversine(a.lat!, a.lng!, b.lat!, b.lng!);
+        if (dist < 150) {
+          L.polyline([[a.lat!, a.lng!], [b.lat!, b.lng!]], {
+            color: "#a855f7",
+            weight: 1.8,
+            opacity: 0.85,
+            dashArray: "6 4",
+            className: "kp-fifa-direct",
+          }).addTo(map);
+        }
+      }
+    }
+
+    // ── FIFA link 2: zona → 8 sinérgicos más cercanos (verde) ───────────────
+    const sinergicosConCoord = sinergicos.filter((c) => c.lat != null && c.lng != null);
+    sinergicosConCoord.slice(0, 8).forEach((c) => {
+      L.polyline([[zona.lat, zona.lng], [c.lat!, c.lng!]], {
+        color: "#22c55e",
+        weight: 1.4,
+        opacity: 0.75,
+        dashArray: "4 6",
+        className: "kp-fifa-compl",
+      }).addTo(map);
+    });
+
+    // ── FIFA link 3: anillo rotante sobre top-3 "cadenas" (rojo) ────────────
+    // Identifica los 3 competidores con más reseñas como proxy de marca
+    // dominante. Se pinta como divIcon que rota via CSS.
+    const cadenas = [...amenaza, ...oportunidad]
+      .filter((c) => c.lat != null && c.lng != null && (c.num_resenas ?? 0) >= 100)
+      .sort((a, b) => (b.num_resenas ?? 0) - (a.num_resenas ?? 0))
+      .slice(0, 3);
+    cadenas.forEach((c) => {
+      const ring = L.divIcon({
+        className: "",
+        html: `<div class="kp-dominant-ring"></div>`,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+      });
+      L.marker([c.lat!, c.lng!], { icon: ring, interactive: false }).addTo(map);
+    });
+
+    // ── Resumen en esquina ──────────────────────────────────────────────────
     const summary = L.divIcon({
       className: "",
       html: `<div style="background:rgba(15,15,25,0.9);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:6px 10px;font-size:11px;color:#fff;white-space:nowrap;line-height:1.6">
@@ -75,9 +165,23 @@ function MiniMap({ zona, amenaza, oportunidad, sinergicos }: {
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, [zona.lat, zona.lng, amenaza.length, oportunidad.length, sinergicos.length]);
+  }, [zona.lat, zona.lng, amenaza, oportunidad, sinergicos]);
 
   return <div ref={mapRef} className={styles.miniMap} />;
+}
+
+/** Distancia Haversine en metros entre dos pares lat/lng. */
+function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371e3;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const phi1 = toRad(lat1);
+  const phi2 = toRad(lat2);
+  const dphi = toRad(lat2 - lat1);
+  const dlam = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dphi / 2) ** 2 +
+    Math.cos(phi1) * Math.cos(phi2) * Math.sin(dlam / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function PrecioGap({ ps }: { ps: NonNullable<CompetenciaDetalle["precio_segmento"]> }) {
