@@ -405,7 +405,8 @@ async def get_zonas_lista(filtros: dict, sector: str,
     }
 
 
-async def get_competencia_zona(zona_id: str, sector: str, radio_m: int = 500) -> Optional[dict]:
+async def get_competencia_zona(zona_id: str, sector: str, radio_m: int = 500,
+                                subsector_usuario: Optional[str] = None) -> Optional[dict]:
     """
     Devuelve los datos de competencia completos para la zona.
 
@@ -414,6 +415,10 @@ async def get_competencia_zona(zona_id: str, sector: str, radio_m: int = 500) ->
     3. Clasifica competidores usando scoring.competencia.
     4. Calcula amenaza_score individual por competidor.
     5. Analiza gap de precio del segmento.
+
+    Si `subsector_usuario` se pasa, cada competidor que comparta subsector
+    exacto con el usuario llevará `es_competencia_directa_subsector=True`.
+    Esa señal alimenta el FIFA-link púrpura del mini-mapa.
 
     Returns dict compatible con CompetenciaDetalle, or None if zona not found.
     """
@@ -445,10 +450,14 @@ async def get_competencia_zona(zona_id: str, sector: str, radio_m: int = 500) ->
         """, zona_id, sector, radio_m)
 
         # 2. Leer negocios_activos en radio con todos los campos
+        # (incluye lat/lng y subsector_codigo para el mini-mapa del frontend)
         negocios_rows = await conn.fetch("""
             SELECT
                 na.nombre,
                 na.sector_codigo,
+                na.subsector_codigo,
+                na.lat,
+                na.lng,
                 na.rating,
                 na.num_resenas,
                 na.precio_nivel,
@@ -539,14 +548,24 @@ async def get_competencia_zona(zona_id: str, sector: str, radio_m: int = 500) ->
         es_compl   = sc in sectores_compl and not es_directo
         vulnerable = _es_vulnerable(neg)
 
+        row_sub = row.get("subsector_codigo")
+        es_directo_sub = bool(
+            es_directo and subsector_usuario
+            and row_sub and row_sub == subsector_usuario
+        )
+
         entry = {
             "nombre":                 row.get("nombre") or "Sin nombre",
             "sector":                 sc,
+            "subsector":              row_sub,
+            "lat":                    row.get("lat"),
+            "lng":                    row.get("lng"),
             "distancia_m":            neg.distancia_m,
             "rating":                 neg.rating,
             "num_resenas":            neg.num_resenas,
             "precio_nivel":           neg.precio_nivel,
             "es_competencia_directa": es_directo,
+            "es_competencia_directa_subsector": es_directo_sub,
             "es_complementario":      es_compl,
             "es_vulnerable":          vulnerable,
             "amenaza_score":          amenaza_score_individual(neg) if es_directo else None,

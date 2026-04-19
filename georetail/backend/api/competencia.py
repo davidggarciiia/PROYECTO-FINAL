@@ -57,7 +57,16 @@ async def competencia_zona(
     if not sector_efectivo:
         raise HTTPException(status_code=400, detail="Sector no especificado y no disponible en la sesión.")
 
-    resultado = await get_competencia_zona(zona_id=zona_id, sector=sector_efectivo, radio_m=_RADIO_M)
+    # Subsector opcional: si la sesión lo declara, el backend puede flaguear
+    # competidores "directo subsector" (mismo macro Y mismo fino).
+    subsector_usuario = sesion.get("perfil", {}).get("subsector")
+
+    resultado = await get_competencia_zona(
+        zona_id=zona_id,
+        sector=sector_efectivo,
+        radio_m=_RADIO_M,
+        subsector_usuario=subsector_usuario,
+    )
     if resultado is None:
         raise HTTPException(status_code=404, detail=f"Zona '{zona_id}' no encontrada.")
 

@@ -224,15 +224,20 @@ async def _actualizar_negocios_gosom(entries: list, zona_id: str) -> int:
                 continue
             try:
                 pt_json = _json.dumps(entry.popular_times) if entry.popular_times else None
+                # Subsector fino desde category/categories. Puede ser None si
+                # la taxonomía no mapea; COALESCE en el UPDATE lo respeta sin
+                # pisar un valor que ya estuviera en BD.
+                _sector_inf, subsector_inf = entry.clasificar()
 
                 # 1. Intentar match por nombre + zona_id
                 result = await conn.execute(
                     """
                     UPDATE negocios_activos
-                    SET review_count    = $1,
-                        review_rating   = $2,
-                        google_place_id = COALESCE($3, google_place_id),
-                        popular_times   = COALESCE($6::jsonb, popular_times)
+                    SET review_count     = $1,
+                        review_rating    = $2,
+                        google_place_id  = COALESCE($3, google_place_id),
+                        popular_times    = COALESCE($6::jsonb, popular_times),
+                        subsector_codigo = COALESCE($7, subsector_codigo)
                     WHERE zona_id = $4
                       AND LOWER(nombre) ILIKE LOWER($5)
                       AND activo = TRUE
@@ -243,6 +248,7 @@ async def _actualizar_negocios_gosom(entries: list, zona_id: str) -> int:
                     zona_id,
                     f"%{entry.title[:50]}%",
                     pt_json,
+                    subsector_inf,
                 )
                 rows_affected = int(result.split()[-1]) if result else 0
 
@@ -253,10 +259,11 @@ async def _actualizar_negocios_gosom(entries: list, zona_id: str) -> int:
                     result2 = await conn.execute(
                         """
                         UPDATE negocios_activos
-                        SET review_count    = $1,
-                            review_rating   = $2,
-                            google_place_id = COALESCE($3, google_place_id),
-                            popular_times   = COALESCE($6::jsonb, popular_times)
+                        SET review_count     = $1,
+                            review_rating    = $2,
+                            google_place_id  = COALESCE($3, google_place_id),
+                            popular_times    = COALESCE($6::jsonb, popular_times),
+                            subsector_codigo = COALESCE($7, subsector_codigo)
                         WHERE ST_DWithin(
                             geometria::geography,
                             ST_SetSRID(ST_MakePoint($4, $5), 4326)::geography,
@@ -270,6 +277,7 @@ async def _actualizar_negocios_gosom(entries: list, zona_id: str) -> int:
                         entry.longitude,
                         entry.latitude,
                         pt_json,
+                        subsector_inf,
                     )
                     rows2 = int(result2.split()[-1]) if result2 else 0
                     n += rows2
