@@ -1,52 +1,319 @@
 {
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/hook-handler.cjs pre-bash",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/hook-handler.cjs pre-edit",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/hook-handler.cjs post-edit",
+            "timeout": 10000
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/hook-handler.cjs post-bash",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/hook-handler.cjs route",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/hook-handler.cjs session-restore",
+            "timeout": 15000
+          },
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/auto-memory-hook.mjs import",
+            "timeout": 8000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/hook-handler.cjs session-end",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/auto-memory-hook.mjs sync",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "manual",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/hook-handler.cjs compact-manual"
+          },
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/hook-handler.cjs session-end",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/hook-handler.cjs compact-auto"
+          },
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/hook-handler.cjs session-end",
+            "timeout": 6000
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/hook-handler.cjs status",
+            "timeout": 3000
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/hook-handler.cjs post-task",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c node %CLAUDE_PROJECT_DIR%/.claude/helpers/hook-handler.cjs notify",
+            "timeout": 3000
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "sh -c 'exec node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/statusline.cjs\"'"
+  },
   "permissions": {
     "allow": [
-      "Bash(curl -s -X POST http://localhost:8000/api/buscar -H \"Content-Type: application/json\" -d '{\"\"\"\"descripcion\"\"\"\": \"\"\"\"cafeteria de especialidad con musica en directo\"\"\"\"}' -w \"\\\\nHTTP: %{http_code}\")",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git config:*)",
-      "Bash(git push:*)",
-      "Bash(curl -s http://localhost:8000/api/admin/pipelines)",
-      "Bash(python -m json.tool)",
-      "Bash(find /c/Users/Alumno/PROYECTO-FINAL -maxdepth 3 -type f \\\\\\(-name *.md -o -name *.txt -o -name *.toml -o -name .gitignore \\\\\\))",
-      "Bash(xargs ls:*)",
-      "Bash(grep -E \"^d|\\\\.py$|\\\\.txt$\")",
-      "Bash(grep -r 'def ' /c/Users/Alumno/PROYECTO-FINAL/georetail/backend/api/*.py)",
-      "Bash(curl -s -X POST http://localhost:8000/api/admin/pipelines/transporte)",
-      "Bash(curl -s \"https://api.tmb.cat/v1/transit/lines?app_id=9572a739&app_key=cfaea8fd10f68944261ab38553009f09\" -o /dev/null -w \"%{http_code}\")",
-      "Bash(curl -s \"https://api.tmb.cat/v1/transit/stops?app_id=9572a739&app_key=cfaea8fd10f68944261ab38553009f09\" -o /dev/null -w \"%{http_code}\")",
-      "Bash(curl -sv \"https://api.tmb.cat/v1/transit/lines?app_id=9572a739&app_key=cfaea8fd10f68944261ab38553009f09\")",
-      "Bash(curl -s \"https://api.tmb.cat/v1/transit/linies/metro?app_id=9572a739&app_key=cfaea8fd10f68944261ab38553009f09\" -w nHTTP:%{http_code})",
-      "Bash(curl -s \"https://api.tmb.cat/v1/planner/stop?app_id=9572a739&app_key=cfaea8fd10f68944261ab38553009f09\" -w nHTTP:%{http_code})",
-      "Bash(curl -s \"https://api.tmb.cat/v1/transit/parades?app_id=9572a739&app_key=cfaea8fd10f68944261ab38553009f09\" -o /dev/null -w \"parades: %{http_code}\\\\n\")",
-      "Bash(curl -s \"https://api.tmb.cat/v1/transit/linies/bus?app_id=9572a739&app_key=cfaea8fd10f68944261ab38553009f09\" -o /dev/null -w \"linies/bus: %{http_code}\\\\n\")",
-      "Bash(curl -s \"https://api.tmb.cat/v1/transit/linies?app_id=9572a739&app_key=cfaea8fd10f68944261ab38553009f09\" -o /dev/null -w \"linies: %{http_code}\\\\n\")",
-      "Bash(curl -s \"https://api.tmb.cat/v1/transit/linies/metro/1/parades?app_id=9572a739&app_key=cfaea8fd10f68944261ab38553009f09\" -o /dev/null -w \"metro/1/parades: %{http_code}\\\\n\")",
-      "Bash(curl -s \"https://api.tmb.cat/v1/transit/parades?app_id=9572a739&app_key=cfaea8fd10f68944261ab38553009f09\")",
-      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); f=d.get\\(''''features'''',[]\\); print\\(''''total parades:'''', len\\(f\\)\\); print\\(''''primera parada:'''', json.dumps\\(f[0][''''properties''''] if f else {}, ensure_ascii=False, indent=2\\)[:500]\\)\")",
-      "Bash(curl -s \"https://api.tmb.cat/v1/transit/linies?app_id=9572a739&app_key=cfaea8fd10f68944261ab38553009f09\")",
-      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); f=d.get\\(''''features'''',[]\\); print\\(''''total linies:'''', len\\(f\\)\\); print\\(''''primera linia:'''', json.dumps\\(f[0][''''properties''''] if f else {}, ensure_ascii=False, indent=2\\)[:400]\\)\")",
-      "Bash(curl -s \"https://api.tmb.cat/v1/transit/linies/bus/1/parades?app_id=9572a739&app_key=cfaea8fd10f68944261ab38553009f09\")",
-      "Bash(python -c \":*)",
-      "Bash(curl -s \"https://api.tmb.cat/v1/transit/linies/bus/2872/parades?app_id=9572a739&app_key=cfaea8fd10f68944261ab38553009f09\")",
-      "Bash(curl -s http://localhost:8000/api/health)",
-      "Bash(docker ps:*)",
-      "Bash(git merge:*)",
-      "Read(//c/Users/Alumno/PROYECTO-FINAL/**)",
-      "Bash(curl -s https://opendata-ajuntament.barcelona.cat/data/api/action/package_show?id=aforament-de-les-principals-vies-de-la-ciutat)",
-      "Bash(curl -s \"https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search?resource_id=aforament-sensors&limit=3\")",
-      "Bash(curl -s https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%22aforaments-estacions%22%20LIMIT%203)",
-      "Bash(curl -s https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%22aforaments-localitzacio%22%20LIMIT%203)",
-      "Bash(curl -s https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%22aforament-localitzacio%22%20LIMIT%203)",
-      "Bash(curl -s https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%22aforaments-descriptiu%22%20LIMIT%203)",
-      "Bash(curl -s \"https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search?resource_id=36d41387-a4e5-48fa-801d-698257e3a106&limit=3\")",
-      "Bash(curl -s \"https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search?resource_id=36d41387-a4e5-48fa-801d-698257e3a106&limit=5\")",
-      "Bash(xargs grep:*)",
-      "Bash(grep -r competencia_por_local /c/Users/Alumno/PROYECTO-FINAL/georetail/backend --include=*.py -n)",
-      "Bash(grep -r competencia_por_local /c/Users/Alumno/PROYECTO-FINAL/georetail --include=*.sql -B 3 -A 10)",
-      "Bash(for f:*)",
-      "Bash(do echo:*)",
-      "Bash(done)"
+      "Bash(npx @claude-flow*)",
+      "Bash(npx claude-flow*)",
+      "Bash(node .claude/*)",
+      "mcp__claude-flow__:*"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)"
     ]
+  },
+  "attribution": {
+    "commit": "Co-Authored-By: claude-flow <ruv@ruv.net>",
+    "pr": "🤖 Generated with [claude-flow](https://github.com/ruvnet/claude-flow)"
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_FLOW_V3_ENABLED": "true",
+    "CLAUDE_FLOW_HOOKS_ENABLED": "true"
+  },
+  "claudeFlow": {
+    "version": "3.0.0",
+    "enabled": true,
+    "platform": {
+      "os": "windows",
+      "arch": "x64",
+      "shell": "powershell"
+    },
+    "modelPreferences": {
+      "default": "claude-opus-4-6",
+      "routing": "claude-haiku-4-5-20251001"
+    },
+    "agentTeams": {
+      "enabled": true,
+      "teammateMode": "auto",
+      "taskListEnabled": true,
+      "mailboxEnabled": true,
+      "coordination": {
+        "autoAssignOnIdle": true,
+        "trainPatternsOnComplete": true,
+        "notifyLeadOnComplete": true,
+        "sharedMemoryNamespace": "agent-teams"
+      },
+      "hooks": {
+        "teammateIdle": {
+          "enabled": true,
+          "autoAssign": true,
+          "checkTaskList": true
+        },
+        "taskCompleted": {
+          "enabled": true,
+          "trainPatterns": true,
+          "notifyLead": true
+        }
+      }
+    },
+    "swarm": {
+      "topology": "hierarchical-mesh",
+      "maxAgents": 15
+    },
+    "memory": {
+      "backend": "hybrid",
+      "enableHNSW": true,
+      "learningBridge": {
+        "enabled": true
+      },
+      "memoryGraph": {
+        "enabled": true
+      },
+      "agentScopes": {
+        "enabled": true
+      }
+    },
+    "neural": {
+      "enabled": true
+    },
+    "daemon": {
+      "autoStart": true,
+      "workers": [
+        "map",
+        "audit",
+        "optimize",
+        "consolidate",
+        "testgaps",
+        "ultralearn",
+        "deepdive",
+        "document",
+        "refactor",
+        "benchmark"
+      ],
+      "schedules": {
+        "audit": {
+          "interval": "1h",
+          "priority": "critical"
+        },
+        "optimize": {
+          "interval": "30m",
+          "priority": "high"
+        },
+        "consolidate": {
+          "interval": "2h",
+          "priority": "low"
+        },
+        "document": {
+          "interval": "1h",
+          "priority": "normal",
+          "triggers": [
+            "adr-update",
+            "api-change"
+          ]
+        },
+        "deepdive": {
+          "interval": "4h",
+          "priority": "normal",
+          "triggers": [
+            "complex-change"
+          ]
+        },
+        "ultralearn": {
+          "interval": "1h",
+          "priority": "normal"
+        }
+      }
+    },
+    "learning": {
+      "enabled": true,
+      "autoTrain": true,
+      "patterns": [
+        "coordination",
+        "optimization",
+        "prediction"
+      ],
+      "retention": {
+        "shortTerm": "24h",
+        "longTerm": "30d"
+      }
+    },
+    "adr": {
+      "autoGenerate": true,
+      "directory": "/docs/adr",
+      "template": "madr"
+    },
+    "ddd": {
+      "trackDomains": true,
+      "validateBoundedContexts": true,
+      "directory": "/docs/ddd"
+    },
+    "security": {
+      "autoScan": true,
+      "scanOnEdit": true,
+      "cveCheck": true,
+      "threatModel": true
+    }
   }
 }

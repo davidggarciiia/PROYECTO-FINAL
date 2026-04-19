@@ -69,7 +69,12 @@
       "Bash(node_modules/.bin/tsc --noEmit)",
       "Bash(ls:*)",
       "Bash(grep -o \"\"text\"\":\"\"[^\"\"]*AUDITORÍA[^\"\"]*\"\" C:UserspirulAppDataLocalTempclaudeC--Users-pirul-Documents-GitHub-PROYECTO-FINALf05219a0-3046-4bcc-bffa-14b0ece532a9tasksa7c53afef31438800.output)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(curl -fsSL https://cdn.jsdelivr.net/gh/ruvnet/ruflo@main/scripts/install.sh)",
+      "Bash(bash)",
+      "Bash(npx ruflo *)",
+      "WebSearch",
+      "Bash(git add *)"
     ]
   }
 }
