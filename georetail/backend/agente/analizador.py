@@ -2,6 +2,8 @@
 from __future__ import annotations
 import json
 import logging
+from datetime import date, datetime
+from decimal import Decimal
 
 from agente.prompts import ANALISIS_ZONA_SISTEMA
 from agente import extraer_json
@@ -9,6 +11,15 @@ from routers.llm_router import completar
 from scoring.explainability import build_fallback_analysis
 
 logger = logging.getLogger(__name__)
+
+
+def _json_safe(obj):
+    """Default encoder para json.dumps: Decimal->float, date/datetime->isoformat."""
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if isinstance(obj, (date, datetime)):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
 async def analizar_zona(zona_data: dict, perfil_negocio: dict,
@@ -68,7 +79,7 @@ def _construir_prompt(z: dict, p: dict) -> str:
         "perfil_negocio": p,
         "payload": grounding,
     }
-    return json.dumps(prompt, ensure_ascii=False, indent=2)
+    return json.dumps(prompt, ensure_ascii=False, indent=2, default=_json_safe)
 
 
 def _fallback(zona_data: dict) -> dict:
