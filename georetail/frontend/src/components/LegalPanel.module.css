@@ -39,8 +39,8 @@
   justify-content: space-between;
   gap: 12px;
   padding: 14px 14px 12px;
-  background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.05));
-  border: 1px solid rgba(99,102,241,0.2);
+  background: linear-gradient(135deg, var(--accent-weak), var(--accent-weak));
+  border: 1px solid var(--accent-border);
   border-radius: var(--radius);
   margin-bottom: 18px;
 }
@@ -80,8 +80,8 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--accent);
-  background: rgba(99,102,241,0.12);
-  border: 1px solid rgba(99,102,241,0.25);
+  background: var(--accent-weak);
+  border: 1px solid var(--accent-border);
   border-radius: 100px;
   padding: 3px 8px;
 }
@@ -134,8 +134,8 @@
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: rgba(99,102,241,0.1);
-  border: 1px solid rgba(99,102,241,0.2);
+  background: var(--accent-weak);
+  border: 1px solid var(--accent-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -243,8 +243,8 @@
   color: var(--text-muted);
   line-height: 1.55;
   padding: 9px 11px;
-  background: rgba(99,102,241,0.05);
-  border-left: 2px solid rgba(99,102,241,0.3);
+  background: var(--accent-weak);
+  border-left: 2px solid var(--accent-border);
   border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
   margin-bottom: 2px;
 }
@@ -261,7 +261,7 @@
   background: var(--surface);
   overflow: hidden;
 }
-.tramiteOpen { border-color: rgba(99,102,241,0.25); }
+.tramiteOpen { border-color: var(--accent-border); }
 
 .tramiteHeader {
   all: unset;
@@ -278,8 +278,8 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: rgba(99,102,241,0.15);
-  border: 1px solid rgba(99,102,241,0.3);
+  background: var(--accent-weak);
+  border: 1px solid var(--accent-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -400,16 +400,16 @@
   font-weight: 600;
   color: var(--accent);
   text-decoration: none;
-  border: 1px solid rgba(99,102,241,0.3);
+  border: 1px solid var(--accent-border);
   border-radius: var(--radius-xs);
   padding: 5px 10px;
-  background: rgba(99,102,241,0.07);
+  background: var(--accent-weak);
   transition: all 0.15s;
   align-self: flex-start;
 }
 .tramiteEnlace:hover {
-  background: rgba(99,102,241,0.14);
-  border-color: rgba(99,102,241,0.5);
+  background: var(--accent-weak);
+  border-color: var(--accent-border);
 }
 
 /* ── Costes ── */
@@ -431,11 +431,11 @@
 .costeRow:last-child { border-bottom: none; }
 .costeRow:hover { background: var(--surface-2); }
 .costeRowTotal {
-  background: rgba(99,102,241,0.08);
-  border-top: 1px solid rgba(99,102,241,0.2);
+  background: var(--accent-weak);
+  border-top: 1px solid var(--accent-border);
   border-bottom: none !important;
 }
-.costeRowTotal:hover { background: rgba(99,102,241,0.12); }
+.costeRowTotal:hover { background: var(--accent-weak); }
 .costeConcepto {
   color: var(--text);
   font-weight: 500;
@@ -484,7 +484,7 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent), rgba(139,92,246,0.8));
+  background: linear-gradient(135deg, var(--accent), var(--accent-light));
   display: flex;
   align-items: center;
   justify-content: center;

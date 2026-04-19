@@ -34,12 +34,12 @@
 .cardTier_low  { border-left-color: var(--red); }
 
 .cardSelected {
-  background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(139,92,246,0.06));
+  background: linear-gradient(135deg, var(--accent-weak), var(--accent-weak));
   border-left-color: var(--accent) !important;
-  box-shadow: inset 0 0 28px rgba(99,102,241,0.08);
+  box-shadow: inset 0 0 28px var(--accent-weak);
 }
 .cardSelected:hover {
-  background: linear-gradient(135deg, rgba(99,102,241,0.18), rgba(139,92,246,0.1));
+  background: linear-gradient(135deg, var(--accent-weak), var(--accent-weak));
 }
 
 .info {
@@ -112,12 +112,12 @@
 }
 .sortBtn:hover {
   color: var(--accent);
-  border-color: rgba(99,102,241,0.35);
-  background: rgba(99,102,241,0.08);
+  border-color: var(--accent-glow);
+  background: var(--accent-weak);
 }
 .sortBtnActive {
-  background: rgba(99,102,241,0.12);
-  border-color: rgba(99,102,241,0.4);
+  background: var(--accent-weak);
+  border-color: var(--accent-glow);
   color: var(--accent);
 }
 .sortArrow {

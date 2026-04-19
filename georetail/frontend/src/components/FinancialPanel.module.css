@@ -113,13 +113,13 @@
 .desgloseBarFill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #6366F1, #10B981);
+  background: linear-gradient(90deg, var(--accent), #10B981);
   transition: width 0.4s ease;
 }
 
 .desglosePct {
   font-size: 10px;
-  color: #64748B;
+  color: var(--text-subtle);
   text-align: right;
   font-weight: 600;
 }
@@ -144,8 +144,8 @@
   font-weight: 500;
   color: #CBD5F5;
 
-  background: rgba(99,102,241,0.08);
-  border: 1px solid rgba(99,102,241,0.2);
+  background: var(--accent-weak);
+  border: 1px solid var(--accent-border);
   border-radius: 8px;
 
   display: inline-flex;
