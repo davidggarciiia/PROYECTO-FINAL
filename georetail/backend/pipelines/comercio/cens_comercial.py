@@ -77,6 +77,21 @@ async def ejecutar() -> dict:
     """Ejecuta el pipeline completo y devuelve métricas."""
     eid = await _init("cens_comercial")
     try:
+        # 0. Filtrar el SECTOR_MAP a los sectores que realmente existen en BD
+        # (evita FK violations si _SECTOR_MAP apunta a sectores no creados).
+        async with get_db() as conn:
+            rows = await conn.fetch("SELECT codigo FROM sectores")
+            sectores_validos = {r["codigo"] for r in rows}
+        global _SECTOR_MAP
+        descartados = {g: s for g, s in _SECTOR_MAP.items() if s not in sectores_validos}
+        if descartados:
+            logger.info(
+                "Filtrando %d entradas del SECTOR_MAP cuyo sector_codigo no existe "
+                "en tabla sectores: %s",
+                len(descartados), sorted(set(descartados.values()))
+            )
+        _SECTOR_MAP = {g: s for g, s in _SECTOR_MAP.items() if s in sectores_validos}
+
         # 1. Cargar IDs supervivientes desde 2022 y 2024 (fuera de la transacción — solo lectura CSV)
         ids_supervivientes = _cargar_ids_supervivientes()
         logger.info(
