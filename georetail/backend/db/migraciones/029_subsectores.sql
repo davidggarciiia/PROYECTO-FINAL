@@ -35,9 +35,12 @@ COMMENT ON COLUMN negocios_activos.subsector_codigo IS
     'NULL = sector conocido pero subsector no mapeable por la taxonomía. '
     'Fuente canónica: scoring/taxonomia.py (25 subsectores).';
 
--- 2. Agregado zonal — permite opcionalmente desglosar por subsector cuando el
---    usuario declara uno específico. Si `subsector_codigo IS NULL` la fila es
---    el agregado macro del sector (compatible con filas v1 ya existentes).
+-- 2. Agregado zonal — columna preparada para una futura iteración en la que el
+--    pipeline `pipelines.comercio.competencia` emita filas por subsector.
+--    Hoy la columna NO se rellena automáticamente (la UNIQUE actual es
+--    `(zona_id, sector_codigo, radio_m, fecha)` — meter subsector exigiría
+--    migrar datos existentes). Queda como hook para cuando se decida activar
+--    el pass-B agregado por subsector.
 ALTER TABLE competencia_detalle_zona
     ADD COLUMN IF NOT EXISTS subsector_codigo VARCHAR(30);
 
@@ -46,4 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_competencia_detalle_sub
     WHERE subsector_codigo IS NOT NULL;
 
 COMMENT ON COLUMN competencia_detalle_zona.subsector_codigo IS
-    'Dimensión del agregado: NULL = todo el sector macro, valor = sólo ese subsector.';
+    'Hook: futura dimensión de agregado por subsector. '
+    'Actualmente siempre NULL — el pipeline v13 no escribe aquí todavía. '
+    'La señal de subsector fluye vía negocios_activos.subsector_codigo y '
+    'se resuelve on-the-fly en db/zonas.get_competencia_zona(subsector_usuario).';
