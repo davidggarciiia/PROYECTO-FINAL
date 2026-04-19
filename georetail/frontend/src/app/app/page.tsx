@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import SearchBox from "@/components/SearchBox";
 import ZoneList from "@/components/ZoneList";
 import DetailPanel from "@/components/DetailPanel";
+import Onboarding from "@/components/Onboarding";
 import styles from "./page.module.css";
 import type { ZonaPreview, LocalDetalleResponse, Theme } from "@/lib/types";
 import { api } from "@/lib/api";
@@ -57,6 +58,7 @@ export default function AppPage() {
   const isMobile = useIsMobile();
   const [theme, setTheme] = useTheme();
 
+  const [started, setStarted]               = useState(false);
   const [sessionId, setSessionId]           = useState("");
   const [zonas, setZonas]                   = useState<ZonaPreview[]>([]);
   const [selectedZona, setSelectedZona]     = useState<ZonaPreview | null>(null);
@@ -66,6 +68,11 @@ export default function AppPage() {
   const [showDetail, setShowDetail]         = useState(false);
   const [hasSearched, setHasSearched]       = useState(false);
   const [searchBoxOpen, setSearchBoxOpen]   = useState(false);
+
+  const handleOnboardingSubmit = useCallback((query: string) => {
+    setSearchQuery(query);
+    setStarted(true);
+  }, []);
 
   const handleResults = useCallback((newZonas: ZonaPreview[], sid: string) => {
     setZonas(newZonas);
@@ -96,6 +103,11 @@ export default function AppPage() {
     setDetalle(null);
     setShowDetail(false);
   }, []);
+
+  // Pre-stage: Signal onboarding. Al enviar, pasa la query al SearchBox.
+  if (!started) {
+    return <Onboarding onSubmit={handleOnboardingSubmit} />;
+  }
 
   return (
     <div className={styles.app}>
