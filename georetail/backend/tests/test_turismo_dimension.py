@@ -1,5 +1,5 @@
 """
-tests/test_turismo_dimension.py — Tests para la dimensión de turismo (v14, mig 029).
+tests/test_turismo_dimension.py — Tests para la dimensión de turismo (v14, mig 029+031).
 
 Cubre:
   - calcular_turismo: combinación log-escalada de Airbnb + hoteles + POIs + costa
@@ -8,6 +8,7 @@ Cubre:
   - Confianza: alta / media / baja según stocks no-null
   - Fallback cuando faltan todos los stocks (solo dist_playa_m como proxy débil)
   - Modulador turismo_dependencia (premio/castigo según perfil del negocio)
+  - Lift por proximidad a landmark turístico real (mig 031, OSM+Wikidata)
 """
 import pytest
 
@@ -26,6 +27,7 @@ def datos_barceloneta():
         "eventos_culturales_500m":  5,
         "venues_musicales_500m":    2,
         "dist_playa_m":             180,
+        "dist_landmark_top3_m":     420,   # cerca de varios landmarks reales
         "seasonality_summer_lift":  1.45,
     }
 
@@ -40,6 +42,7 @@ def datos_sagrada_familia():
         "eventos_culturales_500m":  9,
         "venues_musicales_500m":    1,
         "dist_playa_m":             3200,
+        "dist_landmark_top3_m":     150,   # Sagrada Família es landmark por definición
         "seasonality_summer_lift":  1.15,
     }
 
@@ -213,3 +216,49 @@ def test_proximidad_playa_levanta_score_con_stocks_bajos():
     assert s_playera >= s_inland + 10.0, (
         f"Costa debería elevar score: inland={s_inland} vs playa={s_playera}"
     )
+
+
+# ─── Tests: proximidad a landmark turístico (mig 031) ──────────────────────────
+
+def test_proximidad_landmark_levanta_score():
+    """Misma zona con/sin landmark cercano — landmark debe sumar."""
+    base_datos = {
+        "airbnb_density_500m":     10,
+        "booking_hoteles_500m":    4,
+        "eventos_culturales_500m": 2,
+        "dist_playa_m":            4000,  # lejos de la costa: aísla el efecto landmark
+    }
+    s_sin     = calcular_turismo({**base_datos})["score_turismo"]
+    s_lejos   = calcular_turismo({**base_datos, "dist_landmark_top3_m": 1500})["score_turismo"]
+    s_cerca   = calcular_turismo({**base_datos, "dist_landmark_top3_m": 200})["score_turismo"]
+    s_medio   = calcular_turismo({**base_datos, "dist_landmark_top3_m": 500})["score_turismo"]
+
+    # Landmark a >700m no debe alterar
+    assert s_lejos == s_sin
+    # Landmark a <300m debe sumar +8, a <700m debe sumar +4
+    assert s_cerca >= s_sin + 7.0, f"Landmark <300m: {s_sin} → {s_cerca}"
+    assert s_medio >= s_sin + 3.0, f"Landmark <700m: {s_sin} → {s_medio}"
+    assert s_cerca > s_medio, f"Landmark más cerca debe puntuar más: {s_medio} vs {s_cerca}"
+
+
+def test_landmark_compone_con_playa():
+    """El ajuste de landmark se aplica DESPUÉS del ajuste de playa — ambos deben sumar."""
+    base_datos = {
+        "airbnb_density_500m":     8,
+        "booking_hoteles_500m":    3,
+        "eventos_culturales_500m": 2,
+    }
+    # Caso A: solo playa
+    s_solo_playa = calcular_turismo({**base_datos, "dist_playa_m": 150})["score_turismo"]
+    # Caso B: playa + landmark cercano
+    s_playa_lm = calcular_turismo({
+        **base_datos,
+        "dist_playa_m": 150,
+        "dist_landmark_top3_m": 180,
+    })["score_turismo"]
+    # El landmark debe añadir lift adicional sobre el baseline de playa
+    # (salvo que ambos saturen el cap de 100).
+    if s_solo_playa < 92.0:
+        assert s_playa_lm > s_solo_playa, (
+            f"Landmark debería componer con playa: {s_solo_playa} → {s_playa_lm}"
+        )

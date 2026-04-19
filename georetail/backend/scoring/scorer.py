@@ -488,6 +488,8 @@ async def _get_datos_zona_completos(zona_id: str, sector: str, idea_tags: list[s
                 vz.airbnb_density_500m, vz.airbnb_occupancy_est,
                 vz.booking_hoteles_500m, vz.venues_musicales_500m,
                 vz.seasonality_summer_lift,
+                -- v14.1: landmarks turisticos (mig 031) — proxy de POI de calidad
+                vz.dist_landmark_top3_m,
                 cp.score_saturacion,
                 cdz.score_competencia_v2,
                 paz.precio_m2,

@@ -45,6 +45,7 @@ async def _zonas_con_features(conn) -> list[dict]:
             vz.eventos_culturales_500m,
             vz.venues_musicales_500m,
             vz.seasonality_summer_lift,
+            vz.dist_landmark_top3_m,   -- mig 031: landmarks OSM+Wikidata
             ST_Distance(
                 ST_Centroid(z.geometria)::geography,
                 ST_GeomFromText(

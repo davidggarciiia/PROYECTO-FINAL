@@ -16,6 +16,8 @@ Inputs (campos del dict `datos` proveniente de v_variables_zona):
   eventos_culturales_500m  — POIs culturales (museos, teatros, atracciones)
   venues_musicales_500m    — salas de concierto/teatros musicales (señal opcional)
   dist_playa_m             — distancia geodésica al frente marítimo (computed runtime)
+  dist_landmark_top3_m     — distancia media ponderada a los 3 landmarks turísticos
+                              reales más cercanos (OSM+Wikidata, pipeline landmarks.py)
   seasonality_summer_lift  — lift estacional verano vs media (modulador opcional)
 
 Sin I/O. No accede a BD. Testeable con datos sintéticos.
@@ -137,15 +139,31 @@ def calcular_turismo(
                     score = max(score, 62.0)
                 elif dist_playa_f < 1500:
                     score = max(score, 55.0)
+            # Tambien levantar si hay un landmark turistico real muy cerca
+            # (zona patrimonial aunque no haya Airbnb/hoteles registrados)
+            dist_lm_fb = datos.get("dist_landmark_top3_m")
+            if dist_lm_fb is not None:
+                try:
+                    dist_lm_fb_f = float(dist_lm_fb)
+                    if dist_lm_fb_f < 300:
+                        score = max(score, 70.0)
+                    elif dist_lm_fb_f < 700:
+                        score = max(score, 60.0)
+                except (TypeError, ValueError):
+                    pass
+            perfil_fb = "sin_datos"
+            if dist_playa_f is not None and dist_playa_f < 1500:
+                perfil_fb = "playa"
+            elif dist_lm_fb is not None:
+                try:
+                    if float(dist_lm_fb) < 700:
+                        perfil_fb = "cultural"
+                except (TypeError, ValueError):
+                    pass
             return {
                 "score_turismo":    round(score, 1),
-                "perfil_turistico": "playa" if (
-                    dist_playa_f is not None and dist_playa_f < 1500
-                ) else "sin_datos",
-                "interpretacion":   interpretar_perfil(
-                    "playa" if (dist_playa_f is not None and dist_playa_f < 1500)
-                    else "sin_datos"
-                ),
+                "perfil_turistico": perfil_fb,
+                "interpretacion":   interpretar_perfil(perfil_fb),
                 "confianza":        "baja",
             }
 
@@ -181,6 +199,20 @@ def calcular_turismo(
                 score += 7.0
             elif dist_playa_f < 1500:
                 score += 3.0
+
+        # ── Ajuste por proximidad a landmark turístico real (OSM+Wikidata) ──
+        # Se aplica DESPUÉS del ajuste de playa para que los efectos compongan
+        # (una zona costera con la Sagrada Família a 200m puede recibir ambos).
+        dist_lm = datos.get("dist_landmark_top3_m")
+        if dist_lm is not None:
+            try:
+                dist_lm_f = float(dist_lm)
+                if dist_lm_f < 300:
+                    score += 8.0
+                elif dist_lm_f < 700:
+                    score += 4.0
+            except (TypeError, ValueError):
+                pass
 
         # ── Ajuste por estacionalidad estival (zonas hiperestacionales) ─────
         season = datos.get("seasonality_summer_lift")
