@@ -8,6 +8,9 @@
 import { useEffect, useRef } from "react";
 import type { ZonaPreview } from "@/lib/types";
 import styles from "./MapCanvas.module.css";
+// Leaflet core stylesheet — required for tile sizing, controls, attribution, etc.
+// Without this, the map container renders blank even if tiles load.
+import "leaflet/dist/leaflet.css";
 
 export type BasemapId = "dark" | "light" | "voya" | "sat";
 

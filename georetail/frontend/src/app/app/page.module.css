@@ -4,12 +4,58 @@
 
 .app {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   overflow: hidden;
   position: relative;
 }
 
-/* ── Map fills the whole screen ── */
+/* ── Main canvas: hosts the MapCanvas + all HUD overlays ── */
+.canvas {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0; /* allow flex child to shrink below content size */
+}
+
+/* Subtle top/bottom gradient to soften tiles behind HUD corners */
+.scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    linear-gradient(to bottom, rgba(9,6,15,0.45) 0%, rgba(9,6,15,0) 12%, rgba(9,6,15,0) 82%, rgba(9,6,15,0.55) 100%);
+}
+
+/* Error toast — bottom-center over the map */
+.errorToast {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 1100;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--red-border, rgba(239,68,68,0.5));
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
+  max-width: min(560px, calc(100% - 32px));
+}
+.errorTick {
+  color: var(--red, #ef4444);
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* ── Legacy — kept for backwards compat with old full-screen layouts ── */
 .mapContainer {
   flex: 1;
   position: relative;
