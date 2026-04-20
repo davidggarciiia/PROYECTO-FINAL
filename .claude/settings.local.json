@@ -76,5 +76,9 @@
       "WebSearch",
       "Bash(git add *)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "claude-flow"
+  ],
+  "enableAllProjectMcpServers": true
 }
