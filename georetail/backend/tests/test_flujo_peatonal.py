@@ -1,4 +1,12 @@
-"""Tests for scoring/flujo_peatonal.py fusion model."""
+"""
+Tests for scoring/flujo_peatonal.py fusion model.
+
+Nota de diseño (2026-04): el scoring usa sólo dos fuentes — VCity (70%) y
+Google Popular Times (30%). Los parámetros `vianants_intensitat` y
+`ratio_locales` se aceptan por compatibilidad de firma pero NO contribuyen
+al score (se prefiere la estimación VCity, homogénea en toda la ciudad,
+frente a sensores Vianants puntuales).
+"""
 from __future__ import annotations
 
 import pytest
@@ -17,28 +25,32 @@ from scoring.dimensiones.flujo_peatonal import (
 # calcular_flujo_score — tests básicos
 # ---------------------------------------------------------------------------
 
-def test_todas_fuentes():
-    """Con las 4 fuentes disponibles el resultado está en rango."""
+def test_todas_fuentes_rango_valido():
+    """Con popular_times + vcity el resultado está en rango."""
     score = calcular_flujo_score(80.0, 30000.0, 8000.0, 0.7)
     assert 0 <= score <= 100
 
 
-def test_sin_vcity():
-    """Sin vcity, los pesos se redistribuyen y el score sigue siendo razonable."""
-    score_completo = calcular_flujo_score(80.0, 30000.0, 8000.0, 0.7)
-    score_sin_vcity = calcular_flujo_score(80.0, None, 8000.0, 0.7)
-    assert 0 <= score_sin_vcity <= 100
-    # Sin vcity el score debe ser algo razonable (no 0)
-    assert score_sin_vcity > 10
+def test_sin_vcity_usa_popular_times_solo():
+    """Sin vcity pero con popular_times → score = popular_times."""
+    score = calcular_flujo_score(80.0, None, 8000.0, 0.7)
+    assert 0 <= score <= 100
+    assert score > 10  # 80 de popular_times debe dar algo razonable
 
 
-def test_solo_ratio_locales():
-    """Con solo ratio_locales (peor caso), devuelve valor razonable."""
+def test_solo_ratio_locales_cae_a_fallback():
+    """ratio_locales se ignora; sin vcity ni popular_times → fallback 40.0."""
     score = calcular_flujo_score(None, None, None, 0.6)
-    assert score == pytest.approx(0.6 * 100, abs=5)
+    assert score == pytest.approx(40.0, abs=0.01)
 
 
-def test_fuentes_disponibles():
+def test_solo_vianants_cae_a_fallback():
+    """vianants_intensitat se ignora; sin vcity ni popular_times → fallback 40.0."""
+    score = calcular_flujo_score(None, None, 15_000.0, None)
+    assert score == pytest.approx(40.0, abs=0.01)
+
+
+def test_fuentes_disponibles_reporta_legacy():
     row = {
         "flujo_popular_times_score": 70.0,
         "vcity_flujo_peatonal": None,
@@ -46,9 +58,12 @@ def test_fuentes_disponibles():
         "ratio_locales_comerciales": 0.5,
     }
     fuentes = fuentes_disponibles(row)
+    # Las fuentes legacy aparecen para que la UI de debug las vea,
+    # aunque no afecten al score.
     assert "popular_times" in fuentes
     assert "vcity" not in fuentes
     assert "vianants" in fuentes
+    assert "ratio_locales" in fuentes
 
 
 # ---------------------------------------------------------------------------
@@ -57,57 +72,40 @@ def test_fuentes_disponibles():
 
 def test_vcity_normalizado_a_maximo():
     """vcity igual al máximo de referencia da score vcity=100."""
-    # Con solo vcity disponible, score == 100
     score = calcular_flujo_score(None, 50_000.0, None, None)
     assert score == pytest.approx(100.0, abs=1)
 
 
-def test_vianants_normalizado_a_maximo():
-    """vianants igual al máximo de referencia da score vianants=100."""
-    score = calcular_flujo_score(None, None, 15_000.0, None)
-    assert score == pytest.approx(100.0, abs=1)
-
-
-def test_vcity_por_encima_del_maximo_se_clamp():
+def test_vcity_por_encima_del_maximo_se_clampa():
     """Valores vcity superiores al máximo de referencia no superan 100."""
     score = calcular_flujo_score(None, 200_000.0, None, None)
     assert score == pytest.approx(100.0, abs=0.01)
 
 
 def test_valores_cero_devuelve_cero():
-    """Todas las fuentes en cero → score 0."""
+    """Popular_times y vcity en cero → score 0."""
     score = calcular_flujo_score(0.0, 0.0, 0.0, 0.0)
     assert score == pytest.approx(0.0, abs=0.01)
 
 
 def test_sin_ninguna_fuente_devuelve_fallback():
-    """Sin ninguna fuente disponible devuelve el fallback conservador."""
+    """Sin ninguna fuente disponible devuelve el fallback conservador 40.0."""
     score = calcular_flujo_score(None, None, None, None)
-    assert score == pytest.approx(30.0, abs=0.01)
+    assert score == pytest.approx(40.0, abs=0.01)
 
 
 # ---------------------------------------------------------------------------
-# calcular_flujo_score — redistribución de pesos
+# calcular_flujo_score — fusión
 # ---------------------------------------------------------------------------
 
-def test_pesos_suman_100_sin_una_fuente():
-    """Con 3 fuentes activas, la suma de pesos redistribuidos es 1.0."""
-    from scoring.dimensiones.flujo_peatonal import PESOS_BASE
-
-    disponibles = {k: v for k, v in PESOS_BASE.items() if k != "vcity"}
-    peso_total = sum(disponibles.values())
-    pesos_adj = {k: v / peso_total for k, v in disponibles.items()}
-    assert sum(pesos_adj.values()) == pytest.approx(1.0, abs=1e-9)
-
-
-def test_score_mayor_con_mas_fuentes():
+def test_score_mayor_con_ambas_fuentes_altas():
     """
-    Con las 4 fuentes activas y valores altos, el score debe ser mayor
-    que si solo hay una fuente de bajo peso (ratio_locales).
+    Con popular_times + vcity altos, el score supera claramente al fallback
+    de sin fuentes.
     """
     score_completo = calcular_flujo_score(80.0, 40000.0, 12000.0, 0.8)
-    score_solo_ratio = calcular_flujo_score(None, None, None, 0.5)
-    assert score_completo > score_solo_ratio
+    score_fallback = calcular_flujo_score(None, None, None, None)
+    assert score_completo > score_fallback
 
 
 # ---------------------------------------------------------------------------
@@ -178,18 +176,6 @@ def test_fuentes_ninguna_presente():
     assert fuentes == []
 
 
-def test_fuentes_ratio_locales_cero_cuenta_como_disponible():
-    """ratio_locales=0.0 es un valor legítimo y cuenta como fuente disponible."""
-    row = {
-        "flujo_popular_times_score": None,
-        "vcity_flujo_peatonal": None,
-        "flujo_peatonal_total": None,
-        "ratio_locales_comerciales": 0.0,
-    }
-    fuentes = fuentes_disponibles(row)
-    assert "ratio_locales" in fuentes
-
-
 # ---------------------------------------------------------------------------
 # PESOS_BASE invariantes
 # ---------------------------------------------------------------------------
@@ -199,24 +185,25 @@ def test_pesos_base_suman_uno():
     assert sum(PESOS_BASE.values()) == pytest.approx(1.0, abs=1e-9)
 
 
-def test_pesos_base_claves_correctas():
-    """PESOS_BASE tiene exactamente las 4 fuentes esperadas."""
-    assert set(PESOS_BASE.keys()) == {"popular_times", "vcity", "vianants", "ratio_locales"}
+def test_pesos_base_solo_vcity_y_popular_times():
+    """PESOS_BASE contiene exactamente las dos fuentes activas del scorer."""
+    assert set(PESOS_BASE.keys()) == {"vcity", "popular_times"}
 
 
 def test_constantes_publicas_exportadas():
-    """VCITY_MAX_BARCELONA y VIANANTS_MAX_BARCELONA son accesibles y tienen valores correctos."""
+    """VCITY_MAX_BARCELONA es la referencia de normalización activa."""
     assert VCITY_MAX_BARCELONA == pytest.approx(50_000.0)
+    # Vianants se mantiene exportado por compatibilidad histórica pero ya no se usa.
     assert VIANANTS_MAX_BARCELONA == pytest.approx(15_000.0)
 
 
 # ---------------------------------------------------------------------------
-# flujo_peatonal_explain
+# flujo_peatonal_explain — shape y sources
 # ---------------------------------------------------------------------------
 
 class TestFlujoExplain:
     def test_estructura_completa(self):
-        """explain devuelve score, sources con 4 entradas y sources_available."""
+        """explain devuelve score, sources con 4 claves (shape legacy) y sources_available."""
         row = {
             "flujo_popular_times_score": 80.0,
             "vcity_flujo_peatonal": 30_000.0,
@@ -227,22 +214,36 @@ class TestFlujoExplain:
         assert "score" in result
         assert "sources" in result
         assert "sources_available" in result
+        # Forma externa mantiene las 4 claves por compat
         assert set(result["sources"].keys()) == {"popular_times", "vcity", "vianants", "ratio_locales"}
 
-    def test_score_coincide_con_calcular_flujo_score(self):
-        """El score de explain coincide con calcular_flujo_score para los mismos inputs."""
+    def test_vianants_y_ratio_locales_marcadas_missing(self):
+        """Vianants y ratio_locales siempre aparecen como missing/weight=0 en explain."""
         row = {
-            "flujo_popular_times_score": 75.0,
-            "vcity_flujo_peatonal": 25_000.0,
-            "flujo_peatonal_total": 6_000.0,
-            "ratio_locales_comerciales": 0.4,
+            "flujo_popular_times_score": 80.0,
+            "vcity_flujo_peatonal": 30_000.0,
+            "flujo_peatonal_total": 8_000.0,
+            "ratio_locales_comerciales": 0.5,
         }
-        explain_score = flujo_peatonal_explain(row)["score"]
-        direct_score = calcular_flujo_score(75.0, 25_000.0, 6_000.0, 0.4)
-        assert explain_score == pytest.approx(direct_score, abs=0.01)
+        result = flujo_peatonal_explain(row)
+        for legacy in ("vianants", "ratio_locales"):
+            assert result["sources"][legacy]["missing"] is True
+            assert result["sources"][legacy]["weight"] == pytest.approx(0.0)
+            assert result["sources"][legacy]["contribution"] == pytest.approx(0.0)
+
+    def test_sources_available_cuenta_solo_activas(self):
+        """sources_available cuenta sólo popular_times + vcity."""
+        row = {
+            "flujo_popular_times_score": 50.0,
+            "vcity_flujo_peatonal": 20_000.0,
+            "flujo_peatonal_total": 7_000.0,    # legacy, no cuenta
+            "ratio_locales_comerciales": 0.25,   # legacy, no cuenta
+        }
+        result = flujo_peatonal_explain(row)
+        assert result["sources_available"] == 2
 
     def test_fuente_ausente_marca_missing(self):
-        """La fuente vcity=None aparece con missing=True y weight=0."""
+        """Si vcity=None y popular_times presente → sources_available=1 y weights redistribuidos."""
         row = {
             "flujo_popular_times_score": 70.0,
             "vcity_flujo_peatonal": None,
@@ -253,11 +254,11 @@ class TestFlujoExplain:
         vcity = result["sources"]["vcity"]
         assert vcity["missing"] is True
         assert vcity["weight"] == pytest.approx(0.0)
-        assert vcity["contribution"] == pytest.approx(0.0)
-        assert result["sources_available"] == 3
+        assert result["sources"]["popular_times"]["weight"] == pytest.approx(1.0)
+        assert result["sources_available"] == 1
 
     def test_sin_ninguna_fuente_devuelve_fallback(self):
-        """Sin ninguna fuente disponible, score=30.0 y sources_available=0."""
+        """Sin popular_times ni vcity: score=30.0 (legacy) y sources_available=0."""
         row = {
             "flujo_popular_times_score": None,
             "vcity_flujo_peatonal": None,
@@ -270,50 +271,62 @@ class TestFlujoExplain:
         for src in result["sources"].values():
             assert src["missing"] is True
 
-    def test_pesos_redistribuidos_suman_uno(self):
-        """Con 3 fuentes disponibles, la suma de pesos efectivos es 1.0."""
+    def test_pesos_activos_suman_uno(self):
+        """Con vcity + popular_times la suma de pesos activos es 1.0."""
         row = {
             "flujo_popular_times_score": 60.0,
-            "vcity_flujo_peatonal": None,        # ausente
-            "flujo_peatonal_total": 5_000.0,
-            "ratio_locales_comerciales": 0.35,
+            "vcity_flujo_peatonal": 20_000.0,
         }
         result = flujo_peatonal_explain(row)
-        total_w = sum(
-            src["weight"]
-            for src in result["sources"].values()
-            if not src["missing"]
-        )
+        total_w = result["sources"]["popular_times"]["weight"] + result["sources"]["vcity"]["weight"]
         assert total_w == pytest.approx(1.0, abs=1e-6)
 
     def test_alias_popular_times_score(self):
-        """explain acepta 'popular_times_score' como alias de 'flujo_popular_times_score'."""
-        row_alias = {"popular_times_score": 65.0, "ratio_locales_comerciales": 0.3}
-        row_col   = {"flujo_popular_times_score": 65.0, "ratio_locales_comerciales": 0.3}
+        """explain acepta 'popular_times_score' como alias."""
+        row_alias = {"popular_times_score": 65.0, "vcity_flujo_peatonal": 10_000.0}
+        row_col   = {"flujo_popular_times_score": 65.0, "vcity_flujo_peatonal": 10_000.0}
         assert (
             flujo_peatonal_explain(row_alias)["score"]
             == pytest.approx(flujo_peatonal_explain(row_col)["score"], abs=0.01)
         )
 
-    def test_contribuciones_suman_score(self):
-        """La suma de contribuciones de fuentes disponibles coincide con el score."""
-        row = {
-            "flujo_popular_times_score": 80.0,
-            "vcity_flujo_peatonal": 40_000.0,
-            "flujo_peatonal_total": 10_000.0,
-            "ratio_locales_comerciales": 0.6,
-        }
-        result = flujo_peatonal_explain(row)
-        total_contrib = sum(src["contribution"] for src in result["sources"].values())
-        assert total_contrib == pytest.approx(result["score"], abs=0.01)
 
-    def test_sources_available_todas_presentes(self):
-        """Con las 4 fuentes disponibles, sources_available == 4."""
-        row = {
-            "flujo_popular_times_score": 50.0,
-            "vcity_flujo_peatonal": 20_000.0,
-            "flujo_peatonal_total": 7_000.0,
-            "ratio_locales_comerciales": 0.25,
-        }
-        result = flujo_peatonal_explain(row)
-        assert result["sources_available"] == 4
+# ---------------------------------------------------------------------------
+# vcity_shopping_rate (mig 035) — modulador de calidad del flujo
+# ---------------------------------------------------------------------------
+
+class TestVcityShoppingRate:
+    """
+    quality_mult = 1 + 0.5·(rate − 0.20), cap [0.85, 1.25].
+    Se aplica a todas las ramas de flujo no-fallback. None → 1.0 (neutro).
+    """
+
+    def test_rate_bajo_005_da_score_menor_que_neutro(self):
+        s_neutro = calcular_flujo_score(70.0, 20_000.0, None, None)
+        s_bajo   = calcular_flujo_score(
+            70.0, 20_000.0, None, None, vcity_shopping_rate=0.05
+        )
+        assert s_bajo < s_neutro
+
+    def test_rate_alto_060_da_score_mayor_que_neutro(self):
+        s_neutro = calcular_flujo_score(70.0, 20_000.0, None, None)
+        s_alto   = calcular_flujo_score(
+            70.0, 20_000.0, None, None, vcity_shopping_rate=0.60
+        )
+        if s_neutro < 95.0:
+            assert s_alto > s_neutro
+
+    def test_rate_none_es_idempotente_con_baseline(self):
+        s_sin_key = calcular_flujo_score(70.0, 20_000.0, None, None)
+        s_none    = calcular_flujo_score(
+            70.0, 20_000.0, None, None, vcity_shopping_rate=None
+        )
+        assert s_sin_key == pytest.approx(s_none, abs=0.01)
+
+    def test_rate_020_no_modifica(self):
+        """rate=0.20 es el baseline: quality_mult = 1.0 → score idéntico."""
+        s_neutro = calcular_flujo_score(70.0, 20_000.0, None, None)
+        s_020    = calcular_flujo_score(
+            70.0, 20_000.0, None, None, vcity_shopping_rate=0.20
+        )
+        assert s_020 == pytest.approx(s_neutro, abs=0.01)

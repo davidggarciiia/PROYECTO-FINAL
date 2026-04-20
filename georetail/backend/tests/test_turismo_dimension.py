@@ -264,3 +264,63 @@ def test_landmark_compone_con_playa():
         assert s_playa_lm > s_solo_playa, (
             f"Landmark debería componer con playa: {s_solo_playa} → {s_playa_lm}"
         )
+
+
+# ─── Tests: vcity_tourist_rate (mig 035) ───────────────────────────────────────
+
+class TestVcityTuristRate:
+    """
+    Modulador multiplicativo: tourist_modifier = 1 + 0.4·(rate − 0.25)
+    Cap [0.80, 1.30]. None → 1.0 (neutro).
+    Aplicado pre-clip sobre el score final.
+    """
+
+    @staticmethod
+    def _base_datos() -> dict:
+        # Zona con stocks suficientes para evitar el fallback path
+        # (sum_ponderada = 10 + 5*3 + 3*2 = 31 > 2.0) y score intermedio
+        # para permitir observar el efecto multiplicativo sin saturar el cap.
+        return {
+            "airbnb_density_500m":     10,
+            "booking_hoteles_500m":    3,
+            "eventos_culturales_500m": 2,
+            "venues_musicales_500m":   0,
+            "dist_playa_m":            4000,  # lejos: aísla el efecto rate
+        }
+
+    def test_rate_bajo_010_da_score_menor_que_neutro(self):
+        base = self._base_datos()
+        s_neutro = calcular_turismo(base)["score_turismo"]
+        s_bajo   = calcular_turismo({**base, "vcity_tourist_rate": 0.10})["score_turismo"]
+        # rate=0.10 → modifier = 1 + 0.4*(-0.15) = 0.94 → debe reducir
+        assert s_bajo < s_neutro, (
+            f"rate=0.10 debería bajar el score: neutro={s_neutro} vs bajo={s_bajo}"
+        )
+
+    def test_rate_alto_070_da_score_mayor_que_neutro(self):
+        base = self._base_datos()
+        s_neutro = calcular_turismo(base)["score_turismo"]
+        s_alto   = calcular_turismo({**base, "vcity_tourist_rate": 0.70})["score_turismo"]
+        # rate=0.70 → modifier = 1 + 0.4*(0.45) = 1.18 → debe subir
+        # (salvo que ya esté saturado en 100; con la base elegida no lo está)
+        if s_neutro < 95.0:
+            assert s_alto > s_neutro, (
+                f"rate=0.70 debería subir el score: neutro={s_neutro} vs alto={s_alto}"
+            )
+
+    def test_rate_none_es_idempotente_con_baseline(self):
+        base = self._base_datos()
+        s_sin_key = calcular_turismo(base)["score_turismo"]
+        s_none    = calcular_turismo({**base, "vcity_tourist_rate": None})["score_turismo"]
+        assert s_sin_key == pytest.approx(s_none, abs=0.01), (
+            f"vcity_tourist_rate=None debe ser idempotente: {s_sin_key} vs {s_none}"
+        )
+
+    def test_rate_025_no_modifica(self):
+        """rate=0.25 es el baseline: modifier = 1.0 → score idéntico al sin rate."""
+        base = self._base_datos()
+        s_neutro = calcular_turismo(base)["score_turismo"]
+        s_025    = calcular_turismo({**base, "vcity_tourist_rate": 0.25})["score_turismo"]
+        assert s_025 == pytest.approx(s_neutro, abs=0.1), (
+            f"rate=0.25 es baseline → no debe modificar: {s_neutro} vs {s_025}"
+        )

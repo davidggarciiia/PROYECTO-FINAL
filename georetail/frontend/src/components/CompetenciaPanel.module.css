@@ -362,9 +362,11 @@
 
 /* ─── FIFA-style links animados sobre el mini-mapa ─────────────────────── */
 /* Los `className` se aplican sobre los <path> SVG que crea Leaflet (polylines).
-   En leaflet 1.x los paths viven en el pane SVG y admiten CSS directamente. */
+   En leaflet 1.x los paths viven en el pane SVG dentro del contenedor del mapa.
+   CSS Modules no admite `:global(...)` como selector raíz — lo prefijamos con
+   la clase local `.miniMap` para que el selector sea "puro". */
 
-:global(.kp-zona-target) {
+.miniMap :global(.kp-zona-target) {
   filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.75));
   animation: kp-zona-pulse 2.2s ease-in-out infinite;
 }
@@ -374,14 +376,14 @@
   50%      { filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.95)); }
 }
 
-:global(.kp-fifa-direct) {
+.miniMap :global(.kp-fifa-direct) {
   animation: kp-dash-forward 2.8s linear infinite;
 }
 @keyframes kp-dash-forward {
   to { stroke-dashoffset: -40; }
 }
 
-:global(.kp-fifa-compl) {
+.miniMap :global(.kp-fifa-compl) {
   animation: kp-dash-back 3.6s linear infinite;
 }
 @keyframes kp-dash-back {
@@ -389,7 +391,7 @@
 }
 
 /* Anillo rotante sobre cadenas dominantes (top 3 por reseñas). */
-:global(.kp-dominant-ring) {
+.miniMap :global(.kp-dominant-ring) {
   width: 32px;
   height: 32px;
   border-radius: 50%;
@@ -405,10 +407,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :global(.kp-zona-target),
-  :global(.kp-fifa-direct),
-  :global(.kp-fifa-compl),
-  :global(.kp-dominant-ring) {
+  .miniMap :global(.kp-zona-target),
+  .miniMap :global(.kp-fifa-direct),
+  .miniMap :global(.kp-fifa-compl),
+  .miniMap :global(.kp-dominant-ring) {
     animation: none !important;
   }
 }

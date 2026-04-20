@@ -99,8 +99,8 @@ def test_seasonal_gate_passes_with_depth_and_plausibility():
 
 
 @pytest.mark.asyncio
-async def test_train_blocks_when_temporal_gate_fails(monkeypatch):
-    artifact = Path("georetail/backend/tests/.tmp_temporal_feature_gates.json")
+async def test_train_blocks_when_temporal_gate_fails(monkeypatch, tmp_path):
+    artifact = tmp_path / ".tmp_temporal_feature_gates.json"
     artifact.write_text(
         json.dumps(
             {

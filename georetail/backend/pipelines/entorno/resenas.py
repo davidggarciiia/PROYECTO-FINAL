@@ -110,36 +110,42 @@ async def _actualizar_negocios_activos() -> None:
             await asyncio.sleep(0.2)
 
 
-_VALID_SECTORES = {
-    "restauracion", "moda", "estetica", "tatuajes", "shisha_lounge",
-    "supermercado", "farmacia", "electronica", "libreria", "sport",
-}
-
-
 async def _upsert_negocios(negocios: list[dict], zona_id: str) -> None:
-    """Inserta o actualiza negocios_activos."""
+    """Inserta o actualiza negocios_activos.
+
+    Si el dict del negocio trae `subsector_codigo`, se persiste. Si no, se
+    intenta clasificar desde los campos de categoría/tipos que hayamos
+    guardado en `n` (varía por fuente). Siempre es optional — el scorer
+    sabe tratar subsector=NULL como "macro detectado, sub no".
+    """
+    from scoring.taxonomia import clasificar_con_fallback
+
     async with get_db() as conn:
         for n in negocios:
             if not n.get("lat") or not n.get("lng"):
                 continue
-            # Validate sector_codigo against known sectors to avoid FK violations
-            sector_codigo = n.get("sector_codigo")
-            sector_codigo = sector_codigo if sector_codigo in _VALID_SECTORES else None
-            n = {**n, "sector_codigo": sector_codigo}
+            subsector = n.get("subsector_codigo")
+            if subsector is None:
+                # Intentamos derivar desde tipos/categorías, si la fuente las trae.
+                _, subsector = clasificar_con_fallback(
+                    n.get("categories") if isinstance(n.get("categories"), list) else None,
+                    n.get("category") or n.get("primary_type"),
+                )
             await conn.execute("""
                 INSERT INTO negocios_activos
-                    (id, nombre, sector_codigo, lat, lng,
+                    (id, nombre, sector_codigo, subsector_codigo, lat, lng,
                      geometria, zona_id, rating, num_resenas,
                      precio_nivel, horario, activo, fuente, updated_at)
-                VALUES ($1,$2,$3,$4,$5,
-                        ST_SetSRID(ST_MakePoint($5,$4),4326),$6,$7,$8,$9,$10,TRUE,$11,NOW())
+                VALUES ($1,$2,$3,$4,$5,$6,
+                        ST_SetSRID(ST_MakePoint($6,$5),4326),$7,$8,$9,$10,$11,TRUE,$12,NOW())
                 ON CONFLICT (id) DO UPDATE SET
+                    subsector_codigo=COALESCE(EXCLUDED.subsector_codigo, negocios_activos.subsector_codigo),
                     rating=EXCLUDED.rating,
                     num_resenas=EXCLUDED.num_resenas,
                     precio_nivel=COALESCE(EXCLUDED.precio_nivel, negocios_activos.precio_nivel),
                     horario=COALESCE(EXCLUDED.horario, negocios_activos.horario),
                     updated_at=NOW()
-            """, n["id"], n["nombre"], n["sector_codigo"],
+            """, n["id"], n["nombre"], n["sector_codigo"], subsector,
                 n["lat"], n["lng"], zona_id,
                 n.get("rating"), n.get("num_resenas"),
                 n.get("precio_nivel"), n.get("horario"),

@@ -210,7 +210,7 @@ def test_decode_tile_with_mock_mapbox_vector_tile():
         from pipelines.peatonal.vcity import _decode_tile
         # Force reload to pick up mocked module
         import importlib
-        import pipelines.vcity as vcity_mod
+        import pipelines.peatonal.vcity as vcity_mod
         importlib.reload(vcity_mod)
 
         result = vcity_mod._decode_tile(b"\x1a\x00")  # any non-empty bytes
@@ -235,7 +235,7 @@ async def test_fetch_vcity_data_empty_tiles():
         {"zona_id": "z2", "nombre": "Gracia", "lat": 41.4039, "lng": 2.1565},
     ]
 
-    with patch("pipelines.vcity._fetch_tile", new_callable=AsyncMock) as mock_fetch:
+    with patch("pipelines.peatonal.vcity._fetch_tile", new_callable=AsyncMock) as mock_fetch:
         mock_fetch.return_value = None
         result = await _fetch_vcity_data(zonas)
         assert result == {}
@@ -259,8 +259,8 @@ async def test_fetch_vcity_data_with_features():
          "shopping_and_leisure_rate": 0.15},
     ]
 
-    with patch("pipelines.vcity._fetch_tile", new_callable=AsyncMock) as mock_fetch, \
-         patch("pipelines.vcity._decode_tile") as mock_decode:
+    with patch("pipelines.peatonal.vcity._fetch_tile", new_callable=AsyncMock) as mock_fetch, \
+         patch("pipelines.peatonal.vcity._decode_tile") as mock_decode:
         mock_fetch.return_value = fake_tile_bytes
         mock_decode.return_value = fake_features
 
@@ -292,8 +292,8 @@ async def test_fetch_vcity_data_deduplicates_tiles():
         {"zona_id": "z2", "nombre": "Zone B", "lat": lat2, "lng": lng2},
     ]
 
-    with patch("pipelines.vcity._fetch_tile", new_callable=AsyncMock) as mock_fetch, \
-         patch("pipelines.vcity._decode_tile") as mock_decode:
+    with patch("pipelines.peatonal.vcity._fetch_tile", new_callable=AsyncMock) as mock_fetch, \
+         patch("pipelines.peatonal.vcity._decode_tile") as mock_decode:
         mock_fetch.return_value = b"\x1a\x04test"
         mock_decode.return_value = [
             {"num_pedestrians": 500.0},

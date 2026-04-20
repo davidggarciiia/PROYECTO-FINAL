@@ -117,15 +117,19 @@ def calcular_score_seguridad(
         tiene_datos_v7 = hurtos is not None and robatoris is not None and danys is not None
 
         if tiene_datos_v7:
-            # Índice ponderado normalizado sobre medias BCN; invertido a 0-100
+            # Índice ponderado normalizado sobre medias BCN; invertido a 0-100.
+            # Damos más peso a delitos violentos (robatoris) que a hurtos/carterismo:
+            # 0.5·hurtos + 1.2·robatoris + 0.4·danys. Así zonas como Raval con
+            # muchos hurtos pero pocos robos no caen al suelo injustamente.
             indice_raw = (
-                (hurtos    / _HURTOS_MEDIA_BCN)    * 0.7 +
-                (robatoris / _ROBATORIS_MEDIA_BCN) * 1.0 +
-                (danys     / _DANYS_MEDIA_BCN)     * 0.5
+                (hurtos    / _HURTOS_MEDIA_BCN)    * 0.5 +
+                (robatoris / _ROBATORIS_MEDIA_BCN) * 1.2 +
+                (danys     / _DANYS_MEDIA_BCN)     * 0.4
             )
-            # indice_raw == 1.0 corresponde a las medias BCN (score neutro ~50)
-            # indice_raw == 0.0 → score máximo 100; indice_raw == 2.0 → score mínimo 0
-            s_tipo_delito = min(100.0, max(0.0, 100.0 - (indice_raw / 2.2) * 100.0))
+            # indice_raw == 1.0 ≈ media BCN (score ~50).
+            # Divisor 2.8 (antes 2.2) suaviza la caída: indice_raw=2.0 → ~28
+            # en lugar de ~9, menos punitivo para zonas comercialmente viables.
+            s_tipo_delito = min(100.0, max(0.0, 100.0 - (indice_raw / 2.8) * 100.0))
         else:
             s_tipo_delito = s_incidencias_total
 

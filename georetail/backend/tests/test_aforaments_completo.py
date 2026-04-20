@@ -26,7 +26,7 @@ import textwrap
 
 import pytest
 
-import pipelines.aforaments as afo
+import pipelines.peatonal.aforaments as afo
 
 
 # ── Clase 1: Constantes del módulo ────────────────────────────────────────────

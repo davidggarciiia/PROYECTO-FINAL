@@ -1,0 +1,452 @@
+/* DossierTabPerfil — tab que explica como el motor ha entendido tu idea.
+   Reutiliza tokens KnowPoints (--surface-2, --border, --accent-*). */
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.muted {
+  color: var(--text-subtle);
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+/* ── Signal preservation banner ───────────────────────────────── */
+.preservBanner {
+  padding: 16px 18px;
+  background: var(--accent-weak);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius);
+}
+.preservLabel {
+  font-size: var(--fs-xxs);
+  font-weight: 700;
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--accent-light);
+  margin-bottom: 10px;
+}
+.preservBody {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.preservValue {
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.preservPct {
+  font-size: 14px;
+  color: var(--accent-light);
+  margin-left: 2px;
+}
+.preservText {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  line-height: var(--lh-relaxed);
+  margin: 0;
+  padding-top: 4px;
+}
+
+/* ── Secciones genericas ──────────────────────────────────────── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.sectionTitle {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.sectionSubtitle {
+  font-size: var(--fs-xxs);
+  font-weight: 700;
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--accent-light);
+  margin: 0;
+}
+
+.sectionHelp {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: var(--lh-relaxed);
+  margin: 0;
+}
+
+/* ── Rows (label / value) ─────────────────────────────────────── */
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.row:last-child {
+  border-bottom: none;
+}
+
+.rowLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.rowValue {
+  font-size: var(--fs-sm);
+  color: var(--text);
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.prose {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  line-height: var(--lh-relaxed);
+}
+
+@media (max-width: 639px) {
+  .row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 6px 0;
+  }
+}
+
+/* ── Chips ───────────────────────────────────────────────────── */
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+}
+.chipAccent {
+  background: var(--accent-weak);
+  border-color: var(--accent-border);
+  color: var(--accent-light);
+}
+
+/* ── Ticket tier visual ──────────────────────────────────────── */
+.ticket {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.ticketGlyph {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--accent-light);
+}
+.ticketTier {
+  font-size: 10.5px;
+  color: var(--text-subtle);
+  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+}
+
+/* ── Triada ubicacion ideal ─────────────────────────────────── */
+.triad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+@media (max-width: 639px) {
+  .triad {
+    grid-template-columns: 1fr;
+  }
+}
+
+.triadCell {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.triadLabel {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.triadValue {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+/* ── Pesos comparativa ──────────────────────────────────────── */
+.pesosList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pesoRow {
+  display: grid;
+  grid-template-columns: 130px 1fr 64px;
+  gap: 14px;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.pesoLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pesoBars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pesoBarGroup {
+  display: grid;
+  grid-template-columns: 1fr 38px;
+  gap: 8px;
+  align-items: center;
+}
+
+.pesoBarTrack {
+  height: 4px;
+  background: var(--border-hover);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.pesoBarFill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.pesoBarBase {
+  background: var(--text-subtle);
+}
+
+.pesoBarMod {
+  background: var(--accent);
+}
+
+.pesoBarValue {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: right;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pesoDiff {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+.pesoArrow {
+  font-size: 14px;
+  line-height: 1;
+}
+.pesoDiffNum {
+  font-size: 11px;
+}
+
+.diffUp {
+  color: var(--green);
+}
+.diffDown {
+  color: var(--red);
+}
+.diffFlat {
+  color: var(--text-subtle);
+}
+
+.pesosLegend {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 10.5px;
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
+  letter-spacing: 0.03em;
+}
+
+.pesosLegendDot {
+  display: inline-block;
+  width: 12px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.pesosEmpty {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  line-height: var(--lh-relaxed);
+}
+
+/* ── Footer CTA ────────────────────────────────────────────── */
+.footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 20px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 20px;
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.cta:hover {
+  background: var(--accent-light);
+  border-color: var(--accent-light);
+  box-shadow: 0 0 36px var(--accent-glow);
+  transform: translateY(-1px);
+}
+
+.footerHint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+/* ── Empty state ───────────────────────────────────────────── */
+.emptyWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 340px;
+  padding: 24px;
+}
+
+.emptyCard {
+  max-width: 440px;
+  text-align: center;
+  padding: 28px 24px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-hover);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.emptyEyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xxs);
+  font-weight: 700;
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--accent-light);
+}
+.emptyTick {
+  color: var(--accent);
+  font-size: 10px;
+}
+
+.emptyTitle {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: var(--ls-heading);
+  color: var(--text);
+  margin: 4px 0 4px;
+  line-height: 1.2;
+}
+
+.emptyBody {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 40ch;
+}

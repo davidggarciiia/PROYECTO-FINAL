@@ -302,10 +302,10 @@ async def run() -> dict:
         await conn.execute(
             """
             UPDATE pipeline_ejecuciones
-            SET estado = 'completed', fin = now(), resultado = $1
+            SET estado = 'ok', fecha_fin = now(), registros = $1
             WHERE id = $2
             """,
-            json.dumps(resultado),
+            ok,
             exec_id,
         )
 

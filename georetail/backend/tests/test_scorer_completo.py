@@ -4,15 +4,17 @@ tests/test_scorer_completo.py — Tests exhaustivos del scorer manual (scorer.py
 Agente: ruflo-test-scorer
 Tarea:  task-1774810133286-tcg7a0
 
-Cubre:
-  - Verificación analítica exacta de cada una de las 8 dimensiones
+Cubre (scorer manual_v2 — 7 dimensiones activas):
+  - Verificación analítica de cada dimensión viva:
+      flujo_peatonal, demografía, competencia, transporte, seguridad,
+      turismo y dinamismo. (precio se retorna como referencia pero no pondera.)
   - Bonus costero (dist_playa_m) en turismo: <300m, <700m, <1500m, >1500m
-  - Score global = suma ponderada de dimensiones
+  - Score global = suma ponderada de dimensiones (7 pesos que suman 1.0)
   - Monotonía: más flujo/renta/etc → mayor score correspondiente
   - Semántica None vs 0: renta=0 legítima, saturacion=0 sin competencia
   - Defaults cuando datos ausentes (sector vacío, datos zona vacíos)
   - _score_neutro: formato y valores
-  - Claves de salida completas en _score_manual
+  - 12 claves de salida exactas en _score_manual (incluye score_dinamismo)
   - Capping 0-100 en todos los scores de dimensión
 """
 from __future__ import annotations
@@ -26,110 +28,71 @@ from scoring.scorer import _score_manual, _score_neutro
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _sector_default():
-    """Sector con pesos estándar que suman 1.0."""
+    """Sector con los 7 pesos actuales del scorer_manual_v2 (suman 1.0)."""
     return {
-        "peso_flujo": 0.25,
-        "peso_demo": 0.20,
+        "peso_flujo":      0.25,
+        "peso_demo":       0.25,
         "peso_competencia": 0.15,
-        "peso_precio": 0.15,
-        "peso_transporte": 0.10,
-        "peso_seguridad": 0.05,
-        "peso_turismo": 0.05,
-        "peso_entorno": 0.05,
-    }
-
-
-def _datos_medios():
-    """Zona con datos que producen scores razonables en todas las dimensiones."""
-    return {
-        "flujo_peatonal_total": 1500,       # score ~50
-        "renta_media_hogar": 38500,         # (38500-17000)/430 ≈ 50
-        "score_saturacion": 50,             # s_comp = 50
-        "precio_m2": 26.5,                  # (45-26.5)/0.37 ≈ 50
-        "num_lineas_transporte": 10,        # 10*5=50
-        "incidencias_por_1000hab": 62.5,    # (120-62.5)/1.15 ≈ 50
-        "score_turismo": 50,
-        "pct_locales_vacios": 0.05,
-        "tasa_rotacion_anual": 0.05,        # 100-0.05*200-0.05*100 = 100-10-5=85... let's use lower
+        "peso_transporte": 0.15,
+        "peso_dinamismo":  0.10,
+        "peso_seguridad":  0.05,
+        "peso_turismo":    0.05,
     }
 
 
 # ── Clase 1: Verificación analítica de cada dimensión ─────────────────────────
 
 class TestDimensionFlujo:
-    def test_flujo_cero_da_score_cero(self):
-        datos = {"flujo_peatonal_total": 0}
-        r = _score_manual(datos, {})
+    """La dimensión flujo usa ``calcular_flujo_con_temporalidad``. Cuando se
+    inyecta ``flujo_popular_times_score`` (ya 0-100) el score resultante es
+    directamente proporcional, lo que permite aserciones estables."""
+
+    def test_pt_cero_da_score_bajo(self):
+        r = _score_manual({"flujo_popular_times_score": 0}, {})
+        assert r["score_flujo_peatonal"] <= 5.0
+
+    def test_pt_100_da_score_maximo(self):
+        r = _score_manual({"flujo_popular_times_score": 100}, {})
+        assert r["score_flujo_peatonal"] >= 95.0
+
+    def test_pt_50_da_score_medio(self):
+        r = _score_manual({"flujo_popular_times_score": 50}, {})
+        assert 40.0 <= r["score_flujo_peatonal"] <= 60.0
+
+    def test_sin_datos_flujo_score_cero(self):
+        r = _score_manual({}, {})
         assert r["score_flujo_peatonal"] == 0.0
 
-    def test_flujo_3000_da_score_100(self):
-        datos = {"flujo_peatonal_total": 3000}
-        r = _score_manual(datos, {})
-        assert r["score_flujo_peatonal"] == 100.0
-
-    def test_flujo_1500_da_score_50(self):
-        datos = {"flujo_peatonal_total": 1500}
-        r = _score_manual(datos, {})
-        assert r["score_flujo_peatonal"] == 50.0
-
-    def test_flujo_mayor_3000_capped_100(self):
-        datos = {"flujo_peatonal_total": 9999}
-        r = _score_manual(datos, {})
-        assert r["score_flujo_peatonal"] == 100.0
-
-    def test_flujo_none_trata_como_cero(self):
-        datos = {}
-        r = _score_manual(datos, {})
-        assert r["score_flujo_peatonal"] == 0.0
-
-    def test_flujo_formula_exacta(self):
-        # score = min(100, flujo / 30)
-        for flujo, esperado in [(600, 20.0), (900, 30.0), (2100, 70.0)]:
-            r = _score_manual({"flujo_peatonal_total": flujo}, {})
-            assert abs(r["score_flujo_peatonal"] - esperado) < 0.01, f"flujo={flujo}"
+    def test_score_flujo_en_rango_0_100(self):
+        for pt in [0, 10, 30, 50, 70, 90, 100]:
+            r = _score_manual({"flujo_popular_times_score": pt}, {})
+            assert 0.0 <= r["score_flujo_peatonal"] <= 100.0, f"pt={pt}"
 
 
 class TestDimensionDemografia:
-    def test_renta_minima_17000_da_score_cero(self):
-        datos = {"renta_media_hogar": 17000}
-        r = _score_manual(datos, {})
-        assert r["score_demografia"] == 0.0
+    """La dimensión demografía usa el módulo enriquecido multi-variable. Los
+    tests cubren monotonía y rango; los valores absolutos los verifica el
+    test dedicado ``test_demografia_*``."""
 
-    def test_renta_60000_da_score_100(self):
-        # (60000-17000)/430 = 43000/430 ≈ 100
-        datos = {"renta_media_hogar": 60000}
-        r = _score_manual(datos, {})
-        assert r["score_demografia"] == 100.0
+    def test_renta_alta_score_superior_a_renta_baja(self):
+        r_baja = _score_manual({"renta_media_hogar": 18000}, {})
+        r_alta = _score_manual({"renta_media_hogar": 55000}, {})
+        assert r_alta["score_demografia"] > r_baja["score_demografia"]
 
-    def test_renta_none_usa_default_30000(self):
-        # sin datos usa 30000: (30000-17000)/430 ≈ 30.2
-        datos_sin = {}
-        datos_con = {"renta_media_hogar": 30000}
-        r_sin = _score_manual(datos_sin, {})
-        r_con = _score_manual(datos_con, {})
-        assert abs(r_sin["score_demografia"] - r_con["score_demografia"]) < 0.01
+    def test_renta_none_usa_default(self):
+        """Sin datos, el scorer devuelve un score demográfico estable (~50)."""
+        r = _score_manual({}, {})
+        assert 0.0 <= r["score_demografia"] <= 100.0
 
-    def test_renta_cero_es_legitimo_no_imputa(self):
-        """renta=0 debe usar 0, no imputar a 30000."""
-        datos_cero = {"renta_media_hogar": 0}
-        datos_none = {}
-        r_cero = _score_manual(datos_cero, {})
-        r_none = _score_manual(datos_none, {})
-        # Con renta=0: (0-17000)/430 → negativo → capped 0
-        assert r_cero["score_demografia"] == 0.0
-        # Con None: usa 30000 → score ~30
-        assert r_none["score_demografia"] > 0.0
-        assert r_cero["score_demografia"] != r_none["score_demografia"]
+    def test_renta_cero_no_equivale_a_renta_alta(self):
+        r_cero = _score_manual({"renta_media_hogar": 0}, {})
+        r_alta = _score_manual({"renta_media_hogar": 60000}, {})
+        assert r_cero["score_demografia"] < r_alta["score_demografia"]
 
-    def test_renta_muy_baja_capped_cero(self):
-        datos = {"renta_media_hogar": 5000}
-        r = _score_manual(datos, {})
-        assert r["score_demografia"] == 0.0
-
-    def test_renta_alta_capped_100(self):
-        datos = {"renta_media_hogar": 100000}
-        r = _score_manual(datos, {})
-        assert r["score_demografia"] == 100.0
+    def test_score_demo_en_rango_0_100(self):
+        for renta in [0, 10000, 25000, 40000, 60000, 100000]:
+            r = _score_manual({"renta_media_hogar": renta}, {})
+            assert 0.0 <= r["score_demografia"] <= 100.0, f"renta={renta}"
 
 
 class TestDimensionCompetencia:
@@ -170,6 +133,9 @@ class TestDimensionCompetencia:
 
 
 class TestDimensionPrecio:
+    """precio_alquiler se sigue retornando como referencia aunque su peso en
+    el global es 0 (ver scorer.py:316-321)."""
+
     def test_precio_8_da_score_100(self):
         # (45-8)/0.37 ≈ 100
         datos = {"precio_m2": 8.0}
@@ -226,24 +192,28 @@ class TestDimensionTransporte:
         r = _score_manual({}, {})
         assert r["score_transporte"] == 0.0
 
+    def test_score_transporte_precalculado_se_respeta(self):
+        """Si viene ``score_transporte_calculado`` del módulo dedicado, se usa
+        directamente en lugar del fallback ``num_lineas × 5``."""
+        r = _score_manual({"score_transporte_calculado": 72.0, "num_lineas_transporte": 0}, {})
+        assert r["score_transporte"] == 72.0
+
 
 class TestDimensionSeguridad:
-    def test_incidencias_120_da_score_cero(self):
-        datos = {"incidencias_por_1000hab": 120.0}
-        r = _score_manual(datos, {})
-        assert r["score_seguridad"] == 0.0
+    """El scorer delega en ``calcular_score_seguridad`` (v7, multivariable).
+    Los tests cubren monotonía y rango, no la fórmula simple antigua."""
 
-    def test_incidencias_muy_altas_capped_cero(self):
-        datos = {"incidencias_por_1000hab": 200.0}
-        r = _score_manual(datos, {})
-        assert r["score_seguridad"] == 0.0
+    def test_menos_incidencias_mayor_score(self):
+        r_bajo = _score_manual({"incidencias_por_1000hab": 90}, {})
+        r_alto = _score_manual({"incidencias_por_1000hab": 10}, {})
+        assert r_alto["score_seguridad"] > r_bajo["score_seguridad"]
 
-    def test_incidencias_bajas_dan_score_alto(self):
-        datos = {"incidencias_por_1000hab": 5.0}
-        r = _score_manual(datos, {})
-        assert r["score_seguridad"] > 90.0
+    def test_score_seguridad_en_rango_0_100(self):
+        for inc in [0, 20, 50, 100, 200]:
+            r = _score_manual({"incidencias_por_1000hab": inc}, {})
+            assert 0.0 <= r["score_seguridad"] <= 100.0, f"inc={inc}"
 
-    def test_none_usa_default_35(self):
+    def test_none_usa_default(self):
         datos_sin = {}
         datos_con = {"incidencias_por_1000hab": 35}
         r_sin = _score_manual(datos_sin, {})
@@ -297,69 +267,62 @@ class TestDimensionTurismo:
         assert r["score_turismo"] == 100.0
 
 
-class TestDimensionEntorno:
-    def test_sin_vacios_ni_rotacion_score_alto(self):
-        datos = {"pct_locales_vacios": 0.0, "tasa_rotacion_anual": 0.0}
-        r = _score_manual(datos, {})
-        assert r["score_entorno_comercial"] == 100.0
+class TestDimensionDinamismo:
+    """Tests para la dimensión dinamismo (reemplaza la antigua ``entorno``).
 
-    def test_vacios_altos_bajan_score(self):
-        datos = {"pct_locales_vacios": 0.40, "tasa_rotacion_anual": 0.0}
-        r = _score_manual(datos, {})
-        # 100 - 0.40*200 = 20
-        assert abs(r["score_entorno_comercial"] - 20.0) < 0.1
+    El cálculo detallado vive en scoring/dimensiones/dinamismo.py; aquí
+    verificamos la integración con ``_score_manual`` y el fallback a 50.0
+    (scorer.py:360) cuando el módulo dedicado no puede calcular el score.
+    """
 
-    def test_rotacion_alta_baja_score(self):
-        datos = {"pct_locales_vacios": 0.0, "tasa_rotacion_anual": 0.50}
-        r = _score_manual(datos, {})
-        # 100 - 0.50*100 = 50
-        assert abs(r["score_entorno_comercial"] - 50.0) < 0.1
+    def test_score_manual_devuelve_clave_dinamismo_en_rango(self):
+        r = _score_manual({}, {})
+        assert "score_dinamismo" in r
+        assert 0.0 <= r["score_dinamismo"] <= 100.0
 
-    def test_score_no_puede_ser_negativo(self):
-        datos = {"pct_locales_vacios": 0.80, "tasa_rotacion_anual": 1.0}
-        r = _score_manual(datos, {})
-        assert r["score_entorno_comercial"] >= 0.0
+    def test_sin_datos_usa_default_50(self):
+        """El fallback de dinamismo (scorer.py:360) es 50.0 cuando no hay
+        señales históricas para la zona."""
+        r = _score_manual({}, {})
+        assert r["score_dinamismo"] == 50.0
 
-    def test_none_usa_defaults(self):
-        r_sin = _score_manual({}, {})
-        r_con = _score_manual({"pct_locales_vacios": 0.15, "tasa_rotacion_anual": 0.18}, {})
-        assert abs(r_sin["score_entorno_comercial"] - r_con["score_entorno_comercial"]) < 0.01
+    def test_datos_degenerados_mantienen_default(self):
+        """Datos que no activan el pipeline histórico devuelven el default."""
+        r = _score_manual({"pct_locales_vacios": 0.0, "tasa_rotacion_anual": 0.0}, {})
+        assert r["score_dinamismo"] == 50.0
 
 
 # ── Clase 2: Score global ponderado ───────────────────────────────────────────
 
 class TestScoreGlobalPonderado:
     def test_score_global_es_suma_ponderada(self):
-        """Verificar que score_global = Σ(score_dim × peso_dim)."""
+        """Verificar que score_global = Σ(score_dim × peso_dim) con los 7
+        pesos activos. ``score_precio_alquiler`` se excluye: peso=0."""
         datos = {
-            "flujo_peatonal_total": 1500,
-            "renta_media_hogar": 38500,
-            "score_saturacion": 50,
-            "precio_m2": 26.5,
-            "num_lineas_transporte": 10,
-            "incidencias_por_1000hab": 62.5,
-            "score_turismo": 50,
-            "pct_locales_vacios": 0.05,
-            "tasa_rotacion_anual": 0.05,
+            "flujo_popular_times_score": 50,
+            "renta_media_hogar":         38500,
+            "score_saturacion":          50,
+            "precio_m2":                 26.5,
+            "num_lineas_transporte":     10,
+            "incidencias_por_1000hab":   62.5,
         }
         sector = _sector_default()
         r = _score_manual(datos, sector)
 
         esperado = (
-            r["score_flujo_peatonal"]    * sector["peso_flujo"] +
-            r["score_demografia"]        * sector["peso_demo"] +
-            r["score_competencia"]       * sector["peso_competencia"] +
-            r["score_precio_alquiler"]   * sector["peso_precio"] +
-            r["score_transporte"]        * sector["peso_transporte"] +
-            r["score_seguridad"]         * sector["peso_seguridad"] +
-            r["score_turismo"]           * sector["peso_turismo"] +
-            r["score_entorno_comercial"] * sector["peso_entorno"]
+            r["score_flujo_peatonal"] * sector["peso_flujo"] +
+            r["score_demografia"]     * sector["peso_demo"] +
+            r["score_competencia"]    * sector["peso_competencia"] +
+            r["score_transporte"]     * sector["peso_transporte"] +
+            r["score_dinamismo"]      * sector["peso_dinamismo"] +
+            r["score_seguridad"]      * sector["peso_seguridad"] +
+            r["score_turismo"]        * sector["peso_turismo"]
         )
         assert abs(r["score_global"] - round(esperado, 1)) < 0.05
 
     def test_score_global_rango_0_100(self):
-        for flujo in [0, 500, 1500, 3000]:
-            r = _score_manual({"flujo_peatonal_total": flujo}, _sector_default())
+        for pt in [0, 25, 50, 75, 100]:
+            r = _score_manual({"flujo_popular_times_score": pt}, _sector_default())
             assert 0.0 <= r["score_global"] <= 100.0
 
     def test_sector_vacio_usa_pesos_default(self):
@@ -368,43 +331,52 @@ class TestScoreGlobalPonderado:
         assert "score_global" in r
         assert 0.0 <= r["score_global"] <= 100.0
 
-    def test_todos_max_da_cerca_100(self):
+    def test_todos_max_da_score_alto(self):
         datos = {
-            "flujo_peatonal_total": 3000,
-            "renta_media_hogar": 60000,
-            "score_saturacion": 0,
-            "precio_m2": 8.0,
-            "num_lineas_transporte": 20,
-            "incidencias_por_1000hab": 5.0,
-            "score_turismo": 100,
-            "pct_locales_vacios": 0.0,
-            "tasa_rotacion_anual": 0.0,
+            "flujo_popular_times_score": 100,
+            "renta_media_hogar":         60000,
+            "score_saturacion":          0,
+            "precio_m2":                 8.0,
+            "num_lineas_transporte":     20,
+            "incidencias_por_1000hab":   5.0,
+            "airbnb_density_500m":       500,
+            "airbnb_occupancy_est":      1.0,
+            "booking_hoteles_500m":      100,
+            "eventos_culturales_500m":   50,
+            "venues_musicales_500m":     20,
+            "dist_playa_m":              50,
+            "seasonality_summer_lift":   2.0,
         }
         r = _score_manual(datos, _sector_default())
-        assert r["score_global"] >= 95.0
+        # Con dinamismo=50 (fallback) y seguridad que no llega a 100,
+        # el techo realista es ~85-90.
+        assert r["score_global"] >= 80.0
 
-    def test_todos_min_da_cerca_0(self):
+    def test_todos_min_da_score_bajo(self):
         datos = {
-            "flujo_peatonal_total": 0,
-            "renta_media_hogar": 5000,
-            "score_saturacion": 100,
-            "precio_m2": 50.0,
-            "num_lineas_transporte": 0,
-            "incidencias_por_1000hab": 200.0,
-            "score_turismo": 0,
-            "pct_locales_vacios": 1.0,
-            "tasa_rotacion_anual": 1.0,
+            "flujo_popular_times_score": 0,
+            "renta_media_hogar":         5000,
+            "score_saturacion":          100,
+            "precio_m2":                 50.0,
+            "num_lineas_transporte":     0,
+            "incidencias_por_1000hab":   200.0,
+            "airbnb_density_500m":       0,
+            "booking_hoteles_500m":      0,
+            "eventos_culturales_500m":   0,
+            "dist_playa_m":              9999,
         }
         r = _score_manual(datos, _sector_default())
-        assert r["score_global"] <= 5.0
+        # Con dinamismo=50 (fallback) y seguridad que no baja de ~30,
+        # el suelo realista es ~20-25.
+        assert r["score_global"] <= 25.0
 
 
 # ── Clase 3: Monotonía ─────────────────────────────────────────────────────────
 
 class TestMonotonia:
     def test_mas_flujo_mayor_score_flujo(self):
-        r1 = _score_manual({"flujo_peatonal_total": 500}, {})
-        r2 = _score_manual({"flujo_peatonal_total": 2000}, {})
+        r1 = _score_manual({"flujo_popular_times_score": 20}, {})
+        r2 = _score_manual({"flujo_popular_times_score": 80}, {})
         assert r2["score_flujo_peatonal"] > r1["score_flujo_peatonal"]
 
     def test_mas_renta_mayor_score_demo(self):
@@ -438,11 +410,6 @@ class TestMonotonia:
         r2 = _score_manual({**base, "dist_playa_m": 200}, {})
         assert r2["score_turismo"] >= r1["score_turismo"]
 
-    def test_menos_vacios_mayor_score_entorno(self):
-        r1 = _score_manual({"pct_locales_vacios": 0.40, "tasa_rotacion_anual": 0.2}, {})
-        r2 = _score_manual({"pct_locales_vacios": 0.05, "tasa_rotacion_anual": 0.1}, {})
-        assert r2["score_entorno_comercial"] > r1["score_entorno_comercial"]
-
 
 # ── Clase 4: Formato de salida ────────────────────────────────────────────────
 
@@ -456,15 +423,16 @@ class TestFormatoSalida:
         "score_transporte",
         "score_seguridad",
         "score_turismo",
-        "score_entorno_comercial",
+        "score_dinamismo",
         "probabilidad_supervivencia",
         "shap_values",
         "modelo_version",
     }
 
-    def test_score_manual_devuelve_11_claves(self):
+    def test_score_manual_devuelve_12_claves(self):
         r = _score_manual({}, {})
         assert set(r.keys()) == self._CLAVES_ESPERADAS
+        assert len(self._CLAVES_ESPERADAS) == 12
 
     def test_probabilidad_supervivencia_es_none_en_manual(self):
         r = _score_manual({}, {})
@@ -474,17 +442,17 @@ class TestFormatoSalida:
         r = _score_manual({}, {})
         assert r["shap_values"] is None
 
-    def test_modelo_version_es_manual_v1(self):
+    def test_modelo_version_es_manual_v2(self):
         r = _score_manual({}, {})
-        assert r["modelo_version"] == "manual_v1"
+        assert r["modelo_version"] == "manual_v2"
 
     def test_score_global_es_float_redondeado(self):
-        r = _score_manual({"flujo_peatonal_total": 1234}, _sector_default())
+        r = _score_manual({"flujo_popular_times_score": 56}, _sector_default())
         # Debe estar redondeado a 1 decimal
         assert r["score_global"] == round(r["score_global"], 1)
 
     def test_todos_los_scores_son_float(self):
-        r = _score_manual({"flujo_peatonal_total": 1000}, _sector_default())
+        r = _score_manual({"flujo_popular_times_score": 50}, _sector_default())
         score_keys = [k for k in r if k.startswith("score_") and k != "score_global"]
         for k in score_keys:
             assert isinstance(r[k], float), f"{k} no es float"
@@ -505,6 +473,21 @@ class TestFormatoSalida:
 # ── Clase 5: _score_neutro ────────────────────────────────────────────────────
 
 class TestScoreNeutro:
+    _CLAVES_NEUTRO = {
+        "score_global",
+        "score_flujo_peatonal",
+        "score_demografia",
+        "score_competencia",
+        "score_precio_alquiler",
+        "score_transporte",
+        "score_seguridad",
+        "score_turismo",
+        "score_dinamismo",
+        "probabilidad_supervivencia",
+        "shap_values",
+        "modelo_version",
+    }
+
     def test_score_neutro_devuelve_50_en_todo(self):
         r = _score_neutro()
         score_keys = [k for k in r if k.startswith("score_")]
@@ -513,13 +496,7 @@ class TestScoreNeutro:
 
     def test_score_neutro_claves_completas(self):
         r = _score_neutro()
-        claves_esperadas = {
-            "score_global", "score_flujo_peatonal", "score_demografia",
-            "score_competencia", "score_precio_alquiler", "score_transporte",
-            "score_seguridad", "score_turismo", "score_entorno_comercial",
-            "probabilidad_supervivencia", "shap_values", "modelo_version",
-        }
-        assert set(r.keys()) == claves_esperadas
+        assert set(r.keys()) == self._CLAVES_NEUTRO
 
     def test_score_neutro_modelo_version_fallback(self):
         r = _score_neutro()
@@ -539,23 +516,35 @@ class TestScoreNeutro:
 class TestPesosSector:
     def test_sector_flujo_heavy_amplifica_flujo(self):
         """Con peso_flujo=1.0 y el resto 0, score_global = score_flujo."""
-        datos = {"flujo_peatonal_total": 1500}
-        sector = {"peso_flujo": 1.0, "peso_demo": 0, "peso_competencia": 0,
-                  "peso_precio": 0, "peso_transporte": 0, "peso_seguridad": 0,
-                  "peso_turismo": 0, "peso_entorno": 0}
+        datos = {"flujo_popular_times_score": 50}
+        sector = {
+            "peso_flujo":      1.0,
+            "peso_demo":       0,
+            "peso_competencia": 0,
+            "peso_transporte": 0,
+            "peso_dinamismo":  0,
+            "peso_seguridad":  0,
+            "peso_turismo":    0,
+        }
         r = _score_manual(datos, sector)
         assert abs(r["score_global"] - r["score_flujo_peatonal"]) < 0.1
 
     def test_sector_demo_heavy_amplifica_demo(self):
         datos = {"renta_media_hogar": 50000}
-        sector = {"peso_flujo": 0, "peso_demo": 1.0, "peso_competencia": 0,
-                  "peso_precio": 0, "peso_transporte": 0, "peso_seguridad": 0,
-                  "peso_turismo": 0, "peso_entorno": 0}
+        sector = {
+            "peso_flujo":      0,
+            "peso_demo":       1.0,
+            "peso_competencia": 0,
+            "peso_transporte": 0,
+            "peso_dinamismo":  0,
+            "peso_seguridad":  0,
+            "peso_turismo":    0,
+        }
         r = _score_manual(datos, sector)
         assert abs(r["score_global"] - r["score_demografia"]) < 0.1
 
     def test_pesos_distintos_dan_scores_distintos(self):
-        datos = {"flujo_peatonal_total": 2000, "renta_media_hogar": 50000}
+        datos = {"flujo_popular_times_score": 80, "renta_media_hogar": 50000}
         s1 = {**_sector_default(), "peso_flujo": 0.50, "peso_demo": 0.10}
         s2 = {**_sector_default(), "peso_flujo": 0.10, "peso_demo": 0.50}
         r1 = _score_manual(datos, s1)

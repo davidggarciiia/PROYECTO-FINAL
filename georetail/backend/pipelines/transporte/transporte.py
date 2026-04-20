@@ -55,10 +55,26 @@ async def ejecutar() -> dict:
         await _cargar_paradas_por_linea()
         await _asignar_zonas()
 
+        # Agregación por zona (materializa num_lineas/paradas en variables_zona)
+        zonas_actualizadas = 0
+        try:
+            from pipelines.transporte.agregado_zona import ejecutar as ejecutar_agregado
+            res_agg = await ejecutar_agregado()
+            zonas_actualizadas = int(res_agg.get("zonas_actualizadas") or 0)
+        except Exception as exc_agg:
+            logger.warning("Agregado por zona falló (no bloqueante): %s", exc_agg)
+
         total = n_lineas + n_paradas
         await _fin(eid, total, "ok")
-        logger.info("Transporte OK — %d líneas, %d paradas", n_lineas, n_paradas)
-        return {"lineas": n_lineas, "paradas": n_paradas}
+        logger.info(
+            "Transporte OK — %d líneas, %d paradas, %d zonas agregadas",
+            n_lineas, n_paradas, zonas_actualizadas,
+        )
+        return {
+            "lineas": n_lineas,
+            "paradas": n_paradas,
+            "zonas_agregadas": zonas_actualizadas,
+        }
 
     except Exception as exc:
         logger.error("Pipeline transporte ERROR: %s", exc, exc_info=True)

@@ -74,7 +74,10 @@ def raw_completo():
 class TestFormatScoresForApi:
     def test_estructura_basica_correcta(self, raw_completo):
         out = _format_scores_for_api(raw_completo)
-        assert set(out.keys()) == {
+        # Contract mínimo de claves que debe devolver siempre. Se permiten
+        # campos adicionales (extensiones como pesos_modulados) sin romper
+        # el contrato base con el frontend.
+        claves_minimas = {
             "score_global",
             "probabilidad_supervivencia_3a",
             "scores_dimension",
@@ -83,6 +86,7 @@ class TestFormatScoresForApi:
             "shap_values",
             "modelo_version",
         }
+        assert claves_minimas.issubset(out.keys())
 
     def test_score_global_se_preserva(self, raw_completo):
         out = _format_scores_for_api(raw_completo)

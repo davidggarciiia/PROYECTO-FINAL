@@ -35,13 +35,13 @@ from pydantic import BaseModel
 from schemas.models import (
     LocalDetalleResponse, ZonaDetalle, ScoresDimensiones, AnalisisIADetallado,
     CompetidorCercano, AlertaZona, ColorZona, SeguridadDetalle,
-    EntornoComercialDetalle,
+    EntornoComercialDetalle, PerfilRefinado,
 )
 from api._utils import score_to_color
 from db.sesiones import get_sesion
 from db.zonas import get_zona_completa
 from scoring.motor import get_scores_zona
-from scoring.explainability import build_llm_grounding_payload
+from scoring.explainability import build_llm_grounding_payload, build_fallback_analysis
 from nlp.alertas import get_alertas_zona
 from agente.analisis import generar_analisis_zona
 
@@ -182,6 +182,7 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
             descripcion_negocio=sesion.get("descripcion_original"),
             perfil_negocio=sesion.get("perfil", {}).get("perfil_negocio") or {},
             concepto_negocio=sesion.get("perfil", {}).get("concepto_negocio") or {},
+            perfil_refinado=sesion.get("perfil", {}).get("perfil_refinado") or None,
         ),
 
         # Fuente: `alertas_zona` generadas por `nlp/alertas.py`
@@ -217,17 +218,31 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
         )
     except Exception as exc:
         logger.error("Error generar_analisis_zona %s: %s", body.zona_id, exc)
+        # Fallback determinista con hechos_clave reales desde llm_grounding.
+        fallback = build_fallback_analysis(llm_grounding)
         analisis_data = {
-            "texto": "Análisis no disponible temporalmente.",
-            "pros": [],
-            "contras": [],
-            "resumen_global": "Análisis no disponible temporalmente.",
-            "puntos_fuertes": [],
-            "puntos_debiles": [],
-            "razon_recomendacion": "No se pudo generar la explicación en este momento.",
-            "recomendacion_final": "Con reservas",
-            "explicaciones_dimensiones": {},
+            "texto": fallback.get("resumen_global") or "Análisis no disponible temporalmente.",
+            "pros": fallback.get("puntos_fuertes", []),
+            "contras": fallback.get("puntos_debiles", []),
+            "resumen_global": fallback.get("resumen_global", "Análisis no disponible temporalmente."),
+            "puntos_fuertes": fallback.get("puntos_fuertes", []),
+            "puntos_debiles": fallback.get("puntos_debiles", []),
+            "razon_recomendacion": fallback.get("razon_recomendacion", "Análisis determinista en base a variables observadas."),
+            "recomendacion_final": fallback.get("recomendacion_final", "Con reservas"),
+            "explicaciones_dimensiones": fallback.get("explicaciones_dimensiones", {}),
         }
+
+    # Guardrail final: si por la razón que sea explicaciones_dimensiones
+    # sigue vacío, rellenamos desde grounding. Mejor algo trazable que un
+    # panel en blanco para el usuario.
+    if not analisis_data.get("explicaciones_dimensiones"):
+        try:
+            fallback_merge = build_fallback_analysis(llm_grounding)
+            analisis_data["explicaciones_dimensiones"] = (
+                fallback_merge.get("explicaciones_dimensiones", {})
+            )
+        except Exception as exc:
+            logger.warning("merge fallback explicaciones falló zona=%s: %s", body.zona_id, exc)
 
     # ── Pesos del modelo para esta idea (sector clasificado) ──────────────────
     # Permite al frontend mostrar "esta dimension pesa X% para tu idea".
@@ -253,6 +268,21 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
             }
     except Exception as exc:
         logger.warning("No se pudieron cargar pesos del sector %s: %s", sector, exc)
+
+    # ── PerfilRefinado + pesos modulados (Fase 1-2) ───────────────────────────
+    # El perfil refinado viene de la sesión (lo cacheamos en /api/buscar). Los
+    # pesos modulados vienen del scorer — son los pesos del sector ajustados
+    # por las reglas declarativas del refinador. Si faltan, dejamos None y el
+    # frontend cae al fallback pesos_dimensiones estático.
+    perfil_refinado_obj: Optional[PerfilRefinado] = None
+    raw_perfil_refinado = (sesion.get("perfil") or {}).get("perfil_refinado")
+    if raw_perfil_refinado:
+        try:
+            perfil_refinado_obj = PerfilRefinado(**raw_perfil_refinado)
+        except Exception as exc:
+            logger.warning("perfil_refinado inválido en sesión: %s", exc)
+
+    pesos_modulados_out = scores_data.get("pesos_modulados") or None
 
     # ── Construir respuesta ───────────────────────────────────────────────────
     score_global = scores_data.get("score_global", zona.get("score_global", 50.0))
@@ -285,6 +315,10 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
         # Pesos del modelo para el sector clasificado de la busqueda.
         sector_codigo=sector,
         pesos_dimensiones=pesos_dimensiones,
+
+        # Capa de preservación de señal (Fase 1-2).
+        perfil_refinado=perfil_refinado_obj,
+        pesos_modulados=pesos_modulados_out,
 
         # Variables demográficas y entorno
         flujo_peatonal_dia=zona.get("flujo_peatonal_dia"),

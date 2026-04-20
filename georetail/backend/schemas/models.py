@@ -1,7 +1,7 @@
 """schemas/models.py — Contratos Pydantic centralizados para toda la API."""
 from __future__ import annotations
 from enum import Enum
-from typing import Optional, Any
+from typing import Optional, Any, Literal
 from pydantic import BaseModel, Field
 
 
@@ -280,6 +280,48 @@ class ScoresDimensiones(BaseModel):
     dinamismo:         Optional[float] = None
 
 
+# ── PerfilRefinado (capa de preservación de señal sobre la descripción) ───────
+# Es una capa estructurada PERO con vocabulario abierto en `nuances_detected`,
+# destinada a mantener el matiz del texto del usuario a lo largo de la pipeline.
+# Se genera vía LLM en `agente/refinador.py` y se modula con los pesos del
+# sector en `scoring/motor._aplicar_pesos_concepto` para hacer explicables los
+# cambios. Si el LLM falla, se devuelven defaults vacíos sin bloquear el flujo.
+
+class PublicoObjetivo(BaseModel):
+    edad_rango:              Optional[str]                                            = None  # ej "25-35"
+    nivel_socioeconomico:    Optional[Literal["bajo", "medio", "medio-alto", "alto"]] = None
+    estilo_vida:             list[str]                                                = Field(default_factory=list)
+    horarios_pico:           list[str]                                                = Field(default_factory=list)  # ["mañana","brunch","tarde","noche"]
+
+
+class PropuestaValor(BaseModel):
+    especializacion:         Optional[str]   = None
+    diferenciadores:         list[str]       = Field(default_factory=list)
+    calidad_percibida_0_5:   Optional[float] = None
+
+
+class Operacion(BaseModel):
+    modelo_servicio:         Optional[Literal["take_away", "mesas", "mixto", "delivery_only"]] = None
+    ticket_tier_p1_p5:       Optional[int]                                                     = None  # 1=low, 5=premium
+    escala_operativa:        Optional[Literal["solo", "micro", "pequeña", "mediana"]]          = None
+    horarios_apertura:       list[str]                                                         = Field(default_factory=list)
+
+
+class UbicacionIdeal(BaseModel):
+    tipo_calle:              Optional[str]                                   = None
+    densidad_preferida:      Optional[Literal["baja", "media", "alta"]]      = None
+    flujo_tipo:              Optional[str]                                   = None
+
+
+class PerfilRefinado(BaseModel):
+    publico_objetivo:            PublicoObjetivo  = Field(default_factory=PublicoObjetivo)
+    propuesta_valor:             PropuestaValor   = Field(default_factory=PropuestaValor)
+    operacion:                   Operacion        = Field(default_factory=Operacion)
+    ubicacion_ideal:             UbicacionIdeal   = Field(default_factory=UbicacionIdeal)
+    nuances_detected:            list[str]        = Field(default_factory=list)
+    signal_preservation_score:   int              = 100
+
+
 class ZonaDetalle(BaseModel):
     zona_id:  str
     nombre:   str
@@ -323,6 +365,12 @@ class ZonaDetalle(BaseModel):
     # Permite al frontend mostrar "esta dimension pesa X% para tu idea".
     sector_codigo:      Optional[str] = None
     pesos_dimensiones:  dict[str, float] = Field(default_factory=dict)
+
+    # Capa de preservación de señal: perfil estructurado rico + pesos modulados
+    # por reglas declarativas en función del perfil. Ambos son opcionales y se
+    # rellenan cuando el agente refinador ha corrido con éxito.
+    perfil_refinado:    Optional[PerfilRefinado] = None
+    pesos_modulados:    Optional[dict[str, float]] = None
 
 
 class LocalDetalle(BaseModel):
@@ -583,3 +631,31 @@ class HealthResponse(BaseModel):
     version:   str
     timestamp: str
     services:  list[ServiceStatus]
+
+
+# ── Transporte (detalle por zona) ─────────────────────────────────────────────
+
+TipoTransporte = Literal["metro", "bus", "tram", "fgc", "rodalies"]
+
+
+class ParadaCercana(BaseModel):
+    nombre:      str
+    distancia_m: float
+    tipo:        TipoTransporte
+
+
+class LineaCercana(BaseModel):
+    tipo:              TipoTransporte
+    codigo:            str
+    nombre:            Optional[str] = None
+    color:             str
+    dist_min_m:        float
+    paradas_cercanas:  list[ParadaCercana]
+
+
+class TransporteDetalleZona(BaseModel):
+    zona_id:       str
+    radio_m:       int = 500
+    total_lineas:  int
+    total_paradas: int
+    lineas:        list[LineaCercana]

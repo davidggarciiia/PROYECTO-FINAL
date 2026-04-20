@@ -11,9 +11,9 @@ import {
   DIMENSIONS,
   type DimensionKey,
   type DimensionMeta,
-  type DimensionBreakdownRow,
 } from "./dimensions";
 import styles from "./Dossier.module.css";
+import TransportePanel from "../TransportePanel";
 
 interface Props {
   zone: ZonaPreview;
@@ -37,10 +37,6 @@ function bandLabel(band: Band): string {
   return "Sin datos";
 }
 
-function clamp(n: number, lo = 0, hi = 100): number {
-  return Math.max(lo, Math.min(hi, n));
-}
-
 /** Desktop grid has 2 columns (see Dossier.module.css :.dimGrid). */
 const GRID_COLS = 2;
 
@@ -55,6 +51,7 @@ interface DrawerProps {
   explicacion?: ExplicacionDimension;
   peso?: number;           // 0-1, peso de esta dimensión para el sector
   sectorCodigo?: string;   // sector clasificado ("restauracion", etc.)
+  zonaId?: string;         // para paneles ricos por dimensión (transporte, etc.)
 }
 
 /**
@@ -82,17 +79,12 @@ function razonPeso(
   return intros[dimKey] ?? `Esta dimensión pesa ${pct}% para ${sector}.`;
 }
 
-function DimDrawer({ dim, value, explicacion, peso, sectorCodigo }: DrawerProps) {
+function DimDrawer({ dim, value, explicacion, peso, sectorCodigo, zonaId }: DrawerProps) {
   const band = scoreBand(value ?? null);
   const label = bandLabel(band);
 
-  // TODO: reemplazar por desglose real cuando el backend lo devuelva.
-  const baseValue = value ?? 60;
-  const breakdownRows: Array<DimensionBreakdownRow & { value: number }> =
-    dim.breakdown.map((row) => ({
-      ...row,
-      value: Math.round(clamp(baseValue + row.offset)),
-    }));
+  // Desglose real: solo mostramos hechos clave del backend. Sin invenciones.
+  const hechos = (explicacion?.hechos_clave ?? []).filter((t) => t && t.trim());
 
   // Copy para "Para este local": usamos explicacion del API cuando la hay.
   const interpTitular = explicacion?.titular?.trim();
@@ -227,31 +219,37 @@ function DimDrawer({ dim, value, explicacion, peso, sectorCodigo }: DrawerProps)
               </span>
             ))}
           </div>
+
+          {dim.key === "transporte" && zonaId && (
+            <div style={{ marginTop: 18 }}>
+              <TransportePanel zonaId={zonaId} />
+            </div>
+          )}
         </div>
 
-        {/* Columna derecha: Desglose */}
+        {/* Columna derecha: Hechos clave observados (datos crudos, sin score inventado) */}
         <div className={styles.drawerBodyRight}>
-          <div className={styles.drawerSectionLabel}>Desglose</div>
-          <div className={styles.drawerBreakdown}>
-            {breakdownRows.map((row, i) => {
-              const rowBand = scoreBand(row.value);
-              return (
-                <div
-                  key={i}
-                  className={`${styles.breakdownRow} ${styles[`bd_${rowBand}`]}`}
-                >
-                  <div className={styles.breakdownText}>
-                    <div className={styles.breakdownLabel}>{row.label}</div>
-                    <div className={styles.breakdownMeta}>{row.meta}</div>
-                  </div>
-                  <div className={styles.breakdownBar}>
-                    <span style={{ width: `${row.value}%` }} />
-                  </div>
-                  <div className={styles.breakdownValue}>{row.value}</div>
-                </div>
-              );
-            })}
-          </div>
+          <div className={styles.drawerSectionLabel}>Hechos observados</div>
+          {hechos.length > 0 ? (
+            <ul className={styles.drawerInterpList}>
+              {hechos.map((hecho, i) => (
+                <li key={i} className={styles.interpBullet_fact}>
+                  <span className={styles.interpBulletIcon} aria-hidden>
+                    ·
+                  </span>
+                  <span>{hecho}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className={styles.drawerInterpText}>
+              <span className={styles.drawerInterpMuted}>
+                Todavía no hay datos crudos validados por el backend para esta
+                dimensión. El score se calcula internamente pero no exponemos
+                un desglose numérico para evitar mostrar valores inventados.
+              </span>
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -370,6 +368,7 @@ export default function DossierTabScore({ zone, detalle, loading }: Props) {
                 explicacion={explicaciones[openDim.key]}
                 peso={pesos[openDim.key]}
                 sectorCodigo={sectorCodigo}
+                zonaId={zone.zona_id}
               />
             )}
           </Fragment>

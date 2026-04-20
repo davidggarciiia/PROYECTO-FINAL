@@ -1349,19 +1349,40 @@ class ConceptoMatcher:
 
     _MODEL_NAME = "paraphrase-multilingual-mpnet-base-v2"
 
+    # Sentinels a nivel de clase: si la carga del modelo falla una vez en el
+    # proceso, asumimos que el fallo es determinista (módulo no instalado,
+    # modelo no descargable, etc.) y evitamos re-intentos + re-logs por
+    # petición. El fallback por keywords queda activo silenciosamente.
+    _load_failed: bool = False
+    _load_error: Optional[Exception] = None
+    _fallback_logged: bool = False
+
     def __init__(self):
         self._model = None
         self._db_embeddings: np.ndarray | None = None
         self._db_keys: list[str] = []
 
     def _get_model(self):
+        # Si ya sabemos que la carga falla en este proceso, no re-intentamos
+        # el import (evita log spam y el coste de import fallido repetido).
+        if ConceptoMatcher._load_failed:
+            raise ConceptoMatcher._load_error  # type: ignore[misc]
         if self._model is None:
             try:
                 from sentence_transformers import SentenceTransformer
                 self._model = SentenceTransformer(self._MODEL_NAME)
                 logger.info("ConceptoMatcher: modelo %s cargado", self._MODEL_NAME)
             except Exception as e:
-                logger.error("ConceptoMatcher: no se pudo cargar el modelo: %s", e)
+                # Logueamos UNA SOLA VEZ por proceso; luego marcamos el fallo
+                # para que llamadas subsiguientes no reintenten ni re-loguen.
+                if not ConceptoMatcher._load_failed:
+                    logger.error(
+                        "ConceptoMatcher: no se pudo cargar el modelo: %s "
+                        "(fallback keywords activo en adelante, sin más logs)",
+                        e,
+                    )
+                ConceptoMatcher._load_failed = True
+                ConceptoMatcher._load_error = e
                 raise
         return self._model
 
@@ -1402,7 +1423,16 @@ class ConceptoMatcher:
                 for i in top_idx
             ]
         except Exception as e:
-            logger.warning("ConceptoMatcher.match falló: %s — usando fallback keywords", e)
+            # Solo logueamos el WARNING la primera vez por proceso. Una vez
+            # que el fallback keywords está activo, es el modo estable y no
+            # conviene spamear en cada /api/buscar.
+            if not ConceptoMatcher._fallback_logged:
+                logger.warning(
+                    "ConceptoMatcher.match falló: %s — usando fallback "
+                    "keywords (no se logueará de nuevo en este proceso)",
+                    e,
+                )
+                ConceptoMatcher._fallback_logged = True
             return self._keyword_match(descripcion, top_k)
 
     def _keyword_match(self, descripcion: str, top_k: int = 4) -> list[dict]:

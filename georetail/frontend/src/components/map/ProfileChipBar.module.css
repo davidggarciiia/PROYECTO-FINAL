@@ -1,0 +1,73 @@
+/* ProfileChipBar — tira de chips que resume el perfil refinado del negocio.
+   Se integra en el header del Dossier. Reutiliza tokens KnowPoints. */
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+  cursor: default;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip:hover {
+  border-color: var(--accent-border);
+  color: var(--text);
+}
+
+/* Sector / subsector — estilo code mono con borde accent. */
+.chipCode {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  color: var(--accent-light);
+  border-color: var(--accent-border);
+  background: var(--accent-weak);
+}
+
+.chipCode:hover {
+  color: var(--accent-light);
+  border-color: var(--accent);
+}
+
+/* Ticket tier — font weight y tracking para simular monedas. */
+.chipTicket {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: var(--accent-light);
+  border-color: var(--accent-border);
+  background: var(--accent-weak);
+}
+
+@media (max-width: 640px) {
+  .chip {
+    font-size: 10px;
+    padding: 3px 8px;
+    max-width: 160px;
+  }
+  .chipCode {
+    font-size: 9.5px;
+  }
+}

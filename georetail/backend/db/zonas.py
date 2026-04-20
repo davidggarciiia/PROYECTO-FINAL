@@ -157,7 +157,10 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
                 ) l ON TRUE
                 LEFT JOIN LATERAL (
                     SELECT * FROM v_variables_zona WHERE zona_id=z.id
-                    ORDER BY fecha DESC LIMIT 1
+                    ORDER BY (vcity_tourist_rate IS NOT NULL) DESC,
+                             (flujo_peatonal_manana IS NOT NULL) DESC,
+                             fecha DESC
+                    LIMIT 1
                 ) vz ON TRUE
                 LEFT JOIN LATERAL (
                     SELECT sz2.*

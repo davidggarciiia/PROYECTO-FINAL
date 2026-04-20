@@ -7,6 +7,7 @@ import type {
   FinancieroResponse,
   LegalRoadmapResponse,
   CompetenciaDetalle,
+  TransporteDetalleZona,
 } from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -96,6 +97,25 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ zona_id, session_id }),
     });
+  },
+
+  transporte: async (zona_id: string, radio_m = 500): Promise<TransporteDetalleZona> => {
+    if (USE_MOCK) {
+      return mockFetch<TransporteDetalleZona>(
+        {
+          zona_id,
+          radio_m,
+          total_lineas: 0,
+          total_paradas: 0,
+          lineas: [],
+        },
+        300,
+      );
+    }
+    const params = new URLSearchParams({ radio_m: String(radio_m) });
+    return apiFetch<TransporteDetalleZona>(
+      `/api/transporte/${encodeURIComponent(zona_id)}?${params.toString()}`,
+    );
   },
 
   competencia: async (zona_id: string, session_id: string): Promise<CompetenciaDetalle> => {

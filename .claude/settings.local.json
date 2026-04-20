@@ -74,11 +74,24 @@
       "Bash(bash)",
       "Bash(npx ruflo *)",
       "WebSearch",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git merge *)",
+      "Bash(git commit -m ' *)",
+      "Bash(npm run *)",
+      "Bash(git stash *)",
+      "Bash(git mv *)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:8000/api/health)",
+      "Bash(curl -s -X POST http://localhost:8000/api/buscar -H \"Content-Type: application/json\" -d '{\"descripcion\":\"test\",\"sector\":\"restauracion\"}')",
+      "Bash(curl -s -o /dev/null -w \"backend HTTP %{http_code}\\\\n\" http://localhost:8000/api/health)",
+      "Read(//c/c/Users/pirul/Documents/GitHub/PROYECTO-FINAL/georetail/backend/scoring/dimensiones/**)",
+      "Bash(curl -s -X POST http://localhost:8000/api/local -H \"Content-Type: application/json\" -d '{\"zona_id\":\"bcn_born_01\",\"sector_codigo\":\"restauracion\",\"descripcion\":\"cafeteria especialidad para jovenes\"}')",
+      "Bash(curl -s -X POST http://localhost:8000/api/local -H \"Content-Type: application/json\" -d '{\"zona_id\":\"bcn_born_01\",\"sector_codigo\":\"restauracion\",\"descripcion\":\"cafeteria especialidad jovenes\"}')",
+      "Bash(curl -s -X POST http://localhost:8000/api/buscar -H \"Content-Type: application/json\" -d '{\"descripcion\":\"cafeteria especialidad jovenes 80m2\"}')",
+      "Bash(curl *)"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "claude-flow"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

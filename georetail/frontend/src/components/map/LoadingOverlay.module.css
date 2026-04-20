@@ -1,0 +1,112 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(9, 6, 15, 0.72);
+  backdrop-filter: blur(6px);
+  animation: fadeIn 0.25s ease both;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  padding: 36px 48px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  max-width: min(440px, calc(100% - 32px));
+  text-align: center;
+}
+
+.spinnerBig {
+  width: 54px;
+  height: 54px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.stepWrap {
+  min-height: 18px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  transition: opacity 0.25s ease;
+}
+
+.stepFade {
+  animation: stepFade 0.45s ease both;
+}
+
+@keyframes stepFade {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.query {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-subtle);
+  line-height: 1.5;
+  max-width: 340px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.query em {
+  color: var(--text-muted);
+  font-style: normal;
+  font-weight: 500;
+}
+
+.progress {
+  width: 100%;
+  max-width: 280px;
+  height: 3px;
+  background: var(--border);
+  border-radius: 100px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progressFill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--accent) 45%,
+    var(--accent) 55%,
+    transparent 100%);
+  animation: slide 1.6s ease-in-out infinite;
+}
+
+@keyframes slide {
+  0%   { transform: translateX(-40%); }
+  100% { transform: translateX(140%); }
+}

@@ -43,7 +43,7 @@ export default function Onboarding({ onSubmit }: Props) {
 
   const submit = (text?: string) => {
     const value = (text ?? q).trim();
-    if (value.length < 4) return;
+    if (value.length < 10) return;
     setLeaving(true);
     setTimeout(() => onSubmit(value), 320);
   };

@@ -7,10 +7,10 @@ import MapCanvas, { type BasemapId } from "@/components/map/MapCanvas";
 import HudCoord from "@/components/map/HudCoord";
 import HudLegend from "@/components/map/HudLegend";
 import BasemapSwitcher from "@/components/map/BasemapSwitcher";
-import CommandBar from "@/components/map/CommandBar";
 import ZoneIndex from "@/components/map/ZoneIndex";
 import ActiveDock from "@/components/map/ActiveDock";
 import Dossier from "@/components/map/Dossier";
+import LoadingOverlay from "@/components/map/LoadingOverlay";
 import styles from "./page.module.css";
 import type { ZonaPreview, LocalDetalleResponse } from "@/lib/types";
 import { api } from "@/lib/api";
@@ -71,7 +71,14 @@ export default function AppPage() {
         }
       } catch (e) {
         console.error("api.buscar error:", e);
-        setErrorMsg("Error conectando con el motor. ¿Backend corriendo en :8000?");
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/422/.test(msg)) {
+          setErrorMsg("Describe tu negocio con al menos 10 caracteres.");
+        } else if (/Failed to fetch|NetworkError/i.test(msg)) {
+          setErrorMsg("Error conectando con el motor. ¿Backend corriendo en :8000?");
+        } else {
+          setErrorMsg(`Error del motor: ${msg}`);
+        }
       } finally {
         setLoading(false);
       }
@@ -87,16 +94,6 @@ export default function AppPage() {
       void fetchZonas(q);
     },
     [fetchZonas],
-  );
-
-  // Refine search: append text and re-query
-  const handleRefine = useCallback(
-    (text: string) => {
-      const merged = [searchQuery, text].filter(Boolean).join(" · ").slice(0, 240);
-      setSearchQuery(merged);
-      void fetchZonas(merged);
-    },
-    [searchQuery, fetchZonas],
   );
 
   const handleRestart = useCallback(() => {
@@ -120,10 +117,10 @@ export default function AppPage() {
     [zonas, activeId],
   );
 
-  // Fetch detalle lazily when dossier opens
+  // Fetch detalle cuando cambia la zona activa. Lo hacemos en background para que
+  // las barras por dimensión (HUD abajo-izq) estén disponibles sin abrir el dossier.
   useEffect(() => {
-    if (!dossierOpen || !activeId) return;
-    // Refetch if we don't have detalle for the current zone
+    if (!activeId || !sessionId) return;
     if (detalle?.zona.zona_id === activeId) return;
     let cancelled = false;
     setLoadingDetalle(true);
@@ -142,7 +139,11 @@ export default function AppPage() {
     return () => {
       cancelled = true;
     };
-  }, [dossierOpen, activeId, sessionId, detalle]);
+  }, [activeId, sessionId, detalle]);
+
+  const dimsActive = detalle?.zona.zona_id === activeId ? detalle?.zona.scores_dimensiones ?? null : null;
+
+  void dimsActive;  // se pasa a ActiveDock para las barras del dock
 
   // Onboarding stage
   if (!started) {
@@ -170,8 +171,6 @@ export default function AppPage() {
 
         <HudCoord lat={coords.lat} lng={coords.lng} zoom={coords.zoom} label="BARCELONA" />
 
-        <CommandBar onRefine={handleRefine} loading={loading} />
-
         <ZoneIndex
           zonas={zonas}
           activeId={activeId}
@@ -183,10 +182,11 @@ export default function AppPage() {
         <ActiveDock
           zone={activeZone}
           zones={zonas}
-          dims={null}
+          dims={dimsActive}
           loading={loading}
           onExpand={() => setDossierOpen(true)}
           onNav={handleNav}
+          sessionId={sessionId}
         />
 
         <HudLegend />
@@ -197,6 +197,8 @@ export default function AppPage() {
             {errorMsg}
           </div>
         )}
+
+        <LoadingOverlay visible={loading} query={searchQuery} />
       </main>
 
       {dossierOpen && activeZone && (
@@ -205,6 +207,7 @@ export default function AppPage() {
           detalle={detalle}
           loading={loadingDetalle}
           onClose={() => setDossierOpen(false)}
+          sessionId={sessionId}
         />
       )}
     </div>

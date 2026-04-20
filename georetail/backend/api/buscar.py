@@ -25,12 +25,18 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from schemas.models import ZonaResumen, ColorZona, EstadoBusqueda
+from schemas.models import ZonaResumen, ColorZona, EstadoBusqueda, PerfilRefinado
 from api._utils import score_to_color
 from agente.validador import validar_negocio
+from agente.refinador import generar_pregunta_senal, refinar
+from agente.traductor import traducir
 from scoring.motor import calcular_scores_batch
 from db.sesiones import crear_sesion, get_sesion, guardar_busqueda, actualizar_sesion
 from db.zonas import filtrar_zonas_candidatas
+
+# Umbrales para el loop de preservación de señal (Fase 3).
+_SIGNAL_THRESHOLD = 70
+_SIGNAL_MAX_ROUNDS = 3
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["buscar"])
@@ -189,6 +195,58 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
         "variables":      validacion["variables_conocidas"],
     }
 
+    # ── 3c-bis. Capa de refinamiento estructurado (PerfilRefinado) ───────────
+    # Se cachea por hash(descripción) para evitar repetir la llamada LLM si el
+    # usuario pulsa "buscar" otra vez con el mismo texto dentro de la sesión.
+    descripcion_hash = hashlib.md5(body.descripcion.strip().encode("utf-8")).hexdigest()
+    cache_prev = (sesion.get("perfil") or {}).get("perfil_refinado_cache") or {}
+    perfil_refinado_dict: dict = cache_prev.get(descripcion_hash) or {}
+    if not perfil_refinado_dict:
+        try:
+            perfil_refinado_model = await refinar(
+                descripcion=body.descripcion,
+                sector_detectado=perfil["sector"],
+                tags_previos=perfil["idea_tags"],
+                session_id=session_id,
+            )
+            perfil_refinado_dict = perfil_refinado_model.model_dump()
+        except Exception as exc:
+            logger.warning("Refinador falló: %s — continuando con perfil vacío", exc)
+            perfil_refinado_dict = PerfilRefinado().model_dump()
+    perfil["perfil_refinado"] = perfil_refinado_dict
+    perfil["perfil_refinado_cache"] = {**cache_prev, descripcion_hash: perfil_refinado_dict}
+
+    # ── 3c-ter. Loop de preservación de señal ────────────────────────────────
+    # Si el LLM declara score<70 y aún no hemos gastado los 3 rounds, pedimos
+    # al usuario una aclaración específica antes de rankear zonas.
+    signal_score = int(perfil_refinado_dict.get("signal_preservation_score") or 0)
+    rounds_usados = int((sesion.get("perfil") or {}).get("signal_rounds", 0))
+    if signal_score < _SIGNAL_THRESHOLD and rounds_usados < _SIGNAL_MAX_ROUNDS:
+        perfil_mod = PerfilRefinado(**perfil_refinado_dict)
+        pregunta_en = await generar_pregunta_senal(
+            perfil_refinado=perfil_mod,
+            descripcion=body.descripcion,
+            session_id=session_id,
+        )
+        if pregunta_en:
+            try:
+                pregunta_es = await traducir(pregunta_en, session_id)
+            except Exception:
+                pregunta_es = pregunta_en
+            # Persistir: incrementamos rounds y guardamos perfil_refinado actualizado
+            perfil["signal_rounds"] = rounds_usados + 1
+            try:
+                await actualizar_sesion(session_id, {"perfil": perfil})
+            except Exception as exc:
+                logger.warning("No se pudo actualizar perfil en loop señal: %s", exc)
+            progreso = int(min(90, 30 + rounds_usados * 20))
+            return BuscarResponse(
+                session_id=session_id,
+                estado=EstadoBusqueda.CUESTIONARIO,
+                pregunta=pregunta_es,
+                progreso_cuestionario=progreso,
+            )
+
     filtros = sesion["filtros"]
     zonas_candidatas = await filtrar_zonas_candidatas(filtros)
 
@@ -212,6 +270,7 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
         descripcion_negocio=body.descripcion,
         perfil_negocio=validacion.get("perfil_negocio") or {},
         concepto_negocio=validacion.get("concepto_negocio") or {},
+        perfil_refinado=perfil_refinado_dict or None,
     )
 
     # Construir lookup de scores por zona_id

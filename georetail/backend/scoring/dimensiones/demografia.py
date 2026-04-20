@@ -34,9 +34,12 @@ logger = logging.getLogger(__name__)
 # Constantes de referencia BCN
 # ---------------------------------------------------------------------------
 
-_RENTA_MIN_BCN     = 17_000.0
-_RENTA_MAX_BCN     = 60_000.0
-_RENTA_MEDIA_BCN   = 37_000.0
+# Actualizado 2026: mediana BCN ~42k € (INE/Idescat). Desplazamos el rango
+# [min, max] arriba para que zonas típicas no caigan en "renta baja" de forma
+# sistemática. Un hogar con 42k € ahora queda cerca del centro del rango.
+_RENTA_MIN_BCN     = 20_000.0
+_RENTA_MAX_BCN     = 65_000.0
+_RENTA_MEDIA_BCN   = 42_000.0
 _DENSIDAD_MAX_BCN  = 35_000.0   # hab/km² — umbral para score máximo
 _DENSIDAD_MED_BCN  = 16_000.0   # media Barcelona
 _PCT_25_44_MAX_BCN = 0.42
@@ -191,7 +194,31 @@ def calcular_score_demografia(
         s_capital   * pesos["capital"]   +
         s_dinamismo * pesos["dinamismo"]
     )
-    score_demografia = min(100.0, max(0.0, score_base + fit))
+
+    # ── Shift por vcity_resident_rate (mig 035) ──────────────────────────────
+    # Proporción de peatones residentes (0..1). Aporta un shift aditivo de
+    # ±5 puntos respecto del baseline 0.50 (β = 10, cap [-5, +5]).
+    # Para negocios fuertemente turísticos (clientela_turismo > 0.6) se
+    # escala por 0.5: los residentes no son el cliente ideal.
+    # Neutral (0) si la señal es None.
+    resident_rate = datos.get("vcity_resident_rate")
+    resident_shift = 0.0
+    if resident_rate is not None:
+        try:
+            rate_f = float(resident_rate)
+            resident_shift = 10.0 * (rate_f - 0.50)
+            resident_shift = max(-5.0, min(5.0, resident_shift))
+            if perfil_negocio:
+                try:
+                    clientela_tur = float(perfil_negocio.get("clientela_turismo", 0.0) or 0.0)
+                    if clientela_tur > 0.6:
+                        resident_shift *= 0.5
+                except (TypeError, ValueError):
+                    pass
+        except (TypeError, ValueError):
+            resident_shift = 0.0
+
+    score_demografia = min(100.0, max(0.0, score_base + fit + resident_shift))
 
     logger.debug(
         "demografia zona: s_renta=%.1f s_dens=%.1f s_cons=%.1f s_cap=%.1f "

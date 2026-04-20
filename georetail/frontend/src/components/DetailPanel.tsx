@@ -15,6 +15,7 @@ import { api } from "@/lib/api";
 import FinancialPanel from "./FinancialPanel";
 import LegalPanel from "./LegalPanel";
 import ScoreBars from "./ScoreBars";
+import TransportePanel from "./TransportePanel";
 import styles from "./DetailPanel.module.css";
 
 const CompetenciaPanel = dynamic(() => import("./CompetenciaPanel"), {
@@ -30,7 +31,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Tab = "detalles" | "competencia" | "financiero" | "legal";
+type Tab = "detalles" | "competencia" | "transporte" | "financiero" | "legal";
 
 const MIN_W = 360;
 const MAX_W = 760;
@@ -140,12 +141,13 @@ function fallbackExplanation(key: keyof ScoresDimensiones, label: string, score:
   return {
     score,
     titular: `${label}: ${normalized}`,
-    explicacion_corta: "No hay una explicación textual validada para esta dimensión. Solo se muestran métricas observadas del backend.",
+    explicacion_corta: "No hay explicación textual validada para esta dimensión. Solo se muestran los datos observados del backend.",
     porque_sube: [],
     porque_baja: [],
     hechos_clave: observedFactsForDimension(key, z),
     impacto_modelo: "Sin detalle validado del impacto del modelo para esta dimensión.",
-    confianza: "media",
+    // Confianza baja deja claro al usuario que es un fallback, no un análisis real.
+    confianza: "baja",
     fuentes: [],
   };
 }
@@ -160,32 +162,18 @@ function detailMetrics(z: ZonaDetalle) {
 }
 
 function buildDafo(z: ZonaDetalle) {
+  // Nunca sintetizamos DAFO desde scores. Si el LLM no validó puntos fuertes/débiles
+  // el usuario debe ver "sin datos" en vez de "competencia (87/100)" presentado como fortaleza.
   const strengths = [...(z.analisis_ia?.puntos_fuertes ?? [])];
   const weaknesses = [...(z.analisis_ia?.puntos_debiles ?? [])];
   const opportunities = z.analisis_ia?.oportunidad ? [z.analisis_ia.oportunidad] : [];
   const threats = z.analisis_ia?.riesgos ? [z.analisis_ia.riesgos] : [];
 
-  if (!strengths.length && z.scores_dimensiones) {
-    const top = Object.entries(z.scores_dimensiones)
-      .filter((entry): entry is [string, number] => typeof entry[1] === "number")
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 2);
-    strengths.push(...top.map(([key, value]) => `Mejor dimensión medida: ${key.replaceAll("_", " ")} (${Math.round(value)}/100).`));
-  }
-
-  if (!weaknesses.length && z.scores_dimensiones) {
-    const low = Object.entries(z.scores_dimensiones)
-      .filter((entry): entry is [string, number] => typeof entry[1] === "number")
-      .sort((a, b) => a[1] - b[1])
-      .slice(0, 2);
-    weaknesses.push(...low.map(([key, value]) => `Dimensión más débil medida: ${key.replaceAll("_", " ")} (${Math.round(value)}/100).`));
-  }
-
   return {
-    Fortalezas: strengths.length ? strengths : ["Sin fortalezas validadas disponibles todavía."],
-    Debilidades: weaknesses.length ? weaknesses : ["Sin debilidades validadas disponibles todavía."],
-    Oportunidades: opportunities.length ? opportunities : ["Sin oportunidades validadas disponibles todavía."],
-    Amenazas: threats.length ? threats : ["Sin amenazas validadas disponibles todavía."],
+    Fortalezas: strengths.length ? strengths : ["Sin fortalezas validadas por el análisis IA."],
+    Debilidades: weaknesses.length ? weaknesses : ["Sin debilidades validadas por el análisis IA."],
+    Oportunidades: opportunities.length ? opportunities : ["Sin oportunidades validadas por el análisis IA."],
+    Amenazas: threats.length ? threats : ["Sin amenazas validadas por el análisis IA."],
   };
 }
 
@@ -366,7 +354,7 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
       </div>
 
       <div className={styles.tabs}>
-        {(["detalles", "competencia", "financiero", "legal"] as Tab[]).map((item) => (
+        {(["detalles", "competencia", "transporte", "financiero", "legal"] as Tab[]).map((item) => (
           <button
             key={item}
             className={`${styles.tab} ${tab === item ? styles.tabActive : ""}`}
@@ -374,6 +362,7 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
           >
             {item === "detalles" && "Detalles"}
             {item === "competencia" && "Competencia"}
+            {item === "transporte" && "Transporte"}
             {item === "financiero" && "Financiero"}
             {item === "legal" && "Legal"}
           </button>
@@ -545,6 +534,16 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
             ) : (
               <CompetenciaPanel competencia={competencia} loading={loadingComp} zona={zona} />
             )}
+          </div>
+        )}
+
+        {tab === "transporte" && (
+          <div className={styles.tabPane}>
+            <TransportePanel
+              zonaId={zona.zona_id}
+              fallbackLineas={z?.num_lineas_transporte ?? undefined}
+              fallbackParadas={z?.num_paradas_transporte ?? undefined}
+            />
           </div>
         )}
 

@@ -66,15 +66,18 @@ async def ejecutar() -> dict:
         zona_data = await _fetch_vcity_data(zonas)
 
         if not zona_data:
+            # Decisión de diseño: NO usar Vianants como proxy. Preferimos que la
+            # columna vcity_flujo_peatonal quede vacía y el scorer caiga a su
+            # fallback conservador antes que mezclar una fuente distinta bajo
+            # el mismo nombre (sesgaría la interpretación).
             logger.warning(
                 "vcity: tileserver no devolvió datos para ninguna zona — "
-                "usando flujo_peatonal_total (vianants_bcn) como proxy"
+                "se deja vcity_flujo_peatonal vacío (sin proxy Vianants)"
             )
-            n = await _fallback_desde_vianants()
-            await _fin(eid, n, "ok", "tileserver sin datos — proxy vianants usado")
+            await _fin(eid, 0, "ok", "tileserver sin datos — sin proxy")
             return {
-                "zonas_actualizadas": n,
-                "fuente": "vianants_proxy",
+                "zonas_actualizadas": 0,
+                "fuente": "vcity_mvt",
                 "zonas_fuente": 0,
             }
 

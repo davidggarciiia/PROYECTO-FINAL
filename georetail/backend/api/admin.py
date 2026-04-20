@@ -35,6 +35,7 @@ router = APIRouter(tags=["admin"])
 # Mapa nombre → módulo Python del pipeline
 _PIPELINES: dict[str, str] = {
     "transporte":             "pipelines.transporte.transporte",
+    "transporte_agregado":    "pipelines.transporte.agregado_zona",
     "bicing":                 "pipelines.transporte.bicing",
     "aforaments":             "pipelines.peatonal.aforaments",
     "resenas":                "pipelines.entorno.resenas",

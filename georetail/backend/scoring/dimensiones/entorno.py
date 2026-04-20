@@ -103,8 +103,11 @@ def calcular_score_entorno(
 
         # ── Sub-scores (0-100) ────────────────────────────────────────────────
 
-        # 1. Vacíos: >50% vacíos = 0; 0% = 100
-        s_vacios = max(0.0, 100.0 - pct_vacios * 200.0)
+        # 1. Vacíos: curva menos punitiva. Antes 100 − vacios·200 (25% → 50,
+        #    50% → 0). Ahora 100 − vacios·150 (25% → 62, 50% → 25). Razonable
+        #    para zonas residenciales periféricas donde 20-25% de vacíos es
+        #    habitual sin implicar declive comercial.
+        s_vacios = max(0.0, 100.0 - pct_vacios * 150.0)
 
         # 2. Rotación: >100% rotación anual = 0; 0% = 100
         s_rotacion = max(0.0, 100.0 - tasa_rotacion * 100.0)

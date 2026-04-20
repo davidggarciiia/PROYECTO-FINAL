@@ -34,6 +34,111 @@ logger = logging.getLogger(__name__)
 # Peso de score_afinidad_concepto en score_global.
 _PESO_AFINIDAD = 0.12
 
+
+# ─── Reglas declarativas de modulación por PerfilRefinado (Fase 2) ──────────
+# Cada regla se declara como ((dot_path, predicado), {peso: multiplicador, ...}).
+# El `dot_path` navega el dict `perfil_refinado` (ej. "operacion.ticket_tier_p1_p5").
+# Predicados soportados:
+#   - string literal "X"       → equals, case-insensitive
+#   - "contains:X"             → substring match (si valor es string) o
+#                                 membresía case-insensitive (si valor es lista)
+#   - ">=N" / ">N" / "<=N" / "<N" → comparación numérica
+#
+# Los multiplicadores se aplican ANTES de renormalizar a suma=1.0. No se mezclan
+# con la lógica de concepto_negocio; actúan en cascada después.
+REGLAS_MODULACION: list[tuple[tuple[str, str], dict[str, float]]] = [
+    (("ubicacion_ideal.flujo_tipo", "premium residencial"),
+        {"peso_demo": 1.15, "peso_transporte": 0.90}),
+    (("operacion.horarios_apertura", "contains:noche"),
+        {"peso_seguridad": 1.30, "peso_turismo": 1.20}),
+    (("operacion.ticket_tier_p1_p5", ">=4"),
+        {"peso_precio": 0.50}),
+    (("publico_objetivo.nivel_socioeconomico", "alto"),
+        {"peso_demo": 1.20}),
+    (("publico_objetivo.estilo_vida", "contains:turista"),
+        {"peso_turismo": 1.15, "peso_dinamismo": 1.10}),
+]
+
+
+def _resolver_path(obj: dict, dot_path: str):
+    """Navega un dict con clave 'a.b.c'. Devuelve None si algo no existe."""
+    current = obj
+    for part in dot_path.split("."):
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
+
+
+def _predicado_match(valor, predicado: str) -> bool:
+    """Evalúa `predicado` contra `valor` extraído del perfil."""
+    if valor is None:
+        return False
+    # Predicados numéricos
+    for op in (">=", "<=", ">", "<"):
+        if predicado.startswith(op):
+            try:
+                umbral = float(predicado[len(op):])
+                num = float(valor)
+            except (TypeError, ValueError):
+                return False
+            if op == ">=":
+                return num >= umbral
+            if op == "<=":
+                return num <= umbral
+            if op == ">":
+                return num > umbral
+            if op == "<":
+                return num < umbral
+    # contains:
+    if predicado.startswith("contains:"):
+        token = predicado[len("contains:"):].strip().lower()
+        if not token:
+            return False
+        if isinstance(valor, list):
+            return any(isinstance(x, str) and token in x.lower() for x in valor)
+        if isinstance(valor, str):
+            return token in valor.lower()
+        return False
+    # Equals (case-insensitive para strings)
+    if isinstance(valor, str):
+        return valor.strip().lower() == predicado.strip().lower()
+    return valor == predicado
+
+
+def _normalizar_pesos(pesos: dict[str, float]) -> dict[str, float]:
+    """Renormaliza los pesos (claves peso_*) para que sumen 1.0."""
+    campos = [k for k in pesos if k.startswith("peso_")]
+    total = sum(float(pesos.get(k, 0.0) or 0.0) for k in campos)
+    if total <= 0:
+        return {k: float(pesos.get(k, 0.0) or 0.0) for k in campos}
+    return {k: round(float(pesos.get(k, 0.0) or 0.0) / total, 4) for k in campos}
+
+
+def aplicar_reglas_modulacion(pesos: dict, perfil_refinado: Optional[dict]) -> dict[str, float]:
+    """Aplica las reglas declarativas sobre los pesos del sector.
+
+    Si `perfil_refinado` es None/vacío, devuelve los pesos renormalizados sin
+    cambios (idempotente). Cada regla que matchea multiplica los pesos
+    indicados; al final se renormaliza a suma=1.0.
+    """
+    base = {k: float(v) for k, v in (pesos or {}).items() if isinstance(v, (int, float)) and k.startswith("peso_")}
+    if not base:
+        return {}
+    if not perfil_refinado:
+        return _normalizar_pesos(base)
+
+    ajustado = dict(base)
+    for (path, predicado), multiplicadores in REGLAS_MODULACION:
+        valor = _resolver_path(perfil_refinado, path)
+        if not _predicado_match(valor, predicado):
+            continue
+        for peso_key, mult in multiplicadores.items():
+            if peso_key in ajustado:
+                ajustado[peso_key] = ajustado[peso_key] * float(mult)
+
+    return _normalizar_pesos(ajustado)
+
 _DIMENSION_KEYS = (
     "score_flujo_peatonal",
     "score_demografia",
@@ -53,6 +158,7 @@ async def calcular_scores_batch(
     descripcion_negocio: Optional[str] = None,
     perfil_negocio: Optional[dict] = None,
     concepto_negocio: Optional[dict] = None,
+    perfil_refinado: Optional[dict] = None,
 ) -> list[dict]:
     """
     Calcula el score de viabilidad para una lista de zonas.
@@ -75,7 +181,7 @@ async def calcular_scores_batch(
             descripcion_negocio=descripcion_negocio,
             perfil_negocio=perfil_negocio,
         )
-        pesos_efectivos = _aplicar_pesos_concepto(pesos, contexto)
+        pesos_efectivos = _aplicar_pesos_concepto(pesos, contexto, perfil_refinado=perfil_refinado)
 
         async with get_db() as conn:
             rows = await conn.fetch(
@@ -139,14 +245,15 @@ async def calcular_scores_batch(
         resultados_finales: list[dict] = []
         for zona_id in zona_ids:
             raw = dict(resultados_por_zona.get(zona_id) or _build_fallback_row(zona_id))
-            resultados_finales.append(
-                _aplicar_contexto_score(
-                    raw,
-                    pesos_efectivos,
-                    contexto["zona_ideal"],
-                    datos_afinidad.get(zona_id),
-                )
+            aplicado = _aplicar_contexto_score(
+                raw,
+                pesos_efectivos,
+                contexto["zona_ideal"],
+                datos_afinidad.get(zona_id),
             )
+            # Adjuntamos los pesos modulados para que el frontend los explique.
+            aplicado["pesos_modulados"] = pesos_efectivos
+            resultados_finales.append(aplicado)
 
         return resultados_finales
 
@@ -162,6 +269,7 @@ async def get_scores_zona(
     descripcion_negocio: Optional[str] = None,
     perfil_negocio: Optional[dict] = None,
     concepto_negocio: Optional[dict] = None,
+    perfil_refinado: Optional[dict] = None,
 ) -> dict:
     """
     Devuelve el score detallado de una zona en el formato que espera api/local.py.
@@ -179,7 +287,7 @@ async def get_scores_zona(
         descripcion_negocio=descripcion_negocio,
         perfil_negocio=perfil_negocio,
     )
-    pesos_efectivos = _aplicar_pesos_concepto(pesos, contexto)
+    pesos_efectivos = _aplicar_pesos_concepto(pesos, contexto, perfil_refinado=perfil_refinado)
 
     async with get_db() as conn:
         row = await conn.fetchrow(
@@ -188,7 +296,11 @@ async def get_scores_zona(
                    dz.score_dinamismo, dz.tendencia,
                    dz.negocios_historico_count, dz.tasa_supervivencia_3a,
                    dz.ratio_apertura_cierre_1a, dz.renta_variacion_3a,
-                   dz.hhi_sectorial
+                   dz.hhi_sectorial,
+                   vz.incidencias_por_1000hab, vz.hurtos_por_1000hab,
+                   vz.robatoris_por_1000hab, vz.danys_por_1000hab,
+                   vz.incidencias_noche_pct, vz.comisarias_1km,
+                   vz.dist_comisaria_m, vz.seguridad_barri_score
             FROM scores_zona sz
             JOIN sectores s ON s.id = sz.sector_id
             LEFT JOIN LATERAL (
@@ -200,6 +312,17 @@ async def get_scores_zona(
                 ORDER BY updated_at DESC
                 LIMIT 1
             ) dz ON true
+            LEFT JOIN LATERAL (
+                SELECT incidencias_por_1000hab, hurtos_por_1000hab,
+                       robatoris_por_1000hab, danys_por_1000hab,
+                       incidencias_noche_pct, comisarias_1km,
+                       dist_comisaria_m, seguridad_barri_score
+                FROM v_variables_zona
+                WHERE zona_id = sz.zona_id
+                ORDER BY (incidencias_por_1000hab IS NOT NULL) DESC,
+                         fecha DESC
+                LIMIT 1
+            ) vz ON true
             WHERE sz.zona_id = $1
               AND s.codigo   = $2
             ORDER BY CASE sz.modelo_version
@@ -223,6 +346,7 @@ async def get_scores_zona(
             descripcion_negocio=descripcion_negocio,
             perfil_negocio=perfil_negocio,
             concepto_negocio=concepto_negocio,
+            perfil_refinado=perfil_refinado,
         )
         raw = resultados[0] if resultados else _build_fallback_row(zona_id)
         return _format_scores_for_api(raw)
@@ -230,14 +354,26 @@ async def get_scores_zona(
     raw = dict(row)
 
     # Escalar score_dinamismo de 0-10 (escala pipeline) a 0-100 (escala API)
-    # usando el scorer de dimensión que también aplica ajustes por tendencia
-    if raw.get("score_dinamismo") is not None:
-        try:
-            from scoring.dimensiones.dinamismo import calcular_dinamismo
-            din_result = calcular_dinamismo(raw)
-            raw["score_dinamismo"] = din_result["score_dinamismo"]
-        except Exception:
+    # usando el scorer de dimensión que también aplica ajustes por tendencia.
+    # Si no hay row en dinamismo_zonal (pipeline aún no ejecutado), calcular_dinamismo
+    # aplica su fallback interno (~50) contemplando tendencia cuando existe.
+    try:
+        from scoring.dimensiones.dinamismo import calcular_dinamismo
+        din_result = calcular_dinamismo(raw)
+        raw["score_dinamismo"] = din_result["score_dinamismo"]
+    except Exception:
+        if raw.get("score_dinamismo") is not None:
             raw["score_dinamismo"] = round(float(raw["score_dinamismo"]) * 10.0, 1)
+
+    # Seguridad: si scores_zona cacheado no populó la columna, computar fresco
+    # desde las variables crudas (v_variables_zona trae incidencias/hurtos/etc).
+    if raw.get("score_seguridad") is None:
+        try:
+            from scoring.dimensiones.seguridad import calcular_score_seguridad
+            seg_result = calcular_score_seguridad(raw, perfil_negocio=perfil_negocio)
+            raw["score_seguridad"] = seg_result["score_seguridad"]
+        except Exception as exc:
+            logger.debug("recompute seguridad failed: %s", exc)
 
     # Solo recalcular si el registro no tiene NINGUNA dimensión manual (registro xgboost puro sin enriquecer)
     if all(raw.get(dim) is None for dim in _DIMENSION_KEYS):
@@ -248,6 +384,7 @@ async def get_scores_zona(
             descripcion_negocio=descripcion_negocio,
             perfil_negocio=perfil_negocio,
             concepto_negocio=concepto_negocio,
+            perfil_refinado=perfil_refinado,
         )
         raw = resultados[0] if resultados else _build_fallback_row(zona_id)
 
@@ -261,6 +398,7 @@ async def get_scores_zona(
         contexto["zona_ideal"],
         datos_afinidad.get(zona_id),
     )
+    raw["pesos_modulados"] = pesos_efectivos
     return _format_scores_for_api(raw)
 
 
@@ -415,13 +553,31 @@ def _zona_ideal_desde_perfil(perfil_negocio: Optional[dict]) -> dict:
     return zona_ideal_desde_perfil(perfil_negocio)
 
 
-def _aplicar_pesos_concepto(pesos: dict, contexto: dict) -> dict:
-    concepto = contexto.get("concepto_negocio")
-    if not concepto:
-        return pesos
+def _aplicar_pesos_concepto(
+    pesos: dict,
+    contexto: dict,
+    perfil_refinado: Optional[dict] = None,
+) -> dict:
+    """Aplica la cascada completa de ajustes sobre los pesos del sector.
 
-    pesos_ajustados = aplicar_pesos_a_sector(pesos, concepto)
+    Orden:
+      1. concepto_negocio (taxonomía) → `aplicar_pesos_a_sector`.
+      2. perfil_refinado (reglas declarativas) → `aplicar_reglas_modulacion`.
+      3. Renormalización final a suma=1.0.
+
+    Si `perfil_refinado` es None/vacío, no hay paso 2 (idempotente).
+    """
+    concepto = contexto.get("concepto_negocio")
+    if concepto:
+        pesos_ajustados = aplicar_pesos_a_sector(pesos, concepto)
+    else:
+        pesos_ajustados = {k: float(v) for k, v in (pesos or {}).items() if k.startswith("peso_")}
+
     logger.debug("idea_tags efectivos: %s", contexto.get("tags_efectivos"))
+
+    if perfil_refinado:
+        pesos_ajustados = aplicar_reglas_modulacion(pesos_ajustados, perfil_refinado)
+
     return pesos_ajustados
 
 
@@ -444,7 +600,87 @@ def _valor_score(scores: dict, dim: str, default: float = 50.0) -> float:
         return default
 
 
+# Pesos por defecto (suma = 1.00). Se usan para detectar si los pesos que
+# llegan a `_calcular_score_base` fueron modulados por concepto/idea.
+_PESOS_DEFAULT: dict[str, float] = {
+    "peso_flujo":       0.25,
+    "peso_demo":        0.25,
+    "peso_competencia": 0.15,
+    "peso_transporte":  0.15,
+    "peso_dinamismo":   0.10,
+    "peso_seguridad":   0.05,
+    "peso_turismo":     0.05,
+}
+
+# Umbral (en puntos) a partir del cual consideramos incoherente la divergencia
+# entre el score_global cacheado y el score recalculado desde dimensiones
+# manuales. Si supera este umbral forzamos recálculo (evita "flujo 20 /
+# global 86" en El Born).
+_UMBRAL_DIVERGENCIA_PTS: float = 15.0
+
+
+def _son_pesos_default(pesos: dict) -> bool:
+    """
+    True si `pesos` coincide con `_PESOS_DEFAULT` (delta ≤ 0.005 por clave).
+    Se ignoran claves que no empiezan por `peso_`.
+    """
+    if not pesos:
+        return True
+    for k, v_default in _PESOS_DEFAULT.items():
+        v = pesos.get(k)
+        if v is None:
+            continue
+        try:
+            if abs(float(v) - v_default) > 0.005:
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
 def _calcular_score_base(scores: dict, pesos: dict) -> float:
+    """
+    Devuelve el score_global base, recalculando cuando es necesario.
+
+    Reglas (en orden):
+      1. Si los pesos fueron modulados por la idea del usuario (no default)
+         y tenemos las 8 dimensiones manuales, recalculamos desde ellas:
+         rankings distintos para ideas distintas.
+      2. Si el score_global cacheado diverge > 15 pts del score derivado
+         de las dimensiones manuales (inconsistencia tipo flujo=20 / global=86),
+         recalculamos y anotamos modelo_version como "xgboost+manual_override".
+      3. En otro caso, usamos el score_global cacheado (rápido).
+    """
+    tiene_dims = _tiene_dimensiones_recalculables(scores)
+    pesos_modulados = not _son_pesos_default(pesos)
+
+    # Regla 1: pesos modulados + dimensiones completas → recalcular siempre.
+    if pesos_modulados and tiene_dims:
+        nuevo = _recalcular_global(scores, pesos)
+        # Marcamos el override para trazabilidad en logs/front.
+        scores["modelo_version"] = _marcar_override(scores.get("modelo_version"))
+        return nuevo
+
+    # Regla 2: divergencia detectada entre cache XGBoost y dimensiones manuales.
+    if _usa_score_base_original(scores) and tiene_dims:
+        raw = scores.get("score_global")
+        try:
+            global_cache = float(raw) if raw is not None else None
+        except (TypeError, ValueError):
+            global_cache = None
+        global_recalc = _recalcular_global(scores, pesos)
+        if global_cache is not None and abs(global_cache - global_recalc) > _UMBRAL_DIVERGENCIA_PTS:
+            logger.warning(
+                "score_global divergente zona=%s cache=%.1f recalc=%.1f delta=%.1f → override",
+                scores.get("zona_id"),
+                global_cache,
+                global_recalc,
+                global_cache - global_recalc,
+            )
+            scores["modelo_version"] = _marcar_override(scores.get("modelo_version"))
+            return global_recalc
+
+    # Regla 3: cache coherente, lo usamos.
     if _usa_score_base_original(scores):
         raw = scores.get("score_global")
         try:
@@ -452,6 +688,16 @@ def _calcular_score_base(scores: dict, pesos: dict) -> float:
         except (TypeError, ValueError):
             return 50.0
     return _recalcular_global(scores, pesos)
+
+
+def _marcar_override(modelo_version) -> str:
+    """Añade sufijo `+manual_override` a la versión si no lo tiene ya."""
+    v = str(modelo_version or "")
+    if not v:
+        return "manual_override"
+    if v.endswith("+manual_override"):
+        return v
+    return f"{v}+manual_override"
 
 
 def _aplicar_contexto_score(
@@ -682,6 +928,14 @@ def _format_scores_for_api(raw: dict) -> dict:
         "dinamismo": raw.get("score_dinamismo"),
     }
 
+    # Si a estas alturas seguridad/dinamismo siguen a None, es porque ni el
+    # cache ni la recomputación en get_scores_zona encontraron datos crudos.
+    # Último fallback neutro 50.0 — expectativa: raro en producción porque
+    # calcular_dinamismo y calcular_score_seguridad tienen sus propios defaults.
+    for _dim_bootstrap in ("seguridad", "dinamismo"):
+        if scores_dim.get(_dim_bootstrap) is None:
+            scores_dim[_dim_bootstrap] = 50.0
+
     afinidad = raw.get("score_afinidad_concepto")
     if afinidad is not None:
         scores_dim["afinidad_concepto"] = round(float(afinidad), 1)
@@ -689,6 +943,8 @@ def _format_scores_for_api(raw: dict) -> dict:
     score_global = raw.get("score_global")
     if score_global is None:
         score_global = 50.0
+
+    pesos_modulados = raw.get("pesos_modulados") or None
 
     return {
         "score_global": round(float(score_global), 1),
@@ -698,4 +954,5 @@ def _format_scores_for_api(raw: dict) -> dict:
         "impacto_modelo_por_dimension": impacto_modelo,
         "shap_values": shap_raw or {},
         "modelo_version": raw.get("modelo_version"),
+        "pesos_modulados": pesos_modulados,
     }

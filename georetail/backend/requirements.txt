@@ -33,9 +33,12 @@ cleanlab==2.7.0               # deteccion de filas sospechosas para datasets de 
 joblib==1.4.2                 # guardar/cargar modelos en disco
 
 # ─── NLP (procesamiento de lenguaje natural) ──────────────────────────────────
-sentence-transformers==3.1.1  # convierte textos en vectores numéricos
-torch==2.4.1                  # PyTorch (base de sentence-transformers)
-transformers==4.44.2
+# NOTA: Python 3.14 no tiene wheels para torch<2.5 ni transformers<5. Pinneamos
+# a versiones que sí resuelven en 3.14 (verificado 2026-04-20 con pip install
+# sentence-transformers torch --upgrade).
+sentence-transformers==5.4.1  # convierte textos en vectores numéricos
+torch==2.11.0                 # PyTorch (base de sentence-transformers; primer major con wheels py3.14)
+transformers==5.5.4
 
 # ─── Geoespacial (mapas y coordenadas) ────────────────────────────────────────
 shapely==2.0.6                # manipulación de polígonos en Python

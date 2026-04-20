@@ -37,6 +37,85 @@ DIMENSION_LABELS: dict[str, str] = {
     "entorno_comercial": "Entorno comercial",
 }
 
+# ─── Percentiles y medias de referencia Barcelona 2024-2025 ────────────────────
+# Constantes hardcodeadas para evitar roundtrip a BD en cada explicación.
+# Se actualizan cuando cambie la estructura de la ciudad; origen: INE/Idescat,
+# OpenData BCN, v_variables_zona agregada.
+
+_BCN_REF: dict[str, float] = {
+    "renta_media_hogar":         37_000.0,   # euros/año (mediana BCN)
+    "edad_media":                43.0,
+    "pct_poblacio_25_44_p50":    0.28,
+    "nivel_estudios_alto_p75":   0.45,
+    "gini_p75":                  38.0,
+    "weekend_lift_media":        1.08,
+    "vcity_flujo_p75":           32_000.0,   # peatones/día zona comercial
+    "vcity_flujo_p50":           14_000.0,
+    "incidencias_media":         22.0,       # por 1.000 hab/año
+    "hurtos_media":              8.0,
+    "robatoris_media":           4.0,
+    "incidencias_noche_p75":     0.35,
+    "airbnb_density_p75":        45.0,
+    "booking_hoteles_p75":       4.0,
+    "pct_locales_vacios_p75":    0.18,
+    "precio_m2_restauracion":    22.0,       # euros/m²/mes
+    "precio_m2_moda":            28.0,
+    "precio_m2_generico":        24.0,
+}
+
+# Percentiles de número de competidores directos por sector en radio 300 m.
+_PERCENTILES_COMPETENCIA: dict[str, dict[str, int]] = {
+    "restauracion":  {"q25": 2, "q50": 5, "q75": 9},
+    "moda":          {"q25": 1, "q50": 3, "q75": 7},
+    "estetica":      {"q25": 2, "q50": 4, "q75": 8},
+    "supermercado":  {"q25": 1, "q50": 2, "q75": 4},
+    "cafeteria":     {"q25": 2, "q50": 5, "q75": 10},
+    "bar":           {"q25": 3, "q50": 6, "q75": 11},
+    "_default":      {"q25": 2, "q50": 4, "q75": 8},
+}
+
+# Traducción de features internas → texto humano para drivers desde SHAP.
+_FEATURE_LABELS: dict[str, str] = {
+    "flujo_peatonal_total":         "flujo peatonal total",
+    "flujo_popular_times_score":    "picos Google Popular Times",
+    "vcity_flujo_peatonal":         "peatones/día VCity",
+    "seasonality_summer_lift":      "tirón estival",
+    "seasonality_christmas_lift":   "tirón navideño",
+    "seasonality_volatility":       "volatilidad estacional",
+    "renta_media_hogar":            "renta media del hogar",
+    "edad_media":                   "edad media",
+    "pct_poblacio_25_44":           "% población 25-44",
+    "nivel_estudios_alto_pct":      "% estudios superiores",
+    "gini":                         "desigualdad (Gini)",
+    "num_competidores_300m":        "competidores directos en 300 m",
+    "rating_medio_competidores":    "rating medio competencia",
+    "score_saturacion":             "saturación competitiva",
+    "num_lineas_transporte":        "líneas de transporte",
+    "num_bicing_400m":              "estaciones Bicing",
+    "tiene_carril_bici":            "carril bici cercano",
+    "incidencias_por_1000hab":      "incidencias/1.000 hab",
+    "hurtos_por_1000hab":           "hurtos/1.000 hab",
+    "robatoris_por_1000hab":        "robos/1.000 hab",
+    "incidencias_noche_pct":        "% incidencias nocturnas",
+    "score_turismo":                "score turismo",
+    "airbnb_density_500m":          "densidad Airbnb",
+    "booking_hoteles_500m":         "hoteles en 500 m",
+    "pct_locales_vacios":           "% locales vacíos",
+    "tasa_rotacion_anual":          "rotación comercial anual",
+    "ratio_apertura_cierre_1a":     "ratio aperturas/cierres",
+    "score_equipamientos":          "equipamientos",
+    "m2_zonas_verdes_cercanas":     "zonas verdes cercanas",
+}
+
+
+def _pct_vs_ref(valor: float, ref: float) -> str:
+    """Devuelve '+11%' / '-30%' contra la referencia, firmado."""
+    if not ref:
+        return ""
+    diff = (valor - ref) / ref * 100.0
+    return f"{diff:+.0f}%"
+
+
 FEATURE_TO_DIMENSION: dict[str, str] = {
     # Flujo y temporalidad
     "flujo_peatonal_total": "flujo_peatonal",
@@ -291,26 +370,65 @@ def _build_flow_evidence(zona: Mapping[str, Any], score: Any, impacto: Mapping[s
     christmas_lift = _f(zona.get("seasonality_christmas_lift"))
     sources_available = explain.get("sources_available", 0)
 
+    # VCity como fuente principal — el número bruto es lo más trazable
+    vcity = _f(zona.get("vcity_flujo_peatonal"))
+    if vcity is not None:
+        hechos.append(
+            f"VCity estima {int(vcity):,} peatones/día "
+            f"({_pct_vs_ref(vcity, _BCN_REF['vcity_flujo_p50'])} vs mediana BCN "
+            f"{int(_BCN_REF['vcity_flujo_p50']):,})."
+        )
+        if vcity >= _BCN_REF["vcity_flujo_p75"]:
+            positivos.append(
+                f"Flujo muy alto: {int(vcity):,} peatones/día superan el p75 BCN "
+                f"({int(_BCN_REF['vcity_flujo_p75']):,})."
+            )
+        elif vcity <= _BCN_REF["vcity_flujo_p50"] * 0.5:
+            negativos.append(
+                f"Flujo bajo: {int(vcity):,} peatones/día están muy por debajo de la "
+                f"mediana BCN ({int(_BCN_REF['vcity_flujo_p50']):,})."
+            )
+
     if weekend_lift is not None:
-        hechos.append(f"El fin de semana rinde {weekend_lift:.2f}x frente a un laborable.")
+        ref = _BCN_REF["weekend_lift_media"]
+        hechos.append(
+            f"Fin de semana vs laborable: ×{weekend_lift:.2f} "
+            f"({_pct_vs_ref(weekend_lift, ref)} vs media BCN ×{ref:.2f})."
+        )
         if weekend_lift >= 1.15:
-            positivos.append("La zona gana intensidad en fin de semana.")
+            positivos.append(
+                f"Fin de semana +{(weekend_lift - 1) * 100:.0f}%: "
+                f"la zona atrae compradores extra en sábado/domingo."
+            )
         elif weekend_lift <= 0.90:
-            negativos.append("El fin de semana no mejora claramente frente a laborable.")
+            negativos.append(
+                f"Fin de semana {(weekend_lift - 1) * 100:.0f}% vs laborable: "
+                f"caída clara el finde."
+            )
     if sunday_lift is not None and sunday_lift >= 1.05:
-        positivos.append("El domingo sigue teniendo tracción.")
+        positivos.append(f"Domingo ×{sunday_lift:.2f} vs laborable: sigue hay paso.")
     if volatility is not None:
-        hechos.append(f"La volatilidad estacional está en {volatility:.2f}.")
+        hechos.append(f"Volatilidad estacional: {volatility:.2f}.")
         if volatility <= 0.18:
-            positivos.append("La actividad se reparte bien durante el año.")
+            positivos.append(
+                f"Actividad estable (volatilidad {volatility:.2f} ≤ 0.18): "
+                f"ingresos predecibles todo el año."
+            )
         elif volatility >= 0.35:
-            negativos.append("La actividad es irregular y depende más de picos concretos.")
+            negativos.append(
+                f"Actividad irregular (volatilidad {volatility:.2f} ≥ 0.35): "
+                f"depende de picos concretos."
+            )
     if summer_lift is not None and summer_lift >= 1.05:
-        positivos.append("Verano empuja el flujo por encima de la media de la zona.")
+        positivos.append(
+            f"Verano ×{summer_lift:.2f}: el tirón estival empuja el flujo."
+        )
     if christmas_lift is not None and christmas_lift >= 1.05:
-        positivos.append("Navidad aporta un pico comercial aprovechable.")
+        positivos.append(
+            f"Navidad ×{christmas_lift:.2f}: pico comercial de diciembre aprovechable."
+        )
     if not hechos:
-        hechos.append("La explicación de flujo se apoya en las fuentes peatonales disponibles de la zona.")
+        hechos.append("Sin datos VCity/Popular Times todavía: flujo no medible con precisión.")
 
     return _pack_evidence(
         score=score,
@@ -386,19 +504,56 @@ def _build_demography_evidence(
     impacto: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     demo = calcular_score_demografia(dict(zona), idea_tags=list(perfil_negocio.get("idea_tags") or []), perfil_negocio=dict(perfil_negocio))
-    hechos = [
-        f"Renta media del hogar: {int(_f(zona.get('renta_media_hogar')) or 0):,} €.",
-        f"Edad media: {_fmt(zona.get('edad_media'))} años.",
-        f"Población 25-44: {_pct(zona.get('pct_poblacio_25_44'))}.",
-    ]
-    positivos = []
-    negativos = []
-    if _f(zona.get("nivel_estudios_alto_pct")) is not None and float(zona["nivel_estudios_alto_pct"]) >= 0.45:
-        positivos.append("El capital humano de la zona es alto.")
-    if _f(zona.get("gini")) is not None and float(zona["gini"]) >= 38:
-        negativos.append("La desigualdad es elevada y puede fragmentar demanda.")
-    if _f(zona.get("renta_media_uc")) is not None and float(zona["renta_media_uc"]) >= 18000:
-        positivos.append("La renta por unidad de consumo refuerza poder adquisitivo.")
+    renta = _f(zona.get("renta_media_hogar"))
+    edad = _f(zona.get("edad_media"))
+    pct_jovenes = _f(zona.get("pct_poblacio_25_44"))
+    pct_estudios = _f(zona.get("nivel_estudios_alto_pct"))
+    gini = _f(zona.get("gini"))
+    renta_uc = _f(zona.get("renta_media_uc"))
+
+    hechos: list[str] = []
+    if renta is not None:
+        hechos.append(
+            f"Renta media hogar: {int(renta):,} € "
+            f"({_pct_vs_ref(renta, _BCN_REF['renta_media_hogar'])} vs BCN "
+            f"{int(_BCN_REF['renta_media_hogar']):,} €)."
+        )
+    if edad is not None:
+        hechos.append(f"Edad media: {edad:.1f} años (BCN: {_BCN_REF['edad_media']:.0f}).")
+    if pct_jovenes is not None:
+        hechos.append(
+            f"Población 25-44: {pct_jovenes * 100:.0f}% "
+            f"(mediana BCN {_BCN_REF['pct_poblacio_25_44_p50'] * 100:.0f}%)."
+        )
+
+    positivos: list[str] = []
+    negativos: list[str] = []
+    if renta is not None and renta >= _BCN_REF["renta_media_hogar"] * 1.10:
+        positivos.append(
+            f"Renta {int(renta):,} € ({_pct_vs_ref(renta, _BCN_REF['renta_media_hogar'])} "
+            f"sobre BCN): refuerza demanda premium."
+        )
+    elif renta is not None and renta <= _BCN_REF["renta_media_hogar"] * 0.85:
+        negativos.append(
+            f"Renta {int(renta):,} € ({_pct_vs_ref(renta, _BCN_REF['renta_media_hogar'])} "
+            f"bajo BCN): ticket alto difícil de justificar."
+        )
+
+    if pct_estudios is not None and pct_estudios >= _BCN_REF["nivel_estudios_alto_p75"]:
+        positivos.append(
+            f"Estudios superiores {pct_estudios * 100:.0f}% (p75 BCN "
+            f"{_BCN_REF['nivel_estudios_alto_p75'] * 100:.0f}%): público cualificado."
+        )
+    if gini is not None and gini >= _BCN_REF["gini_p75"]:
+        negativos.append(
+            f"Gini {gini:.1f} ≥ p75 BCN ({_BCN_REF['gini_p75']:.0f}): "
+            f"demanda fragmentada por desigualdad."
+        )
+    if renta_uc is not None and renta_uc >= 18000:
+        positivos.append(
+            f"Renta por unidad de consumo {int(renta_uc):,} €: "
+            f"poder adquisitivo individual alto."
+        )
 
     return _pack_evidence(
         score=score,
@@ -431,15 +586,46 @@ def _build_competition_evidence(zona: Mapping[str, Any], score: Any, impacto: Ma
     competidores = list(zona.get("competidores_cercanos") or [])
     directos = [item for item in competidores if item.get("es_competencia_directa")]
     vulnerables = [item for item in directos if item.get("es_vulnerable")]
-    hechos = [f"Hay {len(directos)} competidores directos en el radio de detalle."]
-    positivos = []
-    negativos = []
-    if len(directos) <= 3:
-        positivos.append("La presión competitiva directa es contenida.")
-    if len(directos) >= 8:
-        negativos.append("La saturación competitiva es alta para el mismo sector.")
+
+    # Percentiles por sector (si hay perfil_negocio lo inferimos más abajo,
+    # aquí caemos al default genérico para no depender del prompt).
+    sector = str(zona.get("sector_codigo") or "_default").lower()
+    pct = _PERCENTILES_COMPETENCIA.get(sector) or _PERCENTILES_COMPETENCIA["_default"]
+
+    n = len(directos)
+    # Etiqueta de percentil contextual
+    if n <= pct["q25"]:
+        pct_label = "p25"
+    elif n <= pct["q50"]:
+        pct_label = "p50"
+    elif n <= pct["q75"]:
+        pct_label = "p75"
+    else:
+        pct_label = ">p75"
+
+    hechos = [
+        f"{n} competidores directos en el radio (percentil {pct_label} para "
+        f"sector {sector}, mediana {pct['q50']})."
+    ]
+    positivos: list[str] = []
+    negativos: list[str] = []
+
+    if n <= pct["q25"]:
+        positivos.append(
+            f"{n} competidores (p25 {sector}, mediana {pct['q50']}): "
+            f"presión contenida, hueco para entrar."
+        )
+    elif n >= pct["q75"]:
+        negativos.append(
+            f"{n} competidores (≥p75 {sector}, mediana {pct['q50']}): "
+            f"saturación alta, difícil diferenciarse."
+        )
+
     if vulnerables:
-        positivos.append("Parte de la competencia cercana muestra fragilidad operativa.")
+        positivos.append(
+            f"{len(vulnerables)} competidores marcados como vulnerables "
+            f"(baja rotación/reseñas): hueco explotable."
+        )
 
     return _pack_evidence(
         score=score,
@@ -498,16 +684,51 @@ def _build_security_evidence(
     impacto: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     seguridad = calcular_score_seguridad(dict(zona), perfil_negocio=dict(perfil_negocio))
-    hechos = [
-        f"Incidencias totales: {_fmt(zona.get('incidencias_por_1000hab'))} por 1.000 habitantes.",
-        f"Incidencias nocturnas: {_pct(zona.get('incidencias_noche_pct'))}.",
-    ]
-    positivos = []
-    negativos = []
-    if _f(zona.get("comisarias_1km")) is not None and float(zona["comisarias_1km"]) >= 2:
-        positivos.append("Hay buena presencia policial cerca.")
-    if _f(zona.get("incidencias_noche_pct")) is not None and float(zona["incidencias_noche_pct"]) >= 0.40:
-        negativos.append("El peso de la noche en incidencias es alto.")
+    incid = _f(zona.get("incidencias_por_1000hab"))
+    hurtos = _f(zona.get("hurtos_por_1000hab"))
+    robos = _f(zona.get("robatoris_por_1000hab"))
+    pct_noche = _f(zona.get("incidencias_noche_pct"))
+    comisarias = _f(zona.get("comisarias_1km"))
+
+    hechos: list[str] = []
+    if incid is not None:
+        hechos.append(
+            f"Incidencias {incid:.1f}/1.000 hab "
+            f"({_pct_vs_ref(incid, _BCN_REF['incidencias_media'])} vs media BCN "
+            f"{_BCN_REF['incidencias_media']:.0f})."
+        )
+    if hurtos is not None:
+        hechos.append(
+            f"Hurtos {hurtos:.1f}/1.000 hab "
+            f"({_pct_vs_ref(hurtos, _BCN_REF['hurtos_media'])} vs media BCN "
+            f"{_BCN_REF['hurtos_media']:.0f})."
+        )
+    if pct_noche is not None:
+        hechos.append(f"Incidencias nocturnas: {pct_noche * 100:.0f}%.")
+
+    positivos: list[str] = []
+    negativos: list[str] = []
+
+    if hurtos is not None and hurtos <= _BCN_REF["hurtos_media"] * 0.7:
+        positivos.append(
+            f"Hurtos {hurtos:.1f}/1.000 hab ({_pct_vs_ref(hurtos, _BCN_REF['hurtos_media'])} "
+            f"vs BCN): riesgo bajo de carterismo."
+        )
+    if robos is not None and robos >= _BCN_REF["robatoris_media"] * 1.5:
+        negativos.append(
+            f"Robos {robos:.1f}/1.000 hab ({_pct_vs_ref(robos, _BCN_REF['robatoris_media'])} "
+            f"sobre BCN): vigilancia en puerta crítica."
+        )
+    if comisarias is not None and comisarias >= 2:
+        positivos.append(
+            f"{int(comisarias)} comisarías en 1 km: presencia policial alta."
+        )
+    if pct_noche is not None and pct_noche >= _BCN_REF["incidencias_noche_p75"]:
+        negativos.append(
+            f"Incidencias nocturnas {pct_noche * 100:.0f}% ≥ p75 BCN "
+            f"({_BCN_REF['incidencias_noche_p75'] * 100:.0f}%): riesgo relevante "
+            f"si horario tarde-noche."
+        )
 
     return _pack_evidence(
         score=score,
@@ -613,18 +834,45 @@ def _pack_evidence(
     confianza: str,
     impacto_modelo: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
+    # Añadimos 1 driver SHAP para que el usuario vea el "por qué" del modelo,
+    # no sólo las reglas deterministas. Sólo entra si la contribución es
+    # significativa (|valor| ≥ 0.05) — evita ruido.
+    top_features = list((impacto_modelo or {}).get("top_features", []))
+    tendencia = (impacto_modelo or {}).get("tendencia", "neutral")
+
+    shap_positivos: list[str] = []
+    shap_negativos: list[str] = []
+    for feat in top_features[:2]:
+        name = str(feat.get("feature") or "")
+        val = _f(feat.get("valor"))
+        if name is None or val is None or abs(val) < 0.05:
+            continue
+        label = _FEATURE_LABELS.get(name, name.replace("_", " "))
+        if val > 0:
+            shap_positivos.append(
+                f"El modelo prioriza {label} (peso SHAP +{val:.2f})."
+            )
+        else:
+            shap_negativos.append(
+                f"El modelo penaliza {label} (peso SHAP {val:.2f})."
+            )
+
+    # Mezclamos manteniendo los drivers deterministas al frente.
+    pos_final = list(drivers_positivos) + shap_positivos[:1]
+    neg_final = list(drivers_negativos) + shap_negativos[:1]
+
     return {
         "score": round(float(score), 1) if score is not None else None,
         "hechos_clave": hechos_clave,
         "metricas_reales": metricas_reales,
-        "drivers_positivos": drivers_positivos,
-        "drivers_negativos": drivers_negativos,
+        "drivers_positivos": pos_final[:4],
+        "drivers_negativos": neg_final[:4],
         "fuentes": fuentes,
         "confianza": confianza,
         "impacto_modelo": {
-            "tendencia": (impacto_modelo or {}).get("tendencia", "neutral"),
+            "tendencia": tendencia,
             "contribucion": (impacto_modelo or {}).get("contribucion", 0.0),
-            "top_features": list((impacto_modelo or {}).get("top_features", [])),
+            "top_features": top_features,
         },
     }
 

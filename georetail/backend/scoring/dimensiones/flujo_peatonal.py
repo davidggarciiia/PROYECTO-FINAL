@@ -23,7 +23,9 @@ from __future__ import annotations
 from typing import Optional
 
 
-# Pesos base por fuente (vcity es la fuente principal, popular_times el modificador de picos)
+# Pesos base por fuente (vcity es la fuente principal, popular_times el modificador de picos).
+# Vianants y ratio_locales se eliminaron: el usuario prefiere estimación VCity frente a
+# mezclar con sensores Vianants puntuales, que sólo cubren algunas calles emblemáticas.
 PESOS_BASE: dict[str, float] = {
     "vcity":         0.70,
     "popular_times": 0.30,
@@ -32,7 +34,8 @@ PESOS_BASE: dict[str, float] = {
 # Valor de referencia para normalización vcity (percentil 99 estimado en BCN).
 VCITY_MAX_BARCELONA: float = 50_000.0  # peatones/día zona muy transitada
 
-# Alias para compatibilidad con código externo que importa VIANANTS_MAX_BARCELONA
+# Mantenido por compatibilidad de import histórico (algunos pipelines lo
+# consumen todavía). Ya no participa en el scoring de flujo peatonal.
 VIANANTS_MAX_BARCELONA: float = 15_000.0
 _VCITY_MAX_BCN    = VCITY_MAX_BARCELONA
 _VIANANTS_MAX_BCN = VIANANTS_MAX_BARCELONA
@@ -45,19 +48,31 @@ _VIANANTS_MAX_BCN = VIANANTS_MAX_BARCELONA
 def calcular_flujo_score(
     popular_times_score: Optional[float],   # 0-100, de gosom
     vcity_flujo: Optional[float],           # peatones/día (raw, normalizar con VCITY_MAX)
-    vianants_intensitat: Optional[float] = None,  # ignorado, mantenido por compatibilidad
-    ratio_locales: Optional[float] = None,         # ignorado, mantenido por compatibilidad
+    vianants_intensitat: Optional[float] = None,  # IGNORADO — mantenido por compat de firma
+    ratio_locales: Optional[float] = None,        # IGNORADO — mantenido por compat de firma
     vcity_max_barcelona: float = VCITY_MAX_BARCELONA,
-    vianants_max_barcelona: float = VIANANTS_MAX_BARCELONA,  # ignorado, mantenido por compatibilidad
+    vianants_max_barcelona: float = VIANANTS_MAX_BARCELONA,  # IGNORADO
+    vcity_shopping_rate: Optional[float] = None,   # mig 035: calidad del flujo (0..1)
 ) -> float:
     """
     Devuelve flujo_peatonal_score [0-100].
 
-    Fuente base (70%): vcity_flujo normalizado (peatones/día ÷ VCITY_MAX_BARCELONA × 100).
-    Modificador de picos (30%): popular_times_score de gosom (ya en 0-100).
+    Fuentes efectivas:
+      - vcity_flujo (70%): peatones/día normalizado contra VCITY_MAX_BARCELONA.
+      - popular_times_score (30%): picos Google Popular Times (ya en 0-100).
 
-    Si no hay vcity → fallback 40.0.
+    Los parámetros `vianants_intensitat` y `ratio_locales` se aceptan por
+    compatibilidad con callers antiguos pero se ignoran: la decisión de
+    diseño es preferir la estimación VCity homogénea a los sensores puntuales
+    de Vianants.
+
+    Si no hay vcity ni popular_times → fallback 40.0.
+    Si no hay vcity pero sí popular_times → usa popular_times al 100%.
     Si no hay popular_times → solo vcity al 100%.
+
+    Modulador de calidad (mig 035): vcity_shopping_rate (0..1) reescala el
+    resultado final. `quality_mult = 1 + 0.5 * (rate - 0.20)`, cap [0.85, 1.25].
+    Neutral (1.0) si la señal es None.
     """
     # Normalizar vcity a 0-100
     s_vcity: Optional[float] = (
@@ -73,19 +88,29 @@ def calcular_flujo_score(
         else None
     )
 
+    # Modulador de calidad por shopping_rate (mig 035)
+    quality_mult = 1.0
+    if vcity_shopping_rate is not None:
+        try:
+            rate_f = float(vcity_shopping_rate)
+            quality_mult = 1.0 + 0.5 * (rate_f - 0.20)
+            quality_mult = max(0.85, min(1.25, quality_mult))
+        except (TypeError, ValueError):
+            quality_mult = 1.0
+
     if s_vcity is None and s_pt is None:
         return 40.0  # sin ninguna fuente: fallback conservador
 
     if s_vcity is None:
-        # Solo popular_times disponible (degradado)
-        return round(float(s_pt), 2)  # type: ignore[arg-type]
+        resultado = float(s_pt) * quality_mult  # type: ignore[arg-type]
+        return round(float(min(100.0, max(0.0, resultado))), 2)
 
     if s_pt is None:
-        # Solo vcity: score base completo
-        return round(float(s_vcity), 2)
+        resultado = float(s_vcity) * quality_mult
+        return round(float(min(100.0, max(0.0, resultado))), 2)
 
     # Fusión ponderada: vcity 70% + popular_times 30%
-    resultado = s_vcity * 0.70 + s_pt * 0.30
+    resultado = (s_vcity * 0.70 + s_pt * 0.30) * quality_mult
     return round(float(min(100.0, max(0.0, resultado))), 2)
 
 
@@ -110,6 +135,7 @@ def calcular_flujo_score_batch(rows: list[dict]) -> list[float]:
             popular_times_score=row.get("popular_times_score")
                 or row.get("flujo_popular_times_score"),
             vcity_flujo=row.get("vcity_flujo_peatonal"),
+            vcity_shopping_rate=row.get("vcity_shopping_rate"),
         )
         for row in rows
     ]
@@ -120,13 +146,24 @@ def calcular_flujo_score_batch(rows: list[dict]) -> list[float]:
 # ---------------------------------------------------------------------------
 
 def fuentes_disponibles(row: dict) -> list[str]:
-    """Devuelve qué fuentes tienen datos para una zona dada."""
+    """
+    Devuelve qué fuentes tienen datos para una zona dada.
+
+    Sólo se consideran las fuentes activas del scorer (vcity + popular_times).
+    Se mantiene soporte de lectura de `flujo_peatonal_total` y
+    `ratio_locales_comerciales` por compatibilidad con callers antiguos que
+    inspeccionan legacy; se reportan como `vianants` / `ratio_locales`.
+    """
     fuentes: list[str] = []
     if row.get("vcity_flujo_peatonal") is not None:
         fuentes.append("vcity")
     pt = row.get("flujo_popular_times_score") or row.get("popular_times_score")
     if pt is not None:
         fuentes.append("popular_times")
+    if row.get("flujo_peatonal_total") is not None:
+        fuentes.append("vianants")
+    if row.get("ratio_locales_comerciales") is not None:
+        fuentes.append("ratio_locales")
     return fuentes
 
 
@@ -137,81 +174,47 @@ def fuentes_disponibles(row: dict) -> list[str]:
 def flujo_peatonal_explain(
     row: dict,
     vcity_max_barcelona: float = VCITY_MAX_BARCELONA,
-    vianants_max_barcelona: float = VIANANTS_MAX_BARCELONA,
+    vianants_max_barcelona: float = VIANANTS_MAX_BARCELONA,  # ignorado
 ) -> dict:
     """
-    Devuelve un desglose detallado de la fusión ponderada para una zona.
+    Devuelve un desglose de la fusión ponderada vcity + popular_times.
 
-    Útil para debugging y para que el frontend muestre qué fuentes
-    contribuyeron al flujo_peatonal_score y en qué medida.
-
-    Args:
-        row: dict con claves del esquema variables_zona:
-             flujo_popular_times_score (o popular_times_score),
-             vcity_flujo_peatonal, flujo_peatonal_total,
-             ratio_locales_comerciales.
-        vcity_max_barcelona: referencia de normalización para VCity.
-        vianants_max_barcelona: referencia de normalización para vianants.
-
-    Returns:
-        Dict con estructura:
-        {
-          "score": float,            # flujo_peatonal_score final [0-100]
-          "sources": {
-            "popular_times": {
-              "value": float | None, # valor normalizado 0-100, o None si ausente
-              "weight": float,       # peso efectivo aplicado (0.0 si ausente)
-              "contribution": float, # weight × value
-              "missing": bool,       # True si la fuente no tenía dato
-            },
-            "vcity": { ... },
-            "vianants": { ... },
-            "ratio_locales": { ... },
-          },
-          "sources_available": int,  # número de fuentes con dato
-        }
+    Se mantiene la forma del dict de salida con 4 claves en `sources`
+    (popular_times, vcity, vianants, ratio_locales) para compatibilidad con
+    código downstream (frontend debug panel, tests). Las dos últimas están
+    marcadas `missing=True` con peso 0: el scoring ya no las usa.
     """
-    # ── Resolver valores raw desde el dict ───────────────────────────────────
     pt_raw = row.get("flujo_popular_times_score") or row.get("popular_times_score")
     vc_raw = row.get("vcity_flujo_peatonal")
     vi_raw = row.get("flujo_peatonal_total")
     rl_raw = row.get("ratio_locales_comerciales")
 
-    # ── Normalizar a 0-100 ────────────────────────────────────────────────────
     def _norm_pt(v: Optional[float]) -> Optional[float]:
         return float(min(100.0, max(0.0, v))) if v is not None else None
 
     def _norm_vc(v: Optional[float]) -> Optional[float]:
         return float(min(100.0, max(0.0, v / vcity_max_barcelona * 100.0))) if v is not None else None
 
-    def _norm_vi(v: Optional[float]) -> Optional[float]:
-        return float(min(100.0, max(0.0, v / vianants_max_barcelona * 100.0))) if v is not None else None
-
-    def _norm_rl(v: Optional[float]) -> Optional[float]:
-        return float(min(100.0, max(0.0, v * 100.0))) if v is not None else None
-
     _PESOS_EXPLAIN: dict[str, float] = {
-        "popular_times": 0.25,
-        "vcity":         0.50,
-        "vianants":      0.15,
-        "ratio_locales": 0.10,
+        "vcity":         0.70,
+        "popular_times": 0.30,
     }
 
     norm_values: dict[str, Optional[float]] = {
-        "popular_times": _norm_pt(pt_raw),
         "vcity":         _norm_vc(vc_raw),
-        "vianants":      _norm_vi(vi_raw),
-        "ratio_locales": _norm_rl(rl_raw),
+        "popular_times": _norm_pt(pt_raw),
     }
 
-    # ── Redistribución adaptativa de pesos ───────────────────────────────────
     disponibles = {k: v for k, v in norm_values.items() if v is not None}
     n_disponibles = len(disponibles)
+
+    # Placeholder visible en sources para mantener el shape del API
+    _LEGACY_KEYS = ["vianants", "ratio_locales"]
 
     if not disponibles:
         sources = {
             k: {"value": None, "weight": 0.0, "contribution": 0.0, "missing": True}
-            for k in _PESOS_EXPLAIN
+            for k in ("popular_times", "vcity", *_LEGACY_KEYS)
         }
         return {"score": 30.0, "sources": sources, "sources_available": 0}
 
@@ -225,8 +228,8 @@ def flujo_peatonal_explain(
         pesos_adj[k] * disponibles[k] for k in disponibles
     )))), 2)
 
-    sources = {}
-    for k in _PESOS_EXPLAIN:
+    sources: dict[str, dict] = {}
+    for k in ("popular_times", "vcity"):
         val = norm_values[k]
         w   = pesos_adj[k]
         sources[k] = {
@@ -234,6 +237,16 @@ def flujo_peatonal_explain(
             "weight":       round(w, 4),
             "contribution": round(w * val, 4) if val is not None else 0.0,
             "missing":      val is None,
+        }
+
+    # Legacy (vianants, ratio_locales): conservan el shape pero no aportan.
+    for legacy_key, legacy_raw in (("vianants", vi_raw), ("ratio_locales", rl_raw)):
+        present = legacy_raw is not None
+        sources[legacy_key] = {
+            "value":        float(legacy_raw) if present else None,
+            "weight":       0.0,
+            "contribution": 0.0,
+            "missing":      True,  # no participa en el score por diseño
         }
 
     return {
@@ -349,6 +362,7 @@ def calcular_flujo_con_temporalidad(
         ratio_locales=ratio_locales,
         vcity_max_barcelona=vcity_max_barcelona,
         vianants_max_barcelona=vianants_max_barcelona,
+        vcity_shopping_rate=row.get("vcity_shopping_rate"),  # mig 035
     )
     temporal = calcular_fit_temporal(row, idea_tags=idea_tags, perfil_negocio=perfil_negocio)
     confianza = temporal["confianza"]

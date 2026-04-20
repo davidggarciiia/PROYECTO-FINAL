@@ -311,6 +311,11 @@ async def calcular_score_transporte(
     get_db = _get_db()
 
     # ── 1. Score de tránsito ─────────────────────────────────────────────────
+    # Estrategia de fallback: si NO hay filas (0 paradas en radio) dejamos
+    # score_transit=0 legítimo. Si hay error de BD (p.ej. tabla inexistente
+    # por migración pendiente) aplicamos fallback neutro 50.0 para no castigar
+    # injustamente a la zona por un problema operativo. `bd_disponible` separa
+    # ambos casos.
     score_transit = 0.0
     detalles_transit: dict = {
         "num_lineas_calidad": 0.0,
@@ -318,6 +323,7 @@ async def calcular_score_transporte(
         "bonus_intermodal": 0.0,
         "penalizacion_dependencia": 0.0,
     }
+    bd_disponible = True
 
     try:
         async with get_db() as conn:
@@ -331,7 +337,16 @@ async def calcular_score_transporte(
         else:
             logger.debug("transporte_score: sin paradas en radio %dm para zona %s", _RADIO_SQL_MAX, zona_id)
     except Exception as exc:
-        logger.error("transporte_score: error query tránsito zona=%s: %s", zona_id, exc)
+        _es_tabla_faltante = "UndefinedTable" in type(exc).__name__ or "42P01" in str(exc)
+        if _es_tabla_faltante:
+            logger.warning(
+                "transporte_score: tabla de transporte no existe (migración pendiente?) "
+                "zona=%s — aplicando fallback neutro 50", zona_id,
+            )
+            score_transit = 50.0
+            bd_disponible = False
+        else:
+            logger.error("transporte_score: error query tránsito zona=%s: %s", zona_id, exc)
 
     # ── 2. Score de movilidad activa ─────────────────────────────────────────
     num_bicing = 0
@@ -402,5 +417,6 @@ async def calcular_score_transporte(
             **detalles_transit,
             "num_bicing_400m": num_bicing,
             "tiene_carril_bici": tiene_carril,
+            "bd_disponible": bd_disponible,
         },
     }

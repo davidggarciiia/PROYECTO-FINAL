@@ -57,6 +57,32 @@ async def analizar_zona(zona_data: dict, perfil_negocio: dict,
     if not isinstance(resultado, dict):
         return _fallback(zona_data)
 
+    # Validar que explicaciones_dimensiones viene poblado. Si el LLM devuelve
+    # JSON válido pero dejó el dict vacío o sin hechos_clave, caemos al
+    # fallback determinista (build_fallback_analysis) que genera hechos
+    # trazables desde variables_zona.
+    explicaciones_llm = resultado.get("explicaciones_dimensiones") or {}
+    llm_sin_hechos = (
+        not explicaciones_llm
+        or all(not (v or {}).get("hechos_clave") for v in explicaciones_llm.values())
+    )
+    if llm_sin_hechos:
+        logger.warning(
+            "LLM devolvió explicaciones vacías zona=%s — usando fallback determinista",
+            zona_data.get("zona_id"),
+        )
+        fallback = _fallback(zona_data)
+        # Preservamos los textos de alto nivel del LLM (resumen, DAFO, reco)
+        # si están; sólo reemplazamos las explicaciones por dimensión.
+        for k in (
+            "resumen_global", "resumen", "puntos_fuertes", "puntos_debiles",
+            "oportunidad", "riesgos", "recomendacion_final", "razon_recomendacion",
+        ):
+            v = resultado.get(k)
+            if v:
+                fallback[k] = v
+        return fallback
+
     resumen = resultado.get("resumen_global") or resultado.get("resumen") or ""
     resultado["resumen_global"] = resumen
     resultado["resumen"] = resumen

@@ -15,10 +15,15 @@ from pydantic import BaseModel, Field
 
 from schemas.models import EstadoBusqueda
 from agente.cuestionario import procesar_respuesta
+from agente.refinador import refinar
 from db.sesiones import (
     get_sesion, actualizar_sesion,
     get_historial_cuestionario, guardar_mensaje,
 )
+
+# Mismos umbrales que en api/buscar.py (Fase 3)
+_SIGNAL_THRESHOLD = 70
+_SIGNAL_MAX_ROUNDS = 3
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["cuestionario"])
@@ -111,6 +116,38 @@ async def cuestionario(body: CuestionarioRequest) -> CuestionarioResponse:
             await actualizar_sesion(body.session_id, {"perfil": resultado["variables_extraidas"]})
         except Exception as exc:
             logger.warning("No se pudo actualizar perfil en sesión: %s", exc)
+
+    # ── Fase 3: re-refinamiento con respuesta enriquecida ─────────────────────
+    # Si había un perfil_refinado en la sesión y todavía no hemos llegado al
+    # umbral/rounds, re-corremos el refinador con la descripción + respuesta
+    # nueva concatenadas. Así el perfil converge a mayor signal_preservation.
+    perfil_sesion = sesion.get("perfil") or {}
+    perfil_refinado_prev = perfil_sesion.get("perfil_refinado") or None
+    rounds_usados = int(perfil_sesion.get("signal_rounds", 0))
+    if perfil_refinado_prev and rounds_usados < _SIGNAL_MAX_ROUNDS:
+        prev_score = int((perfil_refinado_prev or {}).get("signal_preservation_score") or 0)
+        if prev_score < _SIGNAL_THRESHOLD:
+            descripcion_original = sesion.get("descripcion_original") or ""
+            descripcion_enriquecida = f"{descripcion_original}\n[respuesta usuario]: {body.respuesta}".strip()
+            try:
+                nuevo_perfil = await refinar(
+                    descripcion=descripcion_enriquecida,
+                    sector_detectado=perfil_sesion.get("sector", "desconocido"),
+                    tags_previos=perfil_sesion.get("idea_tags") or [],
+                    session_id=body.session_id,
+                )
+                nuevo_dict = nuevo_perfil.model_dump()
+                try:
+                    await actualizar_sesion(body.session_id, {
+                        "perfil": {
+                            "perfil_refinado": nuevo_dict,
+                            "signal_rounds": rounds_usados + 1,
+                        },
+                    })
+                except Exception as exc:
+                    logger.warning("No se pudo guardar perfil_refinado iterado: %s", exc)
+            except Exception as exc:
+                logger.warning("Re-refinamiento falló: %s", exc)
 
     # ── Determinar si el cuestionario ha terminado ────────────────────────────
     terminado = resultado["estado"] == "completo"

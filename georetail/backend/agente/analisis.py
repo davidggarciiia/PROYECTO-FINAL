@@ -41,14 +41,25 @@ async def generar_analisis_zona(zona: dict, perfil: dict, session_id: str = "det
         }
     except Exception as exc:
         logger.error("generar_analisis_zona zona=%s: %s", zona.get("zona_id"), exc)
+        # Fallback determinista: en vez de devolver explicaciones vacías,
+        # construimos hechos_clave a partir de llm_grounding (si está) usando
+        # la misma función que el analizador usa cuando el LLM falla.
+        try:
+            from scoring.explainability import build_fallback_analysis
+            grounding = zona.get("llm_grounding") or {}
+            fallback = build_fallback_analysis(grounding)
+        except Exception as inner:
+            logger.warning("build_fallback_analysis no disponible: %s", inner)
+            fallback = {}
+
         return {
-            "texto":   "Análisis no disponible temporalmente.",
-            "pros":    [],
-            "contras": [],
-            "resumen_global": "Análisis no disponible temporalmente.",
-            "puntos_fuertes": [],
-            "puntos_debiles": [],
-            "razon_recomendacion": "No se pudo generar la explicación en este momento.",
-            "recomendacion_final": "Con reservas",
-            "explicaciones_dimensiones": {},
+            "texto":    fallback.get("resumen_global") or "Análisis no disponible temporalmente.",
+            "pros":     fallback.get("puntos_fuertes", []),
+            "contras":  fallback.get("puntos_debiles", []),
+            "resumen_global": fallback.get("resumen_global", "Análisis no disponible temporalmente."),
+            "puntos_fuertes": fallback.get("puntos_fuertes", []),
+            "puntos_debiles": fallback.get("puntos_debiles", []),
+            "razon_recomendacion": fallback.get("razon_recomendacion", "Análisis determinista en base a variables observadas."),
+            "recomendacion_final": fallback.get("recomendacion_final", "Con reservas"),
+            "explicaciones_dimensiones": fallback.get("explicaciones_dimensiones", {}),
         }

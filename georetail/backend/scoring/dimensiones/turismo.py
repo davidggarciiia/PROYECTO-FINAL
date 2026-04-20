@@ -247,6 +247,22 @@ def calcular_turismo(
         elif dep < 0.2 and base > 80.0:
             score -= 5.0   # penaliza zona-trampa para negocio de barrio
 
+        # ── Modulador por vcity_tourist_rate (mig 035) ──────────────────────
+        # Proporción de peatones clasificados como turistas (0..1). Amplifica
+        # o atenúa el score de turismo respecto del baseline BCN (~0.25).
+        #   tourist_modifier = 1 + α * (rate - 0.25), α = 0.4
+        # Cap [0.80, 1.30]. Neutral (1.0) si la señal es None.
+        tourist_rate = datos.get("vcity_tourist_rate")
+        tourist_modifier = 1.0
+        if tourist_rate is not None:
+            try:
+                rate_f = float(tourist_rate)
+                tourist_modifier = 1.0 + 0.4 * (rate_f - 0.25)
+                tourist_modifier = max(0.80, min(1.30, tourist_modifier))
+            except (TypeError, ValueError):
+                tourist_modifier = 1.0
+        score = score * tourist_modifier
+
         score = round(min(100.0, max(0.0, score)), 1)
 
         # ── Confianza ──────────────────────────────────────────────────────

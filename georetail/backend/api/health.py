@@ -22,6 +22,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -265,4 +266,98 @@ async def health() -> HealthResponse:
         version="0.1.0",
         timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         services=services_list,
+    )
+
+
+# ─── /api/health/places ──────────────────────────────────────────────────────
+
+class PlacesHealthResponse(BaseModel):
+    """Diagnóstico de la dimensión de Competencia.
+
+    El frontend puede pintar un banner de aviso si `pct_cobertura_ninguna` es
+    alto (el dato que se muestra a los usuarios entonces está imputado) o si
+    el último dump del scraper es antiguo.
+    """
+    timestamp: str
+    pct_cobertura_ninguna: Optional[float] = None  # 0-100
+    pct_cobertura_alta: Optional[float] = None
+    total_zonas_sector_radio: Optional[int] = None
+    ultima_ejecucion_scrape: Optional[str] = None
+    ultimo_estado_scrape: Optional[str] = None
+    rate_limits_ultimas_24h: dict[str, int] = {}
+
+
+@router.get(
+    "/health/places",
+    response_model=PlacesHealthResponse,
+    summary="Métricas de la dimensión de Competencia (scraper + rate-limits)",
+)
+async def health_places() -> PlacesHealthResponse:
+    from db.conexion import get_db
+    from db.redis_client import get_redis
+
+    pct_ninguna: Optional[float] = None
+    pct_alta: Optional[float] = None
+    total: Optional[int] = None
+    ultima_ejec: Optional[str] = None
+    ultimo_estado: Optional[str] = None
+
+    try:
+        async with get_db() as conn:
+            row = await conn.fetchrow("""
+                SELECT
+                    COUNT(*) FILTER (WHERE cobertura_competencia = 'ninguna') AS n_ninguna,
+                    COUNT(*) FILTER (WHERE cobertura_competencia = 'alta')    AS n_alta,
+                    COUNT(*)                                                  AS total
+                FROM competencia_por_local
+                WHERE fecha_calculo >= CURRENT_DATE - INTERVAL '3 days'
+            """)
+            if row and row["total"]:
+                total = int(row["total"])
+                pct_ninguna = round(100.0 * (row["n_ninguna"] or 0) / total, 1)
+                pct_alta    = round(100.0 * (row["n_alta"]    or 0) / total, 1)
+
+            ejec = await conn.fetchrow("""
+                SELECT fecha_inicio, fecha_fin, estado
+                FROM pipeline_ejecuciones
+                WHERE pipeline = 'competencia_scrape'
+                ORDER BY fecha_inicio DESC
+                LIMIT 1
+            """)
+            if ejec:
+                fi = ejec["fecha_fin"] or ejec["fecha_inicio"]
+                ultima_ejec = fi.isoformat() if fi else None
+                ultimo_estado = ejec["estado"]
+    except Exception as exc:
+        logger.warning("health_places: BD no disponible: %s", exc)
+
+    # Rate-limits de los proveedores — contadores que pone places_router.
+    rate_limits: dict[str, int] = {}
+    try:
+        r = get_redis()
+        hoy = datetime.now(timezone.utc).date().isoformat()
+        ayer = (datetime.now(timezone.utc).date().toordinal() - 1)
+        ayer_iso = datetime.fromordinal(ayer).date().isoformat()
+        for prv in ("google", "foursquare", "yelp", "osm"):
+            total_prv = 0
+            for dia_iso in (hoy, ayer_iso):
+                v = await r.get(f"places:rl:{prv}:{dia_iso}")
+                if v:
+                    try:
+                        total_prv += int(v)
+                    except (TypeError, ValueError):
+                        pass
+            if total_prv:
+                rate_limits[prv] = total_prv
+    except Exception as exc:
+        logger.warning("health_places: Redis no disponible: %s", exc)
+
+    return PlacesHealthResponse(
+        timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        pct_cobertura_ninguna=pct_ninguna,
+        pct_cobertura_alta=pct_alta,
+        total_zonas_sector_radio=total,
+        ultima_ejecucion_scrape=ultima_ejec,
+        ultimo_estado_scrape=ultimo_estado,
+        rate_limits_ultimas_24h=rate_limits,
     )

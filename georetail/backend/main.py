@@ -40,6 +40,7 @@ from api.health       import router as router_health
 from api.mercado      import router as router_mercado
 from api.admin        import router as router_admin
 from api.competencia  import router as router_competencia
+from api.transporte   import router as router_transporte
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -131,3 +132,4 @@ app.include_router(router_health,       prefix="/api", tags=["sistema"])
 app.include_router(router_mercado,      prefix="/api", tags=["mercado"])
 app.include_router(router_admin,        prefix="/api", tags=["admin"])
 app.include_router(router_competencia,  prefix="/api", tags=["competencia"])
+app.include_router(router_transporte,    prefix="/api", tags=["transporte"])

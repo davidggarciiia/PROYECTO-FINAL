@@ -22,6 +22,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from scoring.features import FEATURE_NAMES
+from scoring.dimensiones.demografia import calcular_score_demografia
 
 
 # ── Helpers para crear CSV fake de parques ────────────────────────────────────
@@ -565,3 +566,108 @@ async def test_parques_calls_init_and_fin_pipeline():
 
     assert init_mock.called, "_init_pipeline no fue llamado"
     assert fin_mock.called,  "_fin_pipeline no fue llamado"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 14. vcity_resident_rate (mig 035) — shift aditivo por residentes
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestVcityResidentRate:
+    """
+    Shift aditivo: resident_shift = 10·(rate − 0.50), cap [-5, +5].
+    None → 0 (neutro). Si perfil_negocio.clientela_turismo > 0.6 → ×0.5.
+    """
+
+    @staticmethod
+    def _base_datos() -> dict:
+        # Zona mixta BCN: valores intermedios que permiten ver tanto subida como
+        # bajada dentro de la escala 0-100 sin saturación.
+        return {
+            "renta_media_hogar":       35_000.0,
+            "densidad_hab_km2":        18_000.0,
+            "pct_poblacio_25_44":      0.28,
+            "nivel_estudios_alto_pct": 0.35,
+            "delta_renta_3a":          0.02,
+            "edad_media":              42.0,
+            "pct_extranjeros":         0.18,
+        }
+
+    def test_rate_bajo_020_da_score_menor_que_neutro(self):
+        base = self._base_datos()
+        s_neutro = calcular_score_demografia(base)["score_demografia"]
+        s_bajo   = calcular_score_demografia(
+            {**base, "vcity_resident_rate": 0.20}
+        )["score_demografia"]
+        # rate=0.20 → shift = 10*(-0.30) = -3.0 → debe bajar
+        assert s_bajo < s_neutro, (
+            f"rate=0.20 debería bajar el score: neutro={s_neutro} vs bajo={s_bajo}"
+        )
+
+    def test_rate_alto_080_da_score_mayor_que_neutro(self):
+        base = self._base_datos()
+        s_neutro = calcular_score_demografia(base)["score_demografia"]
+        s_alto   = calcular_score_demografia(
+            {**base, "vcity_resident_rate": 0.80}
+        )["score_demografia"]
+        # rate=0.80 → shift = 10*(+0.30) = +3.0 → debe subir (sin saturación)
+        if s_neutro < 95.0:
+            assert s_alto > s_neutro, (
+                f"rate=0.80 debería subir el score: neutro={s_neutro} vs alto={s_alto}"
+            )
+
+    def test_rate_none_es_idempotente_con_baseline(self):
+        base = self._base_datos()
+        s_sin_key = calcular_score_demografia(base)["score_demografia"]
+        s_none    = calcular_score_demografia(
+            {**base, "vcity_resident_rate": None}
+        )["score_demografia"]
+        assert s_sin_key == pytest.approx(s_none, abs=0.01), (
+            f"vcity_resident_rate=None debe ser idempotente: {s_sin_key} vs {s_none}"
+        )
+
+    def test_rate_050_no_modifica(self):
+        """rate=0.50 es el baseline: shift = 0 → score idéntico al sin rate."""
+        base = self._base_datos()
+        s_neutro = calcular_score_demografia(base)["score_demografia"]
+        s_050    = calcular_score_demografia(
+            {**base, "vcity_resident_rate": 0.50}
+        )["score_demografia"]
+        assert s_050 == pytest.approx(s_neutro, abs=0.1), (
+            f"rate=0.50 es baseline → no debe modificar: {s_neutro} vs {s_050}"
+        )
+
+    def test_resident_shift_atenuado_para_perfil_turistico(self):
+        """
+        Para negocios con clientela_turismo > 0.6, el resident_shift se escala
+        por 0.5: los residentes no son el cliente ideal.
+        """
+        base = self._base_datos()
+        rate = 0.80  # shift crudo ≈ +3.0 (cap 5.0)
+
+        # Shift completo (perfil no turístico)
+        s_no_tur = calcular_score_demografia(
+            {**base, "vcity_resident_rate": rate},
+            perfil_negocio={"clientela_turismo": 0.2},
+        )["score_demografia"]
+
+        # Shift atenuado (perfil turístico): clientela_turismo > 0.6 → halve
+        s_tur = calcular_score_demografia(
+            {**base, "vcity_resident_rate": rate},
+            perfil_negocio={"clientela_turismo": 0.9},
+        )["score_demografia"]
+
+        # Baseline sin rate
+        s_neutro = calcular_score_demografia(base)["score_demografia"]
+
+        # El subidón para perfil no-turístico debe ser mayor que para turístico
+        lift_no_tur = s_no_tur - s_neutro
+        lift_tur    = s_tur - s_neutro
+        assert lift_tur < lift_no_tur, (
+            f"Shift para perfil turístico debe estar atenuado: "
+            f"no_tur_lift={lift_no_tur:.2f} vs tur_lift={lift_tur:.2f}"
+        )
+        # Concretamente ~ la mitad (con tolerancia por clipping/fit)
+        assert lift_tur == pytest.approx(lift_no_tur * 0.5, abs=0.5), (
+            f"Debe ser ~mitad del shift: no_tur_lift={lift_no_tur:.2f} "
+            f"vs tur_lift={lift_tur:.2f}"
+        )

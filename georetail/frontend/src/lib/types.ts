@@ -159,6 +159,45 @@ export interface EntornoComercialDetalle {
   eventos_culturales_500m?: number;
 }
 
+// ── Perfil refinado (Fase 1-2 backend) ───────────────────────────────────
+// Estructura rica generada por el agente refinador (LLM) que complementa
+// al perfil numerico clasico (8 dims). Se expone al frontend para que el
+// usuario vea que ha entendido el motor y pueda corregirlo.
+export interface PublicoObjetivo {
+  edad_rango?: string | null;
+  nivel_socioeconomico?: "bajo" | "medio" | "medio-alto" | "alto" | null;
+  estilo_vida: string[];
+  horarios_pico: string[];
+}
+
+export interface PropuestaValor {
+  especializacion?: string | null;
+  diferenciadores: string[];
+  calidad_percibida_0_5?: number | null;
+}
+
+export interface Operacion {
+  modelo_servicio?: "take_away" | "mesas" | "mixto" | "delivery_only" | null;
+  ticket_tier_p1_p5?: number | null;
+  escala_operativa?: "solo" | "micro" | "pequeña" | "mediana" | null;
+  horarios_apertura: string[];
+}
+
+export interface UbicacionIdeal {
+  tipo_calle?: string | null;
+  densidad_preferida?: "baja" | "media" | "alta" | null;
+  flujo_tipo?: string | null;
+}
+
+export interface PerfilRefinado {
+  publico_objetivo: PublicoObjetivo;
+  propuesta_valor: PropuestaValor;
+  operacion: Operacion;
+  ubicacion_ideal: UbicacionIdeal;
+  nuances_detected: string[];
+  signal_preservation_score: number;
+}
+
 export interface ZonaDetalle {
   zona_id: string;
   nombre: string;
@@ -180,7 +219,12 @@ export interface ZonaDetalle {
   // Pesos del modelo manual_v2 para el sector clasificado de esta busqueda.
   // El frontend los muestra por dimension ("peso 23%") + explica por que.
   sector_codigo?: string;
+  subsector_codigo?: string | null;
   pesos_dimensiones?: Record<string, number>;
+  // Perfil rico + pesos modulados (Fase 1-2 backend). Pueden venir null
+  // si el LLM fallback no genero perfil refinado — el frontend degrada.
+  perfil_refinado?: PerfilRefinado | null;
+  pesos_modulados?: Record<string, number> | null;
   flujo_peatonal_dia?: { manana: number; tarde: number; noche: number };
   renta_media_hogar?: number;
   edad_media?: number;
@@ -313,6 +357,32 @@ export interface LegalRoadmapResponse {
   fases: FaseRoadmap[];
   costes_resumen: CosteRoadmap[];
   proximos_pasos: string[];
+}
+
+// ── Transporte — detalle de líneas cercanas a la zona ─────────────────────
+export type TransporteTipo = "metro" | "bus" | "tram" | "fgc" | "rodalies";
+
+export interface ParadaCercana {
+  nombre: string;
+  distancia_m: number;
+  tipo: TransporteTipo | string;
+}
+
+export interface LineaCercana {
+  tipo: TransporteTipo | string;
+  codigo: string;
+  nombre: string;
+  color?: string | null;
+  dist_min_m: number;
+  paradas_cercanas: ParadaCercana[];
+}
+
+export interface TransporteDetalleZona {
+  zona_id: string;
+  radio_m: number;
+  total_lineas: number;
+  total_paradas: number;
+  lineas: LineaCercana[];
 }
 
 export interface DevData {
