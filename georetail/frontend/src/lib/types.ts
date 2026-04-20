@@ -33,10 +33,14 @@ export interface ZonaResumen {
 export interface CompetidorCercano {
   nombre: string;
   sector?: string;
+  subsector?: string | null;
+  lat?: number;
+  lng?: number;
   distancia_m?: number;
   rating?: number;
   precio_nivel?: number;
   es_competencia_directa: boolean;
+  es_competencia_directa_subsector?: boolean;
   num_resenas?: number;
   es_complementario?: boolean;
   es_vulnerable?: boolean;

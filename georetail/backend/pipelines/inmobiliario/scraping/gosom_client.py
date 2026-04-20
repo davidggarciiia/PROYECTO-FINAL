@@ -126,6 +126,18 @@ class GosomEntry:
             complete_address=d.get("complete_address") if isinstance(d.get("complete_address"), dict) else None,
         )
 
+    def clasificar(self) -> tuple[Optional[str], Optional[str]]:
+        """Infiere (sector_macro, subsector_fino) desde `category` + `categories`.
+
+        Delegamos en la taxonomía canónica (`scoring/taxonomia.py`). El sector
+        se usa sólo como fallback: el pipeline que consume esto suele tener ya
+        un `sector_codigo` canónico a mano y le bastan con el subsector.
+        Devuelve `(None, None)` si ninguna etiqueta mapea.
+        """
+        # Import lazy: evitamos acoplar el cliente del scraper al scorer.
+        from scoring.taxonomia import clasificar_con_fallback
+        return clasificar_con_fallback(self.categories, self.category)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Cliente principal

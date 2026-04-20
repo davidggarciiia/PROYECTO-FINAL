@@ -86,6 +86,9 @@ class ZonaPreview(BaseModel):
 class CompetidorCercano(BaseModel):
     nombre:                 str
     sector:                 Optional[str]   = None
+    subsector:              Optional[str]   = None  # taxonomía fina (scoring/taxonomia.py)
+    lat:                    Optional[float] = None  # para visualización en el mini-mapa
+    lng:                    Optional[float] = None
     distancia_m:            Optional[float] = None
     rating:                 Optional[float] = None
     precio_nivel:           Optional[int]   = None
@@ -93,6 +96,7 @@ class CompetidorCercano(BaseModel):
     num_resenas:            Optional[int]   = None
     es_complementario:      bool            = False
     es_vulnerable:          bool            = False
+    es_competencia_directa_subsector: bool  = False  # mismo subsector exacto
     amenaza_score:          Optional[float] = None   # 0-100, gravity model individual
 
 
