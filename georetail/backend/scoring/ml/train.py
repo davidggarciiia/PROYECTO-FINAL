@@ -329,13 +329,17 @@ async def _registrar_version(
             VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
             ON CONFLICT (version) DO NOTHING
             """,
+            # params / metricas / importancia_features / demografia_feature_names
+            # son todas columnas JSONB — pasamos estructuras Python directas. El
+            # codec de db/conexion.py hace json.dumps una sola vez; si pasáramos
+            # strings, el codec los re-encodaría causando double-encoding.
             version,
             sector,
-            json.dumps(params),
-            json.dumps(metricas),
-            json.dumps(importancia),
+            params,
+            metricas,
+            importancia,
             ruta,
-            json.dumps(list(demografia_feature_names)),
+            list(demografia_feature_names),
         )
     logger.info("Versión %s registrada en modelos_versiones", version)
 

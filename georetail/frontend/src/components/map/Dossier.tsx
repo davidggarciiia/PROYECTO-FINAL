@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type {
   ZonaPreview,
@@ -48,25 +48,36 @@ export default function Dossier({ zone, detalle, loading, onClose, sessionId }: 
   const [competencia, setCompetencia] = useState<CompetenciaDetalle | null>(null);
   const [loadingComp, setLoadingComp] = useState(false);
   const [competenciaError, setCompetenciaError] = useState<string | null>(null);
+  // Ref para detectar cambios de zona mientras una petición está en vuelo
+  const activeZoneRef = useRef(zone.zona_id);
 
   // Reset del estado de competencia cuando cambia la zona.
   useEffect(() => {
+    activeZoneRef.current = zone.zona_id;
     setCompetencia(null);
     setCompetenciaError(null);
+    setLoadingComp(false);  // cancela visualmente cualquier carga en vuelo de la zona anterior
   }, [zone.zona_id]);
 
   const loadCompetencia = useCallback(async () => {
-    if (competencia || loadingComp) return;
+    if (competencia || loadingComp || !sessionId) return;
+    const zonaIdSnapshot = zone.zona_id;
     setLoadingComp(true);
     setCompetenciaError(null);
     try {
-      const data = await api.competencia(zone.zona_id, sessionId);
+      const data = await api.competencia(zonaIdSnapshot, sessionId);
+      // Descartar resultado si la zona cambió mientras esperábamos la respuesta
+      if (activeZoneRef.current !== zonaIdSnapshot) return;
       setCompetencia(data);
     } catch (error) {
       console.error("Error competencia:", error);
-      setCompetenciaError("No se ha podido cargar el análisis de competencia.");
+      if (activeZoneRef.current === zonaIdSnapshot) {
+        setCompetenciaError("No se ha podido cargar el análisis de competencia.");
+      }
     } finally {
-      setLoadingComp(false);
+      if (activeZoneRef.current === zonaIdSnapshot) {
+        setLoadingComp(false);
+      }
     }
   }, [competencia, loadingComp, sessionId, zone.zona_id]);
 

@@ -15,11 +15,9 @@ kombu==5.3.4                  # capa de mensajería para Celery
 apscheduler==3.10.4
 
 # ─── LLMs (modelos de lenguaje) ───────────────────────────────────────────────
-anthropic==0.84.0             # Claude (Anthropic)
-openai==2.26.0                # GPT-4o / DeepSeek / Kimi (compatible OpenAI)
-google-genai==1.56.0          # Gemini Flash (Google — nuevo SDK unificado)
-langchain==1.2.12
-langchain-anthropic==1.3.4
+# Router actual: DeepSeek V3 → GPT-4o-mini (ambos compatibles SDK OpenAI).
+openai==2.26.0                # GPT-4o-mini + DeepSeek (usa base_url de DeepSeek)
+langchain==1.2.12             # utilidades de prompts/chain; proveedores específicos retirados
 
 # ─── Machine Learning ─────────────────────────────────────────────────────────
 xgboost==2.1.1

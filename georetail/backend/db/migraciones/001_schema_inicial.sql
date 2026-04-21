@@ -597,7 +597,7 @@ CREATE TABLE IF NOT EXISTS cache_geocoding (
 CREATE TABLE IF NOT EXISTS llm_logs (
     id            SERIAL PRIMARY KEY,
     session_id    VARCHAR(36),
-    proveedor     VARCHAR(20),   -- 'anthropic', 'openai', 'groq', 'gemini', 'ollama'
+    proveedor     VARCHAR(20),   -- 'deepseek', 'openai'
     modelo        VARCHAR(50),
     tokens_input  INT,           -- tokens (palabras aproximadas) enviados al modelo
     tokens_output INT,           -- tokens recibidos como respuesta

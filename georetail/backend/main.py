@@ -24,6 +24,7 @@ from db.conexion import init_db_pool, close_db_pool
 from db.redis_client import init_redis, close_redis
 from nlp.embeddings import cargar_modelo as cargar_embeddings
 from scoring.scorer import cargar_modelo as cargar_xgb
+from scoring.motor import verificar_pesos_sectores
 from pipelines.scheduler import init_scheduler, stop_scheduler
 from routers.llm_router import close_llm_clients
 
@@ -83,6 +84,13 @@ async def lifespan(app: FastAPI):
         logger.info("Modelo XGBoost cargado")
     except Exception as exc:
         logger.warning("No se pudo cargar el modelo XGBoost: %s", exc)
+
+    try:
+        # Chequeo de invariante crítico: peso_* por sector debe sumar 1.0.
+        # Solo loguea; no aborta para no bloquear despliegues en caliente.
+        await verificar_pesos_sectores()
+    except Exception as exc:
+        logger.warning("verificar_pesos_sectores falló (no bloqueante): %s", exc)
 
     init_scheduler()
     logger.info("Scheduler iniciado")

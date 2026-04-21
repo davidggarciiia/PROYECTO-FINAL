@@ -604,4 +604,5 @@ async def guardar_scores(zona_id: str, sector_id: int, scores: dict) -> None:
         scores.get("score_precio_alquiler"), scores.get("score_transporte"),
         scores.get("score_seguridad"), scores.get("score_turismo"),
         scores.get("probabilidad_supervivencia"),
-        json.dumps(scores.get("shap_values")) if scores.get("shap_values") else None)
+        # shap_values es JSONB: dict directo — el codec de db/conexion.py encodea.
+        scores.get("shap_values") if scores.get("shap_values") else None)

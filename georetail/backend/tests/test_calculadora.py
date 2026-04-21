@@ -223,3 +223,96 @@ class TestRobustez:
         p = {**params_base, "dias_apertura_mes": 0.0}
         resultado = await calcular_proyeccion(p)
         assert resultado["breakeven_clientes_dia"] >= 1
+
+
+# ─── Tests de regresión: SS patronal se aplica UNA SOLA VEZ (BUG-P1-4) ─────────
+
+class TestSalariosSinDuplicar:
+    """
+    Regresión para BUG-P1-4 (auditoría 2026-04-21): la SS patronal (~31%) debe
+    aplicarse una sola vez en `estimador._salarios()`. `calcular_proyeccion`
+    NO puede volver a multiplicar el coste salarial.
+
+    Ver: docs/vault/03-Auditoria/bugs-medios/BUG-P1-4-ss-patronal-no-duplicada.md
+    """
+
+    async def test_costes_fijos_usan_salarios_mensual_as_is(self, params_base):
+        """
+        `costes_fijos` mensual = alquiler + salarios + otros_fijos.
+        Sin multiplicador oculto sobre salarios.
+        """
+        resultado = await calcular_proyeccion(params_base)
+        esperado = round(
+            params_base["alquiler_mensual"] +
+            params_base["salarios_mensual"] +
+            params_base["otros_fijos_mensual"]
+        )
+        for mes in resultado["proyeccion"]:
+            assert mes["costes_fijos"] == esperado, (
+                f"Mes {mes['mes']}: costes_fijos={mes['costes_fijos']} ≠ {esperado}. "
+                "Sospecha de multiplicador oculto en calculadora (SS duplicada)."
+            )
+
+    async def test_delta_costes_fijos_es_lineal_en_salarios(self, params_base):
+        """
+        Si duplicamos `salarios_mensual`, `costes_fijos` crece exactamente en
+        `salarios_original`. Un multiplicador oculto daría crecimiento no lineal.
+        """
+        resultado_base = await calcular_proyeccion(params_base)
+        params_2x = {**params_base, "salarios_mensual": params_base["salarios_mensual"] * 2}
+        resultado_2x = await calcular_proyeccion(params_2x)
+
+        delta = resultado_2x["proyeccion"][0]["costes_fijos"] - resultado_base["proyeccion"][0]["costes_fijos"]
+        assert delta == pytest.approx(params_base["salarios_mensual"], abs=1), (
+            f"Delta costes_fijos={delta} ≠ salarios_mensual={params_base['salarios_mensual']}. "
+            "Sugiere multiplicador oculto."
+        )
+
+    async def test_integracion_estimador_calculadora_preserva_ss_unica_vez(self):
+        """
+        Pipeline real: estimador._salarios() genera un PE con SS ya aplicada.
+        Ese valor entra a calculadora sin re-multiplicar.
+
+        Formula esperada: n × salario_base × (1 + _SS_EMPRESA) — UNA vez.
+        """
+        from financiero.estimador import _salarios, _SS_EMPRESA
+
+        bench = {"salario_base_mensual_convenio": 1_650.0}
+        n = 2
+        pe_salarios = _salarios(n, bench)
+
+        # Snapshot del cálculo esperado (1 aplicación de SS).
+        salario_esperado = round(n * 1_650.0 * (1 + _SS_EMPRESA))
+        assert pe_salarios.valor == salario_esperado, (
+            "estimador._salarios aplicó SS más de una vez o con factor incorrecto."
+        )
+
+        # Ahora pasamos al calculador: costes_fijos - alquiler - otros = salarios exactos.
+        params = {
+            "ticket_medio":                25.0,
+            "clientes_dia_conservador":    20.0,
+            "clientes_dia_optimista":      35.0,
+            "dias_apertura_mes":           26.0,
+            "alquiler_mensual":          1_800.0,
+            "salarios_mensual":          pe_salarios.valor,
+            "otros_fijos_mensual":         800.0,
+            "coste_mercancia_pct":          0.35,
+            "reforma_local":            25_000.0,
+            "equipamiento":             12_000.0,
+            "deposito_fianza":           3_600.0,
+            "otros_iniciales":           2_500.0,
+        }
+        resultado = await calcular_proyeccion(params)
+        cf = resultado["proyeccion"][0]["costes_fijos"]
+        salarios_reconstruidos = cf - round(params["alquiler_mensual"]) - round(params["otros_fijos_mensual"])
+
+        assert salarios_reconstruidos == pe_salarios.valor, (
+            f"salarios reconstruidos={salarios_reconstruidos} ≠ pe_salarios.valor={pe_salarios.valor}. "
+            "calculadora re-multiplicó el salario."
+        )
+
+        # Comprobación extra: ningún factor 1.31² ≈ 1.72 en juego.
+        salario_con_doble_ss = round(n * 1_650.0 * (1 + _SS_EMPRESA) ** 2)
+        assert salarios_reconstruidos != salario_con_doble_ss, (
+            "costes_fijos coincide con SS aplicada DOS veces — bug P1-4 reintroducido."
+        )

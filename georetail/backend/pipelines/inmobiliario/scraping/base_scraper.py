@@ -171,10 +171,12 @@ class BaseScraper:
             import httpx
             ua = random.choice(_USER_AGENTS)
             proxy = self.cfg.random_proxy()
+            # httpx 0.28 eliminó `proxies=`; ahora es `proxy=` (str) o `mounts=` (dict).
+            # random_proxy() devuelve str|None, directamente compatible.
             async with httpx.AsyncClient(
                 timeout=self.cfg.timeout,
                 follow_redirects=True,
-                proxies=proxy,
+                proxy=proxy if proxy else None,
                 http2=True,
             ) as c:
                 r = await c.get(url, headers=_browser_headers(ua, referer))

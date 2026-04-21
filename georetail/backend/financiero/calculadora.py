@@ -90,8 +90,9 @@ async def calcular_proyeccion(params: dict) -> dict:
     ebitda_a1_o = sum(m["ebitda_optimista"]   for m in proyeccion[:12])
 
     # ROI a 3 años = beneficio neto 36 meses / inversión inicial
-    ben_3a_c = proyeccion[-1]["acumulado_conservador"] + inversion  # beneficio neto total
-    ben_3a_o = proyeccion[-1]["acumulado_optimista"]   + inversion
+    # acumulado ya incluye -inversion desde el inicio, así que es el beneficio neto directo
+    ben_3a_c = proyeccion[-1]["acumulado_conservador"]
+    ben_3a_o = proyeccion[-1]["acumulado_optimista"]
     roi_c = ben_3a_c / inversion if inversion > 0 else 0
     roi_o = ben_3a_o / inversion if inversion > 0 else 0
 
@@ -112,8 +113,8 @@ async def calcular_proyeccion(params: dict) -> dict:
         "inversion_total":              round(inversion),
         "ingresos_anuales_conservador": round(ing_anual_c),
         "ingresos_anuales_optimista":   round(ing_anual_o),
-        "ingresos_a2_conservador":      round(ing_a2_c),
-        "ingresos_a2_optimista":        round(ing_a2_o),
+        "ingresos_a2_conservador":      round(ing_a2_c),   # año 2 (meses 13-24)
+        "ingresos_a2_optimista":        round(ing_a2_o),   # año 2 (meses 13-24)
         "ebitda_anual_conservador":     round(ebitda_a1_c),
         "ebitda_anual_optimista":       round(ebitda_a1_o),
         "roi_3a_conservador":           round(roi_c, 3),

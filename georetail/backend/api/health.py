@@ -158,8 +158,8 @@ async def _check_llm() -> ServiceStatus:
     NO hace una llamada real al LLM (sería caro y lento para un health check).
 
     El llm_router.py guarda en Redis la clave `llm:proveedor_activo` con el
-    nombre del proveedor actual (claude, openai, groq, gemini, ollama).
-    Si la clave no existe, asume Claude (el primero de la cadena de fallback).
+    nombre del proveedor actual (deepseek, openai).
+    Si la clave no existe, asume DeepSeek (el primero de la cadena de fallback).
 
     Si ningún proveedor está disponible → DOWN.
     """

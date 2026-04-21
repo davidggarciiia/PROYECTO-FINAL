@@ -23,14 +23,14 @@ rankeadas por score de viabilidad + análisis financiero automático.
 | Backend | FastAPI + Python 3.11 |
 | Cola asíncrona | Celery + Redis |
 | Base de datos | PostgreSQL 15 + PostGIS + pgvector |
-| Agentes IA | LangChain + Claude Sonnet (principal) |
+| Agentes IA | LangChain + DeepSeek V3 (principal) + GPT-4o-mini (fallback) |
 | ML / Scoring | XGBoost + scikit-learn + SHAP + Optuna |
 | NLP reseñas | sentence-transformers (paraphrase-multilingual-mpnet-base-v2, 768 dims) |
 | Scheduler | APScheduler |
 | Contenedores | Docker + Docker Compose |
 | Servidor | Hetzner VPS + Nginx |
 
-**LLM Router con fallback:** Claude Sonnet 4.6 → GPT-4o → DeepSeek V3 → Kimi K2.5 → Gemini 2.0 Flash
+**LLM Router con fallback:** DeepSeek V3 → GPT-4o-mini
 
 ---
 
@@ -66,7 +66,7 @@ backend/
 │   ├── financiero.py                  ← get_benchmarks_sector, guardar_analisis_financiero
 │   └── exportaciones.py               ← CRUD exportaciones PDF
 ├── routers/
-│   ├── llm_router.py                  ← fallback chain Anthropic→OpenAI→DeepSeek→Kimi→Gemini
+│   ├── llm_router.py                  ← fallback chain DeepSeek→OpenAI
 │   ├── places_router.py               ← Google Places→Foursquare→Yelp→OSM
 │   └── geocoding_router.py            ← Google→Nominatim→OpenCage + caché PG
 ├── scoring/
@@ -320,12 +320,9 @@ Cuando exista la tabla `requisitos_legales_sector` en BD → leer de allí.
 DATABASE_URL=postgresql://postgres:password@localhost:5432/georetail
 REDIS_URL=redis://localhost:6379
 
-# LLMs
-ANTHROPIC_API_KEY=sk-ant-...
+# LLMs (basta con UNA de las dos; el router hace fallback DeepSeek → OpenAI)
+DEEPSEEK_API_KEY=sk-...
 OPENAI_API_KEY=sk-...
-DEEPSEEK_API_KEY=...
-KIMI_API_KEY=...
-GEMINI_API_KEY=...
 
 # Google
 GOOGLE_MAPS_API_KEY=...   # Places + Geocoding + Static Maps

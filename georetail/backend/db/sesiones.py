@@ -28,9 +28,13 @@ async def crear_sesion(session_id: str, datos: dict, ip_hash: str) -> dict:
     await r.setex(f"sesion:{session_id}", _TTL, json.dumps(sesion, ensure_ascii=False))
     try:
         async with get_db() as conn:
+            # `perfil` es JSONB: pasamos el dict directamente. El codec de asyncpg
+            # registrado en db/conexion.py hace json.dumps una sola vez. Si pasáramos
+            # un string JSON, el codec lo re-encodaría y la columna quedaría con un
+            # string con backslashes en lugar de un objeto.
             await conn.execute(
                 "INSERT INTO sesiones (id, ip_hash, perfil) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
-                session_id, ip_hash, json.dumps(sesion.get("perfil", {})))
+                session_id, ip_hash, sesion.get("perfil", {}))
     except Exception as e:
         logger.warning("PG sesion write fail: %s", e)
     return sesion
@@ -86,16 +90,41 @@ async def actualizar_sesion(session_id: str, updates: dict) -> None:
         except WatchError:
             continue
         except Exception as e:
-            logger.warning("Redis actualizar_sesion fail: %s", e)
-            break
+            logger.warning("Redis actualizar_sesion fail (intento %d): %s", _attempt, e)
+            # No silenciar el error — hacer fallback directo a PostgreSQL
+            # con los updates recibidos, sin depender de `s`.
+            try:
+                async with get_db() as conn:
+                    # Leer el perfil actual desde PG para hacer merge correcto
+                    row = await conn.fetchrow(
+                        "SELECT perfil FROM sesiones WHERE id=$1", session_id)
+                    if row is not None:
+                        perfil_actual = row["perfil"] or {}
+                        perfil_update = updates.get("perfil", {})
+                        if isinstance(perfil_update, dict) and isinstance(perfil_actual, dict):
+                            perfil_merged = {**perfil_actual, **perfil_update}
+                        else:
+                            perfil_merged = perfil_update if perfil_update else perfil_actual
+                        # JSONB: pasamos el dict directo — el codec encodea una sola vez.
+                        await conn.execute(
+                            "UPDATE sesiones SET perfil=$1, updated_at=NOW() WHERE id=$2",
+                            perfil_merged, session_id)
+                        logger.info(
+                            "actualizar_sesion: fallback PG exitoso para sesion %s", session_id)
+            except Exception as pg_err:
+                logger.error(
+                    "actualizar_sesion: fallback PG también falló para sesion %s: %s",
+                    session_id, pg_err)
+            return
 
     if s is None:
         return
     try:
         async with get_db() as conn:
+            # JSONB: dict directo (ver comentario en crear_sesion).
             await conn.execute(
                 "UPDATE sesiones SET perfil=$1, updated_at=NOW() WHERE id=$2",
-                json.dumps(s.get("perfil", {})), session_id)
+                s.get("perfil", {}), session_id)
     except Exception as e:
         logger.warning("PG sesion sync fail: %s", e)
 
@@ -104,10 +133,12 @@ async def guardar_busqueda(session_id: str, descripcion: str, filtros: dict,
                            perfil: dict, num_resultados: int) -> None:
     try:
         async with get_db() as conn:
+            # `filtros` y `perfil_negocio` son JSONB: dicts directos (el codec
+            # registrado en db/conexion.py hace json.dumps una sola vez).
             await conn.execute(
                 "INSERT INTO busquedas(session_id,descripcion_original,filtros,perfil_negocio,num_resultados)"
                 " VALUES($1,$2,$3,$4,$5)",
-                session_id, descripcion, json.dumps(filtros), json.dumps(perfil), num_resultados)
+                session_id, descripcion, filtros, perfil, num_resultados)
     except Exception as e:
         logger.warning("guardar_busqueda fail: %s", e)
 

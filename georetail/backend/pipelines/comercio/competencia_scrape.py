@@ -192,7 +192,9 @@ async def _upsert_negocio(conn, n: dict) -> None:
         n["lat"], n["lng"],
         n.get("rating"), n.get("num_resenas"),
         n.get("precio_nivel"),
-        json.dumps(n["horario"]) if n.get("horario") else None,
+        # `horario` es JSONB: pasamos el dict directo. El codec de db/conexion.py
+        # lo encodea una sola vez (evita double-encoding).
+        n.get("horario") if n.get("horario") else None,
         (not cerrado),  # activo
         n.get("fuente", "google_scrape"),
         date.today() if cerrado else None,

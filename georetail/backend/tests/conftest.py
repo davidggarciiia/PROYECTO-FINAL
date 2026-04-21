@@ -3,8 +3,8 @@ tests/conftest.py — Configuración global de pytest para GeoRetail.
 
 Estrategia de aislamiento:
   Los módulos del proyecto tienen imports a nivel de módulo de dependencias
-  pesadas (asyncpg, anthropic, openai, google-genai, pydantic-settings, etc.)
-  que no están disponibles en el entorno de CI/CD sin base de datos.
+  pesadas (asyncpg, openai, pydantic-settings, etc.) que no están disponibles
+  en el entorno de CI/CD sin base de datos.
 
   Para poder testear las FUNCIONES PURAS (sin I/O) inyectamos stubs en
   sys.modules ANTES de que los módulos productivos se importen.
@@ -43,22 +43,28 @@ sys.modules.setdefault("redis.asyncio", MagicMock())
 
 
 # ─── Stubs de LLM providers ──────────────────────────────────────────────────
+# Router actual: DeepSeek V3 → GPT-4o-mini. Ambos usan el SDK de openai,
+# por eso solo necesitamos stubear "openai".
 
-sys.modules.setdefault("anthropic",           MagicMock())
 sys.modules.setdefault("openai",              MagicMock())
-sys.modules.setdefault("google",              MagicMock())
-sys.modules.setdefault("google.genai",        MagicMock())
 
 
 # ─── Stubs de config y DB ─────────────────────────────────────────────────────
 # Stub de config.py para que get_settings() devuelva un objeto con atributos
 
 class _FakeSettings:
-    database_url   = "postgresql://test:test@localhost/test"
-    redis_url      = "redis://localhost:6379"
-    anthropic_api_key = "sk-ant-test"
-    openai_api_key    = "sk-test"
-    models_dir        = "/tmp/models"
+    # Atributos en MAYÚSCULAS para coincidir con config.Settings real.
+    DATABASE_URL      = "postgresql://test:test@localhost/test"
+    REDIS_URL         = "redis://localhost:6379"
+    DEEPSEEK_API_KEY  = "sk-deepseek-test"
+    OPENAI_API_KEY    = "sk-test"
+    MODELS_DIR        = "/tmp/models"
+    ENVIRONMENT       = "test"
+    # Alias en minúsculas por compatibilidad con tests antiguos
+    database_url      = DATABASE_URL
+    redis_url         = REDIS_URL
+    openai_api_key    = OPENAI_API_KEY
+    models_dir        = MODELS_DIR
     debug             = False
 
 _fake_config = MagicMock()

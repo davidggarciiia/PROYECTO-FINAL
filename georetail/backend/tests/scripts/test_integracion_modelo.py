@@ -29,7 +29,7 @@ Requisitos:
     - docker-compose up -d postgres redis
     - cd backend && psql $DATABASE_URL < db/migraciones/001_schema_inicial.sql
     - python -m scoring.scorer (para tener datos seed)
-    - Opcionalmente: ANTHROPIC_API_KEY para el TEST 4
+    - Opcionalmente: DEEPSEEK_API_KEY u OPENAI_API_KEY para el TEST 4
 """
 from __future__ import annotations
 
@@ -329,16 +329,16 @@ async def test_score_afinidad():
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# TEST 4 — Flujo LLM completo (requiere ANTHROPIC_API_KEY)
+# TEST 4 — Flujo LLM completo (requiere DEEPSEEK_API_KEY u OPENAI_API_KEY)
 # ════════════════════════════════════════════════════════════════════════════
 
 async def test_flujo_llm():
     header("TEST 4 — Flujo LLM: idea_tags + perfil_numerico")
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        warn("ANTHROPIC_API_KEY no configurada — skipping TEST 4")
-        warn("Set ANTHROPIC_API_KEY para activar este test")
+        warn("Ni DEEPSEEK_API_KEY ni OPENAI_API_KEY configuradas — skipping TEST 4")
+        warn("Set DEEPSEEK_API_KEY (o OPENAI_API_KEY) para activar este test")
         return True  # No es error
 
     try:
@@ -469,7 +469,7 @@ async def main():
 
     if pasados < total:
         print(f"\n  {YELLOW}Nota: Los tests con BD requieren docker-compose up -d postgres{RESET}")
-        print(f"  {YELLOW}TEST 4 requiere ANTHROPIC_API_KEY configurada{RESET}")
+        print(f"  {YELLOW}TEST 4 requiere DEEPSEEK_API_KEY u OPENAI_API_KEY configurada{RESET}")
 
     await _close_infra()
     sys.exit(0 if pasados == total else 1)

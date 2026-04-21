@@ -17,6 +17,7 @@ Flujo interno:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from typing import Literal, Optional
@@ -33,6 +34,7 @@ from agente.traductor import traducir
 from scoring.motor import calcular_scores_batch
 from db.sesiones import crear_sesion, get_sesion, guardar_busqueda, actualizar_sesion
 from db.zonas import filtrar_zonas_candidatas
+from db.redis_client import get_redis
 
 # Umbrales para el loop de preservación de señal (Fase 3).
 _SIGNAL_THRESHOLD = 70
@@ -94,8 +96,10 @@ def _build_zona_resumen(z: dict) -> ZonaResumen:
     Convierte un dict fusionado (candidata + score) a ZonaResumen.
     Admite ambas variantes de nombre de campo para compatibilidad.
     """
-    score = z.get("score_global", 50.0) or 50.0
-    prob  = z.get("probabilidad_supervivencia_3a") or z.get("probabilidad_supervivencia")
+    score = z.get("score_global")
+    score = score if score is not None else 50.0
+    _prob_3a = z.get("probabilidad_supervivencia_3a")
+    prob = _prob_3a if _prob_3a is not None else z.get("probabilidad_supervivencia")
     return ZonaResumen(
         zona_id=z["zona_id"],
         nombre=z["nombre"],
@@ -198,21 +202,93 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
     # ── 3c-bis. Capa de refinamiento estructurado (PerfilRefinado) ───────────
     # Se cachea por hash(descripción) para evitar repetir la llamada LLM si el
     # usuario pulsa "buscar" otra vez con el mismo texto dentro de la sesión.
+    #
+    # FIX BUG-007: Race condition — dos requests concurrentes con la misma
+    # descripción pueden llegar aquí con cache_prev vacío y ambas llaman al LLM.
+    # Solución: distributed lock en Redis (SET NX EX 30s) antes de llamar al LLM.
+    # Solo el primer waiter que obtenga el lock llama al LLM y escribe en Redis.
+    # El segundo waiter espera brevemente y lee el resultado ya calculado.
+    _TTL_REFINADO = 3600  # 1 hora en segundos
     descripcion_hash = hashlib.md5(body.descripcion.strip().encode("utf-8")).hexdigest()
     cache_prev = (sesion.get("perfil") or {}).get("perfil_refinado_cache") or {}
     perfil_refinado_dict: dict = cache_prev.get(descripcion_hash) or {}
+
     if not perfil_refinado_dict:
-        try:
-            perfil_refinado_model = await refinar(
-                descripcion=body.descripcion,
-                sector_detectado=perfil["sector"],
-                tags_previos=perfil["idea_tags"],
-                session_id=session_id,
-            )
-            perfil_refinado_dict = perfil_refinado_model.model_dump()
-        except Exception as exc:
-            logger.warning("Refinador falló: %s — continuando con perfil vacío", exc)
-            perfil_refinado_dict = PerfilRefinado().model_dump()
+        redis = get_redis()
+        redis_cache_key = f"perfil_refinado:{descripcion_hash}"
+        redis_lock_key = f"{redis_cache_key}:lock"
+
+        # Check Redis cache first (covers cross-session deduplication).
+        cached_raw = await redis.get(redis_cache_key)
+        if cached_raw:
+            import json as _json
+            try:
+                perfil_refinado_dict = _json.loads(cached_raw)
+            except Exception:
+                perfil_refinado_dict = {}
+
+        if not perfil_refinado_dict:
+            # Try to acquire distributed lock (NX = only if not exists, EX = 30s TTL).
+            got_lock = await redis.set(redis_lock_key, "1", nx=True, ex=30)
+            if got_lock:
+                try:
+                    perfil_refinado_model = await refinar(
+                        descripcion=body.descripcion,
+                        sector_detectado=perfil["sector"],
+                        tags_previos=perfil["idea_tags"],
+                        session_id=session_id,
+                    )
+                    perfil_refinado_dict = perfil_refinado_model.model_dump()
+                except Exception as exc:
+                    logger.warning("Refinador falló: %s — continuando con perfil vacío", exc)
+                    perfil_refinado_dict = PerfilRefinado().model_dump()
+                finally:
+                    # Write result to Redis before releasing lock so waiters can read it.
+                    try:
+                        import json as _json
+                        await redis.set(redis_cache_key, _json.dumps(perfil_refinado_dict), ex=_TTL_REFINADO)
+                    except Exception as exc:
+                        logger.warning("No se pudo escribir perfil_refinado en Redis: %s", exc)
+                    await redis.delete(redis_lock_key)
+            else:
+                # Another request is computing the same profile — poll cache until the
+                # holder publishes the result. The holder's lock TTL is 30s y el LLM
+                # tarda normalmente 2-5s; esperamos hasta 30s en pasos de 0.25s para no
+                # duplicar la llamada al LLM en requests concurrentes de la misma query.
+                import json as _json
+                _POLL_INTERVAL_S = 0.25
+                _POLL_MAX_S = 30.0
+                waited = 0.0
+                while waited < _POLL_MAX_S:
+                    await asyncio.sleep(_POLL_INTERVAL_S)
+                    waited += _POLL_INTERVAL_S
+                    cached_raw = await redis.get(redis_cache_key)
+                    if cached_raw:
+                        try:
+                            perfil_refinado_dict = _json.loads(cached_raw)
+                        except Exception:
+                            perfil_refinado_dict = {}
+                        if perfil_refinado_dict:
+                            break
+                    # Si el lock desapareció SIN haber publicado cache, el holder falló
+                    # → salimos del polling y caemos al fallback LLM propio.
+                    lock_still_held = await redis.get(redis_lock_key)
+                    if not lock_still_held and not cached_raw:
+                        break
+                if not perfil_refinado_dict:
+                    # Fallback: lock holder may have failed; call LLM ourselves.
+                    try:
+                        perfil_refinado_model = await refinar(
+                            descripcion=body.descripcion,
+                            sector_detectado=perfil["sector"],
+                            tags_previos=perfil["idea_tags"],
+                            session_id=session_id,
+                        )
+                        perfil_refinado_dict = perfil_refinado_model.model_dump()
+                    except Exception as exc:
+                        logger.warning("Refinador (fallback) falló: %s — continuando con perfil vacío", exc)
+                        perfil_refinado_dict = PerfilRefinado().model_dump()
+
     perfil["perfil_refinado"] = perfil_refinado_dict
     perfil["perfil_refinado_cache"] = {**cache_prev, descripcion_hash: perfil_refinado_dict}
 

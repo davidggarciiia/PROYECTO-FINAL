@@ -46,3 +46,6 @@ frontend/tsconfig.tsbuildinfo
 
 # Herramientas externas (binarios Go, etc.)
 tools/
+
+# Claude Code local settings (contiene claves y rutas locales)
+.claude/settings.local.json

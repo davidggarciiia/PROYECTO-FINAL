@@ -361,7 +361,12 @@ async def get_scores_zona(
         from scoring.dimensiones.dinamismo import calcular_dinamismo
         din_result = calcular_dinamismo(raw)
         raw["score_dinamismo"] = din_result["score_dinamismo"]
-    except Exception:
+    except Exception as exc:  # BUG-006 fix: log error instead of silently swallowing it
+        logger.warning(
+            "calcular_dinamismo failed for zona_id=%s, falling back to raw scale: %s",
+            raw.get("zona_id"),
+            exc,
+        )
         if raw.get("score_dinamismo") is not None:
             raw["score_dinamismo"] = round(float(raw["score_dinamismo"]) * 10.0, 1)
 
@@ -454,6 +459,63 @@ async def _get_pesos_sector(sector_codigo: str) -> dict:
     return dict(row) if row else {}
 
 
+# ─── Invariante de pesos por sector ────────────────────────────────────────
+# La suma de `peso_*` en la tabla `sectores` DEBE ser exactamente 1.0
+# (tolerancia ±0.01). Si no, el score_base calculado en `_recalcular_global`
+# está distorsionado sistemáticamente. Chequeo al arrancar para detectar
+# regresiones introducidas por nuevas migraciones sin normalizar.
+PESOS_TOLERANCIA = 0.01
+
+
+async def verificar_pesos_sectores() -> list[dict]:
+    """Chequea al arrancar que la suma de peso_* por sector esté en [0.99, 1.01].
+
+    Devuelve una lista de dicts `{codigo, sum_pesos, delta}` para los sectores
+    fuera de tolerancia. En producción, solo loguea WARNING (no aborta) para
+    no romper despliegues en caliente; un operador debe revisar y aplicar la
+    migración de normalización (`036_fix_pesos_sectores.sql`).
+    """
+    from db.conexion import get_db
+
+    try:
+        async with get_db() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT codigo,
+                       COALESCE(peso_flujo,0)
+                     + COALESCE(peso_demo,0)
+                     + COALESCE(peso_competencia,0)
+                     + COALESCE(peso_precio,0)
+                     + COALESCE(peso_transporte,0)
+                     + COALESCE(peso_seguridad,0)
+                     + COALESCE(peso_turismo,0)
+                     + COALESCE(peso_entorno,0) AS sum_pesos
+                FROM sectores
+                """
+            )
+    except Exception as exc:
+        logger.warning("verificar_pesos_sectores: no se pudo consultar BD: %s", exc)
+        return []
+
+    desviados: list[dict] = []
+    for row in rows:
+        suma = float(row["sum_pesos"] or 0.0)
+        delta = abs(suma - 1.0)
+        if delta > PESOS_TOLERANCIA:
+            desviados.append({"codigo": row["codigo"], "sum_pesos": round(suma, 4), "delta": round(delta, 4)})
+
+    if desviados:
+        logger.error(
+            "Pesos por sector NO suman 1.0 (tolerancia ±%.2f): %s. "
+            "Aplicar migración 036_fix_pesos_sectores.sql.",
+            PESOS_TOLERANCIA,
+            desviados,
+        )
+    else:
+        logger.info("Pesos por sector OK (suma=1.0 ±%.2f en todos los sectores).", PESOS_TOLERANCIA)
+    return desviados
+
+
 async def _cargar_datos_afinidad_zonas(zona_ids: list[str]) -> dict[str, dict]:
     """Carga en batch las variables minimas necesarias para score_afinidad."""
     if not zona_ids:
@@ -507,9 +569,8 @@ def _preparar_contexto_concepto(
             justificacion_breve=(concepto_negocio or {}).get("justificacion_breve"),
         )
 
-    zona_ideal = compiled.get("zona_ideal") or _zona_ideal_desde_perfil(
-        compiled.get("perfil_negocio") or perfil_negocio
-    )
+    _pn = compiled.get("perfil_negocio") or perfil_negocio
+    zona_ideal = compiled.get("zona_ideal") or (_zona_ideal_desde_perfil(_pn) if _pn else {})
     return {
         "concepto_negocio": compiled,
         "tags_efectivos": _normalizar_tags(compiled.get("idea_tags") or idea_tags_llm or []),

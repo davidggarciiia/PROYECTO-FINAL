@@ -10,8 +10,8 @@ Todas las variables de entorno se leen desde aquí. Nunca os.environ directament
  3. Nunca subas el .env a Git (ya está en .gitignore)
 
  Mínimo para que la app arranque con LLM:
-   → Pon al menos ANTHROPIC_API_KEY o cualquier otra key de LLM.
-     El router hace fallback automático, con una sola basta.
+   → Pon al menos DEEPSEEK_API_KEY u OPENAI_API_KEY.
+     El router hace fallback automático DeepSeek → OpenAI, con una sola basta.
 
  Mínimo para mapas:
    → GOOGLE_MAPS_API_KEY  (cubre Places + Geocoding + Static Maps)
@@ -30,20 +30,15 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379"
 
     # ── LLMs (modelos de lenguaje) ────────────────────────────────────────────
-    # Con tener UNA sola key ya funciona — el router salta automáticamente
-    # al siguiente proveedor si el actual no tiene key o devuelve error.
+    # Router actual: DeepSeek V3 → GPT-4o-mini (fallback).
+    # Con tener UNA sola key ya funciona — el router salta al otro proveedor
+    # si el actual no tiene key o devuelve error.
     #
     # Dónde conseguir cada key:
-    #   ANTHROPIC_API_KEY → https://console.anthropic.com              (sk-ant-...)
-    #   OPENAI_API_KEY    → https://platform.openai.com/api-keys       (sk-...)
     #   DEEPSEEK_API_KEY  → https://platform.deepseek.com              (sk-...)
-    #   KIMI_API_KEY      → https://platform.moonshot.ai               (sk-...)
-    #   GEMINI_API_KEY    → https://aistudio.google.com/apikey         (sin prefijo fijo)
-    ANTHROPIC_API_KEY: str = ""
+    #   OPENAI_API_KEY    → https://platform.openai.com/api-keys       (sk-...)
     OPENAI_API_KEY: str = ""
     DEEPSEEK_API_KEY: str = ""
-    KIMI_API_KEY: str = ""
-    GEMINI_API_KEY: str = ""
 
     # ── Open Data Barcelona ───────────────────────────────────────────────────
     # API gratuita del Ajuntament de Barcelona (datos abiertos).

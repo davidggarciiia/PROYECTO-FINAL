@@ -9,7 +9,7 @@ Qué testeamos aquí:
   4. Manejo de JSONDecodeError → valores por defecto seguros.
   5. Mapping de estados del LLM a los campos del dict de retorno.
 
-Estos tests mockean completamente el LLM (no hacen llamadas reales a Anthropic/OpenAI).
+Estos tests mockean completamente el LLM (no hacen llamadas reales a DeepSeek/OpenAI).
 Así podemos validar la lógica de parsing sin coste ni latencia.
 """
 from __future__ import annotations
