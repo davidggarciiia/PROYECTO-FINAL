@@ -1,56 +1,36 @@
 """
 api/financiero.py — POST /api/financiero
 
-Calculadora financiera 100% automática con proyección a 36 meses.
+Análisis financiero v3 — modelo realista de 12 pasos:
 
-CAMBIO RESPECTO A LA VERSIÓN ANTERIOR:
-  Antes: el frontend enviaba TODOS los parámetros (ticket, clientes, reforma...)
-         → el usuario los tenía que rellenar manualmente.
-  Ahora: el endpoint los estima automáticamente desde los datos de la BD.
-         El usuario puede ajustar cualquier parámetro con un slider (override).
-         Si no manda ningún override, la calculadora funciona sin intervención.
+  INPUT   → un único clients_per_day (base) + max_capacity
+  CALC    → escenarios derivados × 0.60 / × 1.00 / × 1.20 (cap por capacidad)
+  SALIDA  → 8 bloques + validation_flags + correcciones_aplicadas
 
-Flujo:
-  1. Leer parámetros pre-calculados de `v_parametros_financieros_actuales`
-     (vista sobre `parametros_financieros_zona`, que actualiza el pipeline semanal).
-  2. Si no hay datos pre-calculados, calcular en tiempo real con `estimador.py`.
-  3. Aplicar overrides del usuario sobre los valores estimados.
-  4. Calcular proyección 36 meses con `financiero/calculadora.py` (Python puro).
-  5. Guardar análisis en `analisis_financieros` para exportación PDF.
-  6. Devolver resultado con cada parámetro documentado (fuente + confianza + rango).
-
-Debounce:
-  El frontend debe aplicar debounce de 300ms antes de llamar a este endpoint.
-  Cada movimiento de slider lanza una nueva petición con los overrides actualizados.
-
-Fuentes de datos (ver financiero/estimador.py para el detalle completo):
-  alquiler_mensual     → `locales.alquiler_mensual` (Idealista) /
-                         `precios_alquiler_zona.precio_m2 × m2` (Open Data BCN)
-  ticket_medio         → mediana `negocios_activos.precio_nivel` (Google Places)
-  clientes_dia         → `variables_zona.flujo_peatonal_*` (aforadors BCN) ×
-                         conversion_rate × 1/(num_competidores+1)
-  salarios_mensual     → `ceil(m2/empleados_por_m2)` × convenio × 1.31 (SS empresa)
-  coste_mercancia_pct  → 1 - `benchmarks_sector.margen_bruto_tipico` (INE CNAE)
-  otros_fijos_mensual  → m2 × suministros/m2 + seguro_rc + gestoría + mantenimiento
-  reforma_local        → m2 × media(reforma_m2_min/max benchmarks)
-  equipamiento         → media(equipamiento_base_min/max benchmarks)
-  deposito_fianza      → alquiler × 2 (Art. 36 LAU)
-  otros_iniciales      → licencias (legal.py) + constitución + gestoría apertura
+Regla de oro: NUNCA llegan valores irreales al calculador.
+              Todo se corrige AQUÍ antes de llamar a calcular_proyeccion().
 """
 
 from __future__ import annotations
 
 import logging
+import math
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from schemas.models import ProyeccionMes
-from financiero.estimador import (
-    estimar_parametros, ParametrosEstimados, PE,
+from schemas.models import (
+    ProyeccionMes,
+    DecisionBlock, EconomiaBase, EstructuraCostes,
+    BreakEvenInfo, BreakEvenPunto, MetricasClave,
+    Riesgo, Insight, ModeloDemanda,
+    CorreccionAplicada, CapacityModelInfo,
+    ValidacionFinanciera, ProblemaDetectado, AjusteRecomendado, ChecksDetallados,
 )
-from financiero.calculadora import calcular_proyeccion
+from agente.validador_financiero import validar_financiero
+from financiero.estimador import estimar_parametros, ParametrosEstimados, PE
+from financiero.calculadora import calcular_proyeccion, MAX_OCCUPANCY
 from db.sesiones import get_sesion
 from db.financiero import (
     get_parametros_precalculados,
@@ -62,99 +42,58 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["financiero"])
 
 _UMBRAL_ALQUILER_VENTAS = 0.15
-
-# Campos permitidos en overrides con sus rangos válidos [min, max]
-_OVERRIDES_PERMITIDOS: dict[str, tuple[float, float]] = {
-    "ticket_medio":              (0.01, 10_000.0),
-    "clientes_dia_conservador":  (0.0, 10_000.0),
-    "clientes_dia_optimista":    (0.0, 10_000.0),
-    "dias_apertura_mes":         (1.0, 31.0),
-    "alquiler_mensual":          (0.0, 100_000.0),
-    "salarios_mensual":          (0.0, 200_000.0),
-    "otros_fijos_mensual":       (0.0, 50_000.0),
-    "coste_mercancia_pct":       (0.0, 0.95),
-    "reforma_local":             (0.0, 2_000_000.0),
-    "equipamiento":              (0.0, 2_000_000.0),
-    "deposito_fianza":           (0.0, 200_000.0),
-    "otros_iniciales":           (0.0, 200_000.0),
-}
-_MAX_OVERRIDES = 12
+_MAX_CAPTURE_RATE       = 0.15
+_CAPITAL_ESTIMADO_DEFAULT = 50_000.0
 
 
 # ─── Request ──────────────────────────────────────────────────────────────────
 
+class BusinessContext(BaseModel):
+    tipo:                str             = "nuevo"  # "nuevo" | "traspaso"
+    capital_inicial:     Optional[float] = None
+    capacidad_operativa: Optional[int]   = None
+
+
 class FinancieroRequest(BaseModel):
     """
-    El único campo obligatorio además de zona_id y session_id son los `overrides`:
-    un dict con los valores que el usuario ha ajustado con sliders.
-
-    Si `overrides` está vacío ({}), todo se estima automáticamente.
-    El frontend nunca necesita pre-rellenar nada.
-
-    Claves válidas para `overrides`:
-      ticket_medio              (€)
-      clientes_dia_conservador  (personas/día)
-      clientes_dia_optimista    (personas/día)
-      dias_apertura_mes         (días)
-      alquiler_mensual          (€/mes)
-      salarios_mensual          (€/mes)
-      otros_fijos_mensual       (€/mes)
-      coste_mercancia_pct       (0.00–0.95)
-      reforma_local             (€)
-      equipamiento              (€)
-      deposito_fianza           (€)
-      otros_iniciales           (€)
+    overrides válidos:
+      clients_per_day, ticket_medio, dias_apertura_mes,
+      alquiler_mensual, salarios_mensual, otros_fijos_mensual,
+      coste_mercancia_pct, reforma_local, equipamiento,
+      deposito_fianza, otros_iniciales
     """
-    zona_id:    str
-    session_id: str
-    overrides:  dict[str, float] = Field(
-        default_factory=dict,
-        description=(
-            "Valores ajustados por el usuario con sliders. "
-            "Solo incluir los campos que el usuario ha modificado. "
-            "Si está vacío, todo se estima automáticamente."
-        ),
-    )
+    zona_id:          str
+    session_id:       str
+    overrides:        dict[str, float]          = Field(default_factory=dict)
+    business_context: Optional[BusinessContext] = None
 
 
 # ─── Response ─────────────────────────────────────────────────────────────────
 
 class ParametroResponse(BaseModel):
-    """
-    Un parámetro financiero con su valor final y metadatos de origen.
-
-    El frontend usa estos campos para renderizar:
-      - valor_usado    → valor del slider
-      - valor_estimado → mostrar como tooltip 'Valor automático: X'
-      - fuente         → badge de origen (ej: 'Google Places API')
-      - confianza      → color del badge (verde/amarillo/naranja)
-      - rango_min/max  → límites del slider
-      - es_override    → si True, mostrar botón 'Auto' para resetear
-    """
-    valor_estimado: float = Field(..., description="Valor calculado automáticamente")
-    valor_usado:    float = Field(..., description="Valor final (= override si el usuario ajustó)")
-    es_override:    bool  = Field(..., description="True si el usuario ha movido el slider")
-    fuente:         str   = Field(..., description="Descripción de la fuente del dato")
-    confianza:      str   = Field(..., description="'alta' | 'media' | 'baja'")
-    rango_min:      float = Field(..., description="Límite inferior del slider")
-    rango_max:      float = Field(..., description="Límite superior del slider")
+    valor_estimado: float
+    valor_usado:    float
+    es_override:    bool
+    fuente:         str
+    confianza:      str
+    rango_min:      float
+    rango_max:      float
 
 
 class ParametrosResponse(BaseModel):
-    """Todos los parámetros estimados con su documentación completa."""
-    ticket_medio:               ParametroResponse
-    clientes_dia_conservador:   ParametroResponse
-    clientes_dia_optimista:     ParametroResponse
-    dias_apertura_mes:          ParametroResponse
-    alquiler_mensual:           ParametroResponse
-    num_empleados:              int
-    salarios_mensual:           ParametroResponse
-    otros_fijos_mensual:        ParametroResponse
-    coste_mercancia_pct:        ParametroResponse
-    reforma_local:              ParametroResponse
-    equipamiento:               ParametroResponse
-    deposito_fianza:            ParametroResponse
-    otros_iniciales:            ParametroResponse
+    ticket_medio:        ParametroResponse
+    clients_per_day:     ParametroResponse   # único slider de clientes
+    max_capacity:        float               # límite físico
+    dias_apertura_mes:   ParametroResponse
+    alquiler_mensual:    ParametroResponse
+    num_empleados:       int
+    salarios_mensual:    ParametroResponse
+    otros_fijos_mensual: ParametroResponse
+    coste_mercancia_pct: ParametroResponse
+    reforma_local:       ParametroResponse
+    equipamiento:        ParametroResponse
+    deposito_fianza:     ParametroResponse
+    otros_iniciales:     ParametroResponse
 
 
 class DesgloseInversionResponse(BaseModel):
@@ -165,143 +104,292 @@ class DesgloseInversionResponse(BaseModel):
 
 
 class FinancieroResponse(BaseModel):
-    # ── Parámetros documentados ────────────────────────────────────────────────
-    # La parte nueva: cada parámetro viene con su fuente y confianza.
-    # El frontend los usa para construir los sliders sin input previo del usuario.
-    parametros: ParametrosResponse
-
-    # ── Inversión inicial ──────────────────────────────────────────────────────
+    parametros:         ParametrosResponse
     inversion_total:    float
     desglose_inversion: DesgloseInversionResponse
-
-    # ── KPIs anuales ──────────────────────────────────────────────────────────
     ingresos_anuales_conservador: float
+    ingresos_anuales_base:        float
     ingresos_anuales_optimista:   float
-    margen_bruto_pct: float
-
-    ebitda_anual_conservador: float
-    ebitda_anual_optimista:   float
-
-    # ── Rentabilidad ──────────────────────────────────────────────────────────
-    roi_3a_conservador: float
-    roi_3a_optimista:   float
+    margen_bruto_pct:             float
+    ebitda_anual_conservador:     float
+    ebitda_anual_base:            float
+    ebitda_anual_optimista:       float
+    roi_3a_conservador:        float
+    roi_3a_base:               float
+    roi_3a_optimista:          float
     payback_meses_conservador: int
+    payback_meses_base:        int
     payback_meses_optimista:   int
-    breakeven_clientes_dia: int = Field(
-        ...,
-        description="Clientes/día mínimos para cubrir todos los costes fijos y variables",
-    )
-
-    # ── Proyección mensual 36 meses ────────────────────────────────────────────
-    proyeccion: list[ProyeccionMes]
-
-    # ── Benchmarks sectoriales ─────────────────────────────────────────────────
-    margen_sector_tipico: float = Field(
-        ..., description="Margen bruto típico del sector (INE CNAE) para comparar"
-    )
-
-    # ── Alertas ───────────────────────────────────────────────────────────────
+    breakeven_clientes_dia:    int
+    proyeccion:                list[ProyeccionMes]
+    margen_sector_tipico:      float
     alquiler_sobre_ventas_pct: float
-    alerta_alquiler: bool = Field(
-        ...,
-        description=f"True si alquiler/ventas > {_UMBRAL_ALQUILER_VENTAS:.0%} (regla del 15%)",
-    )
+    alerta_alquiler:           bool
+    # Bloques v2
+    decision:          DecisionBlock
+    economia_base:     EconomiaBase
+    estructura_costes: EstructuraCostes
+    break_even:        BreakEvenInfo
+    metricas_clave:    MetricasClave
+    riesgos:           list[Riesgo]
+    insights:          list[Insight]
+    modelo_demanda:    ModeloDemanda
+    # Contexto v3
+    business_model_type:    str                        = "retail_walkin"
+    correcciones_aplicadas: list[CorreccionAplicada]   = []
+    capacity_model:         Optional[CapacityModelInfo] = None
+    tipo_negocio:           str                        = "nuevo"
+    validation_flags:       list[str]                  = []
+    ocupacion_efectiva:     float                      = 0.0
+    # Validación LLM — capa crítica (None si el LLM falla)
+    validacion_financiera:  Optional[ValidacionFinanciera] = None
 
 
-# ─── Endpoint ────────────────────────────────────────────────────────────────
+# ─── Endpoint ─────────────────────────────────────────────────────────────────
 
 @router.post(
     "/financiero",
     response_model=FinancieroResponse,
-    summary="Análisis financiero 100% automático con proyección a 36 meses",
+    summary="Análisis financiero v3 — modelo realista 12 pasos",
 )
 async def financiero(body: FinancieroRequest) -> FinancieroResponse:
-    """
-    El análisis se genera sin input manual del usuario.
-
-    Flujo típico del frontend:
-      1. Usuario pulsa 'Análisis financiero' en el panel de detalle de zona.
-      2. Frontend llama POST /api/financiero con overrides={}.
-      3. Se muestran los sliders con los valores auto-estimados.
-      4. Usuario puede ajustar → frontend relama con overrides={campo: nuevo_valor}.
-      5. Usuario pulsa 'Auto' en un slider → frontend relama sin ese override.
-    """
-    # ── Validar overrides ────────────────────────────────────────────────────
-    if len(body.overrides) > _MAX_OVERRIDES:
-        raise HTTPException(status_code=400, detail=f"Demasiados overrides (máx {_MAX_OVERRIDES}).")
-    for campo, valor in body.overrides.items():
-        if campo not in _OVERRIDES_PERMITIDOS:
-            raise HTTPException(status_code=400, detail=f"Override no permitido: {campo!r}.")
-        vmin, vmax = _OVERRIDES_PERMITIDOS[campo]
-        if not (vmin <= valor <= vmax):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Override {campo!r} fuera de rango [{vmin}, {vmax}].",
-            )
-
-    # ── Validar sesión ────────────────────────────────────────────────────────
     sesion = await get_sesion(body.session_id)
     if sesion is None:
         raise HTTPException(status_code=404, detail="Sesión no encontrada o expirada.")
 
-    sector = sesion.get("perfil", {}).get("sector", "desconocido")
-    perfil = sesion.get("perfil", {})
+    sector  = sesion.get("perfil", {}).get("sector", "desconocido")
+    perfil  = sesion.get("perfil", {})
 
-    # ── Obtener parámetros estimados ──────────────────────────────────────────
+    # ── Hints del cuestionario estructurado ──────────────────────────────────
+    # Si el usuario rellenó `overrides_financieros` en el test:
+    #   * m2_objetivo  → inyectamos `m2_aprox` en el perfil (afecta alquiler,
+    #                    reforma, num_empleados por m²).
+    #   * num_empleados → se aplica tras la estimación (pisa salarios_mensual).
+    #   * ticket_medio  → se fusiona como override directo en body.overrides.
+    #   * clientes_dia  → se fusiona como override `clients_per_day`.
+    # El usuario que mueve sliders en el panel (body.overrides) siempre gana.
+    session_overrides = perfil.get("overrides_financieros") or {}
+    if session_overrides.get("m2_objetivo"):
+        perfil = {**perfil, "m2_aprox": float(session_overrides["m2_objetivo"])}
+    session_as_overrides: dict[str, float] = {}
+    if session_overrides.get("ticket_medio") is not None:
+        session_as_overrides["ticket_medio"] = float(session_overrides["ticket_medio"])
+    if session_overrides.get("clientes_dia") is not None:
+        session_as_overrides["clients_per_day"] = float(session_overrides["clientes_dia"])
+    if session_as_overrides:
+        # body.overrides tiene prioridad (sliders del panel sobre test).
+        merged = {**session_as_overrides, **body.overrides}
+        body = body.model_copy(update={"overrides": merged})
+
+    bc           = body.business_context
+    tipo_negocio = bc.tipo if bc else "nuevo"
+    capital      = float(
+        (bc.capital_inicial if bc and bc.capital_inicial else None)
+        or perfil.get("capital_disponible")
+        or _CAPITAL_ESTIMADO_DEFAULT
+    )
+    capacidad_operativa = bc.capacidad_operativa if bc else None
+
+    # ── Estimar parámetros ────────────────────────────────────────────────────
     estimados = await _get_o_calcular_estimados(
-        zona_id=body.zona_id,
-        sector=sector,
-        perfil=perfil,
+        zona_id=body.zona_id, sector=sector, perfil=perfil,
     )
 
-    # ── Aplicar overrides ─────────────────────────────────────────────────────
+    # ── Pisar num_empleados desde el cuestionario si se declaró ──────────────
+    # Recalculamos salarios_mensual proporcionalmente: si el usuario declara el
+    # doble de empleados que el auto-estimado, el salario se duplica.
+    if session_overrides.get("num_empleados"):
+        n_decl = max(1, int(session_overrides["num_empleados"]))
+        n_auto = max(1, int(estimados.num_empleados))
+        if n_decl != n_auto:
+            ratio = n_decl / n_auto
+            estimados.salarios_mensual = PE(
+                valor=round(estimados.salarios_mensual.valor * ratio, 0),
+                fuente=f"Declarado usuario ({n_decl} empleados) · " + estimados.salarios_mensual.fuente,
+                confianza="alta",
+                rango_min=round(estimados.salarios_mensual.rango_min * ratio, 0),
+                rango_max=round(estimados.salarios_mensual.rango_max * ratio, 0),
+            )
+            estimados.num_empleados = n_decl
+
+    # ── Aplicar overrides (incluyendo clients_per_day) ────────────────────────
     params = _aplicar_overrides(estimados, body.overrides)
 
-    # ── Extraer valores para la calculadora ───────────────────────────────────
-    # Accedemos por nombre de campo para claridad — la calculadora necesita floats.
-    v = {
-        "ticket_medio":               params.ticket_medio.valor_usado,
-        "clientes_dia_conservador":   params.clientes_dia_conservador.valor_usado,
-        "clientes_dia_optimista":     params.clientes_dia_optimista.valor_usado,
-        "dias_apertura_mes":          params.dias_apertura_mes.valor_usado,
-        "alquiler_mensual":           params.alquiler_mensual.valor_usado,
-        "salarios_mensual":           params.salarios_mensual.valor_usado,
-        "otros_fijos_mensual":        params.otros_fijos_mensual.valor_usado,
-        "coste_mercancia_pct":        params.coste_mercancia_pct.valor_usado,
-        "reforma_local":              params.reforma_local.valor_usado,
-        "equipamiento":               params.equipamiento.valor_usado,
-        "deposito_fianza":            params.deposito_fianza.valor_usado,
-        "otros_iniciales":            params.otros_iniciales.valor_usado,
+    # ── Benchmarks + tipo de modelo ───────────────────────────────────────────
+    benchmarks          = await get_benchmarks_sector(sector)
+    margen_sector       = benchmarks.get("margen_bruto_tipico", 0.65)
+    business_model_type = getattr(estimados, "business_model_type", "retail_walkin")
+
+    # ── Diccionario de trabajo ────────────────────────────────────────────────
+    v: dict = {
+        "ticket_medio":        params.ticket_medio.valor_usado,
+        "clients_per_day":     params.clients_per_day.valor_usado,
+        "max_capacity":        params.max_capacity,
+        "dias_apertura_mes":   params.dias_apertura_mes.valor_usado,
+        "alquiler_mensual":    params.alquiler_mensual.valor_usado,
+        "salarios_mensual":    params.salarios_mensual.valor_usado,
+        "otros_fijos_mensual": params.otros_fijos_mensual.valor_usado,
+        "coste_mercancia_pct": params.coste_mercancia_pct.valor_usado,
+        "reforma_local":       params.reforma_local.valor_usado,
+        "equipamiento":        params.equipamiento.valor_usado,
+        "deposito_fianza":     params.deposito_fianza.valor_usado,
+        "otros_iniciales":     params.otros_iniciales.valor_usado,
+        # v3: productividad del personal
+        "num_empleados":       params.num_empleados,
+        "business_model_type": business_model_type,
     }
+    flujo_peatonal      = float(perfil.get("flujo_peatonal_dia", v["clients_per_day"] * 12))
 
-    # ── Benchmarks sectoriales ─────────────────────────────────────────────────
-    benchmarks = await get_benchmarks_sector(sector)
-    margen_sector = benchmarks.get("margen_bruto_tipico", 0.65)
+    # ── Correcciones hard (CRÍTICO — antes de la calculadora) ─────────────────
+    correcciones_raw = _aplicar_correcciones_demanda(
+        v=v,
+        flujo_peatonal=flujo_peatonal,
+        business_model_type=business_model_type,
+        capacidad_operativa=capacidad_operativa,
+    )
 
-    # ── Calcular proyección 36 meses ──────────────────────────────────────────
-    # financiero/calculadora.py — Python puro, sin llamadas externas.
-    # La curva de rampa de arranque se aplica internamente (meses 1-12 ingresos reducidos).
+    # ── Modelo de capacidad ───────────────────────────────────────────────────
+    capacity_model = _build_capacity_model(
+        business_model_type=business_model_type,
+        sector=sector,
+        m2=float(perfil.get("m2_aprox", 60.0)),
+        benchmarks=benchmarks,
+    )
+
+    # ── Proyección 36 meses ───────────────────────────────────────────────────
     try:
-        resultado = await calcular_proyeccion({**v, "margen_sector_tipico": margen_sector})
+        resultado = await calcular_proyeccion(v, tipo_negocio=tipo_negocio)
     except Exception as exc:
-        logger.error("Error calculadora financiera zona=%s: %s", body.zona_id, exc, exc_info=True)
+        logger.error("Error calculadora zona=%s: %s", body.zona_id, exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Error calculando la proyección financiera.")
 
-    # ── Alerta alquiler/ventas (regla del 15%) ────────────────────────────────
-    # Se calcula sobre ingresos en régimen estable (mes 13+, sin rampa de arranque).
-    ingresos_mes_estable = v["ticket_medio"] * v["clientes_dia_conservador"] * v["dias_apertura_mes"]
-    ingresos_fallback = v["ticket_medio"] * v.get("clientes_dia_optimista", 0) * v["dias_apertura_mes"]
-    ingresos_referencia = ingresos_mes_estable or ingresos_fallback or 1.0
-    alquiler_sobre_ventas = v["alquiler_mensual"] / ingresos_referencia
+    # ── Métricas derivadas (coherentes con MAX_OCCUPANCY del calculador) ─────────
+    cl_base      = resultado["clients_per_day"]
+    ing_estable  = v["ticket_medio"] * cl_base * v["dias_apertura_mes"] * MAX_OCCUPANCY
+    margen_bruto = 1 - v["coste_mercancia_pct"]
+    alquiler_pct = (v["alquiler_mensual"] / ing_estable) if ing_estable > 0 else 1.0
 
-    # ── Guardar en BD ────────────────────────────────────────────────────────
-    # Tabla `analisis_financieros` — para el PDF y para analytics.
-    # No bloqueamos si falla.
+    # ── Modelo de demanda (display) ───────────────────────────────────────────
+    max_potential = flujo_peatonal * _MAX_CAPTURE_RATE if flujo_peatonal > 0 else cl_base * 2
+    capture_rate  = min((cl_base / max_potential) if max_potential > 0 else 0.05, _MAX_CAPTURE_RATE)
+
+    modelo_demanda = ModeloDemanda(
+        flujo_peatonal_dia=round(flujo_peatonal),
+        max_potential_customers=round(max_potential, 1),
+        capture_rate=round(capture_rate, 3),
+    )
+
+    # ── Validación LLM (capa crítica — no bloquea el flujo si falla) ─────────
+    _val_payload = _build_validation_payload(
+        zona_id=body.zona_id,
+        sector=sector,
+        business_model_type=business_model_type,
+        tipo_negocio=tipo_negocio,
+        params=params,
+        v=v,
+        resultado=resultado,
+        ing_estable=ing_estable,
+        margen_bruto=margen_bruto,
+        max_potential=max_potential,
+        benchmarks=benchmarks,
+        correcciones_raw=correcciones_raw,
+        has_overrides=bool(body.overrides),
+    )
+    _val_raw = await validar_financiero(_val_payload, session_id=body.session_id)
+    validacion_financiera = _parse_validacion(_val_raw)
+
+    # ── Bloque 1: Decisión ────────────────────────────────────────────────────
+    roi_b   = resultado["roi_3a_base"]
+    pb_b    = resultado["payback_meses_base"]
+    ben_mes = round(ing_estable * margen_bruto - (
+        v["alquiler_mensual"] + v["salarios_mensual"] + v["otros_fijos_mensual"]
+    ))
+
+    decision = DecisionBlock(
+        recomendacion=_calcular_recomendacion(roi_b, pb_b, alquiler_pct),
+        beneficio_mensual=ben_mes,
+        payback=pb_b,
+        capital_necesario=resultado["inversion_total"],
+        gap_capital=max(0.0, resultado["inversion_total"] - capital),
+    )
+
+    # ── Bloque 2: Economía base ───────────────────────────────────────────────
+    economia_base = EconomiaBase(
+        ingresos_mensuales=round(ing_estable),
+        clientes_dia=cl_base,
+        ticket_medio=v["ticket_medio"],
+        conversion_pct=round(capture_rate, 3),
+        max_potential_customers=round(max_potential, 1),
+        ocupacion_efectiva=resultado.get("ocupacion_efectiva", 0.0),
+    )
+
+    # ── Bloque 3: Costes ──────────────────────────────────────────────────────
+    estructura_costes = EstructuraCostes(**resultado["estructura_costes"])
+
+    # ── Bloque 4: Break-even ─────────────────────────────────────────────────
+    be_clientes     = resultado["breakeven_clientes_dia"]
+    ing_be          = v["ticket_medio"] * be_clientes * v["dias_apertura_mes"]
+    margen_sobre_be = ((cl_base - be_clientes) / be_clientes * 100) if be_clientes > 0 else 0.0
+    break_even = BreakEvenInfo(
+        clientes_be=be_clientes,
+        ingresos_be=round(ing_be),
+        clientes_base=cl_base,
+        margen_sobre_be_pct=round(margen_sobre_be, 1),
+        chart=[BreakEvenPunto(**p) for p in resultado["break_even_chart"]],
+    )
+
+    # ── Bloque 6: Métricas ────────────────────────────────────────────────────
+    metricas_clave = MetricasClave(
+        roi_conservador=resultado["roi_3a_conservador"],
+        roi_base=roi_b,
+        roi_optimista=resultado["roi_3a_optimista"],
+        margen_bruto_pct=round(margen_bruto, 3),
+        payback_meses=pb_b,
+        mes_caja_positiva=pb_b,
+    )
+
+    # ── Bloque 7: Riesgos ─────────────────────────────────────────────────────
+    riesgos = _generar_riesgos(
+        alquiler_pct=alquiler_pct,
+        payback_b=pb_b,
+        roi_c=resultado["roi_3a_conservador"],
+        roi_b=resultado["roi_3a_base"],
+        inversion=resultado["inversion_total"],
+        capital=capital,
+        correcciones=correcciones_raw,
+        validation_flags=resultado.get("validation_flags", []),
+        ocupacion_efectiva=resultado.get("ocupacion_efectiva", 0.0),
+        cf_mes=v["alquiler_mensual"] + v["salarios_mensual"] + v["otros_fijos_mensual"],
+        ing_estable=ing_estable,
+        margen_bruto=margen_bruto,
+    )
+
+    # ── Enriquecer riesgos con problemas de alto impacto detectados por LLM ──
+    if validacion_financiera:
+        for prob in validacion_financiera.problemas_detectados:
+            if prob.impacto == "alto":
+                riesgos.append(Riesgo(tipo="warning", mensaje=prob.descripcion))
+
+    # ── Bloque 8: Insights ────────────────────────────────────────────────────
+    competition_index = float(perfil.get("competition_index", 0.5))
+    insights = _generar_insights(
+        capture_rate=capture_rate,
+        competition_index=competition_index,
+        alquiler_pct=alquiler_pct,
+        roi_b=roi_b,
+        margen_bruto=margen_bruto,
+        payback_b=pb_b,
+        business_model_type=business_model_type,
+        tipo_negocio=tipo_negocio,
+    )
+
+    # ── Guardar en BD ─────────────────────────────────────────────────────────
     try:
         await guardar_analisis_financiero(
             session_id=body.session_id,
             zona_id=body.zona_id,
-            params={**v, "overrides": body.overrides, "sector": sector},
+            params={**v, "overrides": body.overrides, "sector": sector,
+                    "tipo_negocio": tipo_negocio, "business_model_type": business_model_type},
             resultado=resultado,
         )
     except Exception as exc:
@@ -317,125 +405,431 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
             otros_iniciales=v["otros_iniciales"],
         ),
         ingresos_anuales_conservador=resultado["ingresos_anuales_conservador"],
+        ingresos_anuales_base=resultado["ingresos_anuales_base"],
         ingresos_anuales_optimista=resultado["ingresos_anuales_optimista"],
-        margen_bruto_pct=round(1 - v["coste_mercancia_pct"], 2),
+        margen_bruto_pct=round(margen_bruto, 2),
         ebitda_anual_conservador=resultado["ebitda_anual_conservador"],
+        ebitda_anual_base=resultado["ebitda_anual_base"],
         ebitda_anual_optimista=resultado["ebitda_anual_optimista"],
         roi_3a_conservador=round(resultado["roi_3a_conservador"], 2),
+        roi_3a_base=round(roi_b, 2),
         roi_3a_optimista=round(resultado["roi_3a_optimista"], 2),
         payback_meses_conservador=resultado["payback_meses_conservador"],
+        payback_meses_base=pb_b,
         payback_meses_optimista=resultado["payback_meses_optimista"],
-        breakeven_clientes_dia=resultado["breakeven_clientes_dia"],
+        breakeven_clientes_dia=be_clientes,
         proyeccion=[ProyeccionMes(**m) for m in resultado["proyeccion"]],
         margen_sector_tipico=margen_sector,
-        alquiler_sobre_ventas_pct=round(alquiler_sobre_ventas, 3),
-        alerta_alquiler=alquiler_sobre_ventas > _UMBRAL_ALQUILER_VENTAS,
+        alquiler_sobre_ventas_pct=round(alquiler_pct, 3),
+        alerta_alquiler=alquiler_pct > _UMBRAL_ALQUILER_VENTAS,
+        decision=decision,
+        economia_base=economia_base,
+        estructura_costes=estructura_costes,
+        break_even=break_even,
+        metricas_clave=metricas_clave,
+        riesgos=riesgos,
+        insights=insights,
+        modelo_demanda=modelo_demanda,
+        business_model_type=business_model_type,
+        correcciones_aplicadas=[CorreccionAplicada(**c) for c in correcciones_raw],
+        capacity_model=capacity_model,
+        tipo_negocio=tipo_negocio,
+        validation_flags=resultado.get("validation_flags", []),
+        ocupacion_efectiva=resultado.get("ocupacion_efectiva", 0.0),
+        validacion_financiera=validacion_financiera,
     )
 
 
-# ─── Helpers privados ─────────────────────────────────────────────────────────
+# ─── Correcciones hard ────────────────────────────────────────────────────────
+
+def _aplicar_correcciones_demanda(
+    v: dict,
+    flujo_peatonal: float,
+    business_model_type: str,
+    capacidad_operativa: Optional[int],
+) -> list[dict]:
+    """
+    Aplica límites duros a clients_per_day en v (in-place).
+    Devuelve lista de correcciones para mostrar al usuario.
+
+    Reglas:
+      1. Retail/restaurant: clients_per_day ≤ flujo_peatonal × 15%
+      2. Todos: clients_per_day ≤ max_capacity (del modelo)
+      3. Todos: clients_per_day ≤ capacidad_operativa (input usuario, si existe)
+    """
+    correcciones: list[dict] = []
+
+    # Regla 1: cap por capture_rate (sólo negocios de paso)
+    if flujo_peatonal > 0 and business_model_type not in ("appointment_based",):
+        max_realistic = flujo_peatonal * _MAX_CAPTURE_RATE
+        if v["clients_per_day"] > max_realistic and max_realistic > 0:
+            original      = v["clients_per_day"]
+            tasa_original = round(original / max_realistic * 100)
+            v["clients_per_day"] = round(max_realistic, 1)
+            correcciones.append({
+                "parametro":       "clientes_dia",
+                "valor_original":  original,
+                "valor_corregido": v["clients_per_day"],
+                "motivo": (
+                    f"Captación estimada ({tasa_original}%) superaba el 15% máximo realista "
+                    f"del flujo peatonal diario. Ajuste aplicado: "
+                    f"{original} → {v['clients_per_day']} clientes/día."
+                ),
+            })
+
+    # Regla 2: cap por max_capacity del modelo de capacidad
+    max_cap = v.get("max_capacity", float("inf"))
+    if v["clients_per_day"] > max_cap and math.isfinite(max_cap):
+        original = v["clients_per_day"]
+        v["clients_per_day"] = round(max_cap, 1)
+        correcciones.append({
+            "parametro":       "capacidad_maxima",
+            "valor_original":  original,
+            "valor_corregido": v["clients_per_day"],
+            "motivo": (
+                f"Demanda estimada ({original}) supera la capacidad máxima del modelo "
+                f"({max_cap} clientes/día). Ajuste aplicado."
+            ),
+        })
+
+    # Regla 3: cap por capacidad_operativa declarada por el usuario
+    if capacidad_operativa and v["clients_per_day"] > capacidad_operativa:
+        original = v["clients_per_day"]
+        v["clients_per_day"] = float(capacidad_operativa)
+        v["max_capacity"]    = min(float(capacidad_operativa), v.get("max_capacity", float("inf")))
+        correcciones.append({
+            "parametro":       "capacidad_operativa",
+            "valor_original":  original,
+            "valor_corregido": v["clients_per_day"],
+            "motivo": (
+                f"Demanda estimada ({original} clientes/día) supera la capacidad operativa "
+                f"declarada ({capacidad_operativa} clientes/día). El modelo se ajusta a la "
+                f"capacidad real del local."
+            ),
+        })
+
+    v["clients_per_day"] = max(1.0, v["clients_per_day"])
+    return correcciones
+
+
+def _build_capacity_model(
+    business_model_type: str,
+    sector: str,
+    m2: float,
+    benchmarks: dict,
+) -> Optional[CapacityModelInfo]:
+    if business_model_type != "appointment_based":
+        return None
+    e_m2     = benchmarks.get("empleados_por_m2", 15.0) or 15.0
+    units    = max(1, math.floor(m2 / e_m2))
+    cmin     = benchmarks.get("clientes_dia_por_puesto_min", 2.0)
+    cmax     = benchmarks.get("clientes_dia_por_puesto_max", 5.0)
+    sessions = (cmin + cmax) / 2
+    tipo_str = {"tatuajes": "artistas", "estetica": "cabinas", "clinica": "consultas",
+                "peluqueria": "sillas"}.get(sector, "puestos")
+    return CapacityModelInfo(
+        tipo=business_model_type,
+        descripcion=f"{units} {tipo_str} × {round(sessions, 1)} sesiones/día",
+        units=units,
+        sessions_per_unit_per_day=round(sessions, 1),
+        max_clients_day=round(units * cmax),
+    )
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+def _calcular_recomendacion(roi_b: float, payback_b: int, alquiler_pct: float) -> str:
+    if roi_b >= 0.25 and payback_b <= 24 and alquiler_pct <= _UMBRAL_ALQUILER_VENTAS:
+        return "si"
+    if roi_b >= 0.0 and payback_b <= 36:
+        return "riesgo"
+    return "no"
+
+
+def _generar_riesgos(
+    alquiler_pct: float,
+    payback_b: int,
+    roi_c: float,
+    roi_b: float,
+    inversion: float,
+    capital: float,
+    correcciones: list[dict],
+    validation_flags: list[str] = None,
+    ocupacion_efectiva: float = 0.0,
+    cf_mes: float = 0.0,
+    ing_estable: float = 0.0,
+    margen_bruto: float = 0.65,
+) -> list[Riesgo]:
+    riesgos: list[Riesgo] = []
+    flags = validation_flags or []
+
+    # ── Bloqueos (impiden viabilidad) ──────────────────────────────────────────
+    if roi_c < 0:
+        riesgos.append(Riesgo(tipo="bloqueo",
+            mensaje="ROI negativo en escenario conservador — la inversión no se recupera en 3 años."))
+
+    if payback_b > 30:
+        riesgos.append(Riesgo(tipo="bloqueo",
+            mensaje=f"Payback de {payback_b} meses supera el límite recomendado de 30 meses."))
+
+    # ── Advertencias críticas ─────────────────────────────────────────────────
+    if alquiler_pct > _UMBRAL_ALQUILER_VENTAS:
+        riesgos.append(Riesgo(tipo="warning",
+            mensaje=f"Alquiler: {round(alquiler_pct * 100)}% sobre ventas — "
+                    f"supera el umbral del 15%. Con ventas por debajo de lo esperado, "
+                    f"el alquiler puede absorber todo el margen."))
+
+    if any(c["parametro"] == "clientes_dia" for c in correcciones):
+        riesgos.append(Riesgo(tipo="warning",
+            mensaje="Clientes corregidos automáticamente: la estimación inicial superaba "
+                    "el 15% de captación del flujo peatonal. El modelo ha aplicado el límite realista."))
+
+    if capital > 0 and inversion > capital * 1.4:
+        riesgos.append(Riesgo(tipo="warning",
+            mensaje=f"Inversión inicial ({round(inversion):,} €) supera 1.4× el capital disponible "
+                    f"({round(capital):,} €). Considera financiación bancaria o socios."))
+
+    # ── Productividad y plantilla ─────────────────────────────────────────────
+    if any("sobredimensión" in f.lower() or "sobredimensi" in f.lower() for f in flags):
+        riesgos.append(Riesgo(tipo="warning",
+            mensaje="Sobredimensión de plantilla detectada: más empleados de los necesarios "
+                    "para la demanda estimada. Aumenta la estructura de costes fijos sin incrementar ingresos."))
+
+    if any("capacidad del personal insuficiente" in f.lower() for f in flags):
+        riesgos.append(Riesgo(tipo="warning",
+            mensaje="Capacidad del personal ajustada: la demanda estimada superaba lo que "
+                    "el equipo puede atender. Ampliar plantilla o reducir demanda objetivo."))
+
+    # ── Ocupación y supuestos ─────────────────────────────────────────────────
+    if ocupacion_efectiva > 0.75:
+        riesgos.append(Riesgo(tipo="warning",
+            mensaje=f"El modelo depende de una ocupación efectiva del {round(ocupacion_efectiva * 100)}%. "
+                    f"Alta ocupación sostenida requiere excelente operativa y captación constante de clientes."))
+
+    if roi_b > 3.0:
+        riesgos.append(Riesgo(tipo="warning",
+            mensaje=f"ROI base del {round(roi_b * 100)}% supera el 300% — "
+                    f"los supuestos del modelo son muy optimistas. Revisa costes e inversión."))
+
+    # ── Estructura de costes ──────────────────────────────────────────────────
+    if ing_estable > 0 and cf_mes > 0:
+        cf_pct = cf_mes / ing_estable
+        if cf_pct > 0.70:
+            riesgos.append(Riesgo(tipo="warning",
+                mensaje=f"Costes fijos muy elevados: {round(cf_pct * 100)}% de los ingresos en régimen estable. "
+                        f"Ante una caída de demanda del 20%, el negocio entrará en pérdidas."))
+        elif cf_pct > 0.50:
+            riesgos.append(Riesgo(tipo="warning",
+                mensaje=f"Estructura rígida: los costes fijos suponen el {round(cf_pct * 100)}% de los ingresos. "
+                        f"Poca flexibilidad ante variaciones estacionales."))
+
+    # ── Riesgo mínimo garantizado (siempre hay algo que evaluar) ──────────────
+    if not riesgos:
+        if margen_bruto < 0.50:
+            riesgos.append(Riesgo(tipo="warning",
+                mensaje=f"Margen bruto del {round(margen_bruto * 100)}% — moderado. "
+                        f"El coste de mercancía consume más de la mitad de cada euro ingresado."))
+        else:
+            riesgos.append(Riesgo(tipo="warning",
+                mensaje="Perfil financiero sólido, sin alertas críticas detectadas. "
+                        "Monitoriza mensualmente ingresos vs. costes fijos durante el primer año."))
+
+    return riesgos
+
+
+def _generar_insights(
+    capture_rate: float,
+    competition_index: float,
+    alquiler_pct: float,
+    roi_b: float,
+    margen_bruto: float,
+    payback_b: int,
+    business_model_type: str,
+    tipo_negocio: str,
+) -> list[Insight]:
+    insights: list[Insight] = []
+
+    if alquiler_pct > 0.18:
+        insights.append(Insight(type="risk",
+            message=f"Alquiler crítico: {round(alquiler_pct * 100)}% sobre ventas.",
+            suggestion="Negocia a la baja el alquiler o busca un local con menor m²."))
+
+    if competition_index > 0.75:
+        insights.append(Insight(type="risk",
+            message="Alta saturación competidora en la zona (índice >0.75).",
+            suggestion="Diferénciate con propuesta de valor única o busca un nicho específico."))
+
+    if business_model_type == "appointment_based" and capture_rate > 0.08:
+        insights.append(Insight(type="risk",
+            message="Negocio de cita: la demanda estimada es alta para la capacidad disponible.",
+            suggestion="Verifica la capacidad operativa real (puestos × sesiones/día)."))
+
+    if roi_b > 0.40 and payback_b <= 20:
+        insights.append(Insight(type="opportunity",
+            message=f"ROI atractivo ({round(roi_b * 100)}%) con payback de {payback_b} meses.",
+            suggestion="Considera apalancar con financiación para acelerar la apertura."))
+
+    if margen_bruto > 0.60:
+        insights.append(Insight(type="opportunity",
+            message=f"Margen bruto sólido ({round(margen_bruto * 100)}%) — por encima de la media.",
+            suggestion="El margen da colchón ante caídas temporales de ventas."))
+
+    if tipo_negocio == "traspaso":
+        insights.append(Insight(type="opportunity",
+            message="Traspaso: curva de arranque acelerada — cartera de clientes heredada.",
+            suggestion="Negocia incluir contratos de proveedores y base de datos de clientes."))
+
+    if capture_rate < 0.04 and competition_index < 0.50:
+        insights.append(Insight(type="opportunity",
+            message="Baja competencia con flujo peatonal disponible — oportunidad de captación.",
+            suggestion="Invierte en visibilidad para capturar más tráfico peatonal."))
+
+    return insights[:5]
+
+
+def _build_validation_payload(
+    zona_id: str,
+    sector: str,
+    business_model_type: str,
+    tipo_negocio: str,
+    params: "ParametrosResponse",
+    v: dict,
+    resultado: dict,
+    ing_estable: float,
+    margen_bruto: float,
+    max_potential: float,
+    benchmarks: dict,
+    correcciones_raw: list[dict],
+    has_overrides: bool,
+) -> dict:
+    """Construye el dict que recibe validar_financiero() con todos los datos relevantes."""
+    costes_est = resultado.get("estructura_costes", {})
+    roi_b      = resultado["roi_3a_base"]
+
+    return {
+        "zona_id":             zona_id,
+        "sector":              sector,
+        "business_model_type": business_model_type,
+        "tipo_negocio":        tipo_negocio,
+        "has_overrides":       has_overrides,
+        "parametros":          params.model_dump(),
+        "economia_base": {
+            "ingresos_mensuales":      round(ing_estable),
+            "clientes_dia":            resultado["clients_per_day"],
+            "ticket_medio":            v["ticket_medio"],
+            "max_potential_customers": round(max_potential, 1),
+            "ocupacion_efectiva":      resultado.get("ocupacion_efectiva", 0.0),
+        },
+        "estructura_costes": costes_est,
+        "metricas": {
+            "roi_conservador": resultado["roi_3a_conservador"],
+            "roi_base":        roi_b,
+            "roi_optimista":   resultado["roi_3a_optimista"],
+            "margen_bruto_pct": round(margen_bruto, 3),
+            "payback_meses":   resultado["payback_meses_base"],
+        },
+        "inversion_total":    resultado["inversion_total"],
+        "max_capacity":       v.get("max_capacity", params.max_capacity),
+        "ocupacion_efectiva": resultado.get("ocupacion_efectiva", 0.0),
+        "benchmarks_sector":  benchmarks,
+        "validation_flags":   resultado.get("validation_flags", []),
+        "correcciones_str":   [c.get("motivo", "") for c in correcciones_raw],
+    }
+
+
+def _parse_validacion(raw: dict) -> Optional[ValidacionFinanciera]:
+    """Construye ValidacionFinanciera desde el dict del LLM. Nunca lanza excepción."""
+    try:
+        checks_raw = raw.get("checks_detallados", {})
+        return ValidacionFinanciera(
+            coherencia_global=raw.get("coherencia_global", "media"),
+            veredicto=raw.get("veredicto", "fiable"),
+            problemas_detectados=[
+                ProblemaDetectado(**p)
+                for p in raw.get("problemas_detectados", [])
+                if isinstance(p, dict) and "tipo" in p and "descripcion" in p and "impacto" in p
+            ],
+            ajustes_recomendados=[
+                AjusteRecomendado(**a)
+                for a in raw.get("ajustes_recomendados", [])
+                if isinstance(a, dict) and all(k in a for k in ("variable", "accion", "rango_sugerido", "motivo"))
+            ],
+            supuestos_peligrosos=[
+                s for s in raw.get("supuestos_peligrosos", []) if isinstance(s, str)
+            ],
+            checks_detallados=ChecksDetallados(
+                capacidad=checks_raw.get("capacidad", "ok"),
+                costes=checks_raw.get("costes",    "ok"),
+                margenes=checks_raw.get("margenes", "ok"),
+                roi=checks_raw.get("roi",      "ok"),
+                payback=checks_raw.get("payback",  "ok"),
+            ),
+        )
+    except Exception as exc:
+        logger.warning("_parse_validacion error: %s", exc)
+        return None
+
 
 async def _get_o_calcular_estimados(
     zona_id: str,
     sector: str,
     perfil: dict,
 ) -> ParametrosEstimados:
-    """
-    Lee de `v_parametros_financieros_actuales` (pre-calculado por pipeline semanal).
-    Si no hay datos, calcula en tiempo real con `estimador.py`.
-
-    El pipeline semanal (`pipelines/parametros_financieros.py`) corre cada domingo
-    e invalida esta caché actualizando `parametros_financieros_zona`.
-    """
     precalc = await get_parametros_precalculados(zona_id=zona_id, sector=sector)
-
     if precalc:
         return _row_to_estimados(precalc)
-
-    logger.info(
-        "Calculando parámetros en tiempo real (sin pre-calc) zona=%s sector=%s",
-        zona_id, sector,
-    )
+    logger.info("Calculando parámetros en tiempo real zona=%s sector=%s", zona_id, sector)
     return await estimar_parametros(zona_id=zona_id, sector=sector, perfil=perfil)
 
 
 def _row_to_estimados(p: dict) -> ParametrosEstimados:
-    """Convierte una fila de `parametros_financieros_zona` a ParametrosEstimados."""
-
     def pe(valor, fuente, confianza, rmin, rmax) -> PE:
         return PE(valor=valor, fuente=fuente, confianza=confianza,
                   rango_min=rmin, rango_max=rmax)
 
-    slider_clientes_max = max(100.0, p["clientes_dia_optimista"] * 1.6)
+    # Derivar clients_per_day del promedio de conservador/optimista de BD
+    cpd_val = (p["clientes_dia_conservador"] + p["clientes_dia_optimista"]) / 2
+    max_cap  = p["clientes_dia_optimista"] * 1.5
+    slider_max = max(100.0, max_cap)
 
     return ParametrosEstimados(
-        ticket_medio=pe(
-            p["ticket_medio"], p["ticket_fuente"], p["ticket_confianza"],
-            p["ticket_rango_min"], p["ticket_rango_max"],
-        ),
-        clientes_dia_conservador=pe(
-            p["clientes_dia_conservador"], p["clientes_fuente"], p["clientes_confianza"],
-            1.0, slider_clientes_max,
-        ),
-        clientes_dia_optimista=pe(
-            p["clientes_dia_optimista"], p["clientes_fuente"], p["clientes_confianza"],
-            1.0, slider_clientes_max,
-        ),
-        dias_apertura_mes=pe(
-            p["dias_apertura_mes"],
-            "Mediana horario competidores zona (Google Places) / benchmarks sector",
-            "alta", 20, 31,
-        ),
-        alquiler_mensual=pe(
-            p["alquiler_mensual"], p["alquiler_fuente"], p["alquiler_confianza"],
-            round(p["alquiler_mensual"] * 0.75, 0),
-            round(p["alquiler_mensual"] * 1.40, 0),
-        ),
-        salarios_mensual=pe(
-            p["salarios_mensual"], p["salarios_fuente"], "media",
-            round(p["salarios_mensual"] * 0.50, 0),
-            round(p["salarios_mensual"] * 1.80, 0),
-        ),
-        otros_fijos_mensual=pe(
-            p["otros_fijos_mensual"],
-            "Suministros + seguro RC + gestoría + mantenimiento",
-            "media",
-            round(p["otros_fijos_mensual"] * 0.70, 0),
-            round(p["otros_fijos_mensual"] * 1.60, 0),
-        ),
-        coste_mercancia_pct=pe(
-            p["coste_mercancia_pct"],
-            "INE CNAE — margen bruto típico del sector",
-            "alta",
-            max(0.0, p["coste_mercancia_pct"] - 0.10),
-            min(0.95, p["coste_mercancia_pct"] + 0.10),
-        ),
-        reforma_local=pe(
-            p["reforma_estimada"],
-            "m² × €/m² benchmarks sectoriales",
-            "baja",
-            p["reforma_rango_min"], p["reforma_rango_max"],
-        ),
-        equipamiento=pe(
-            p["equipamiento_estimado"],
-            "Benchmarks sectoriales (rango mín–máx)",
-            "baja",
-            p["equipamiento_rango_min"], p["equipamiento_rango_max"],
-        ),
-        deposito_fianza=pe(
-            p["deposito_fianza"],
-            "Art. 36 LAU — estándar España: 2 meses de alquiler",
-            "alta",
-            p["alquiler_mensual"],
-            p["alquiler_mensual"] * 3,
-        ),
-        otros_iniciales=pe(
-            p["otros_iniciales"],
-            "Licencias apertura + constitución SL + gestoría apertura",
-            "media",
-            round(p["otros_iniciales"] * 0.80, 0),
-            round(p["otros_iniciales"] * 1.40, 0),
-        ),
+        ticket_medio=pe(p["ticket_medio"], p["ticket_fuente"], p["ticket_confianza"],
+                        p["ticket_rango_min"], p["ticket_rango_max"]),
+        clients_per_day=pe(cpd_val, p["clientes_fuente"], p["clientes_confianza"],
+                           1.0, slider_max),
+        max_capacity=max_cap,
+        clientes_dia_conservador=pe(p["clientes_dia_conservador"], p["clientes_fuente"],
+                                    p["clientes_confianza"], 1.0, slider_max),
+        clientes_dia_optimista=pe(p["clientes_dia_optimista"], p["clientes_fuente"],
+                                  p["clientes_confianza"], 1.0, slider_max),
+        dias_apertura_mes=pe(p["dias_apertura_mes"],
+                             "Mediana horario competidores / benchmarks sector",
+                             "alta", 20, 31),
+        alquiler_mensual=pe(p["alquiler_mensual"], p["alquiler_fuente"], p["alquiler_confianza"],
+                            round(p["alquiler_mensual"] * 0.75),
+                            round(p["alquiler_mensual"] * 1.40)),
+        salarios_mensual=pe(p["salarios_mensual"], p["salarios_fuente"], "media",
+                            round(p["salarios_mensual"] * 0.50),
+                            round(p["salarios_mensual"] * 1.80)),
+        otros_fijos_mensual=pe(p["otros_fijos_mensual"],
+                               "Suministros + seguro RC + gestoría + mantenimiento", "media",
+                               round(p["otros_fijos_mensual"] * 0.70),
+                               round(p["otros_fijos_mensual"] * 1.60)),
+        coste_mercancia_pct=pe(p["coste_mercancia_pct"],
+                               "INE CNAE — margen bruto típico del sector", "alta",
+                               max(0.0, p["coste_mercancia_pct"] - 0.10),
+                               min(0.95, p["coste_mercancia_pct"] + 0.10)),
+        reforma_local=pe(p["reforma_estimada"], "m² × €/m² benchmarks sectoriales", "baja",
+                         p["reforma_rango_min"], p["reforma_rango_max"]),
+        equipamiento=pe(p["equipamiento_estimado"], "Benchmarks sectoriales", "baja",
+                        p["equipamiento_rango_min"], p["equipamiento_rango_max"]),
+        deposito_fianza=pe(p["deposito_fianza"],
+                           "Art. 36 LAU — 2 meses de alquiler", "alta",
+                           p["alquiler_mensual"], p["alquiler_mensual"] * 3),
+        otros_iniciales=pe(p["otros_iniciales"],
+                           "Licencias apertura + constitución SL + gestoría apertura", "media",
+                           round(p["otros_iniciales"] * 0.80),
+                           round(p["otros_iniciales"] * 1.40)),
         num_empleados=p["num_empleados"],
     )
 
@@ -444,15 +838,6 @@ def _aplicar_overrides(
     estimados: ParametrosEstimados,
     overrides: dict[str, float],
 ) -> ParametrosResponse:
-    """
-    Combina los parámetros estimados con los overrides del usuario.
-
-    Para cada parámetro:
-      - Si el usuario ha movido el slider → valor_usado = override, es_override = True
-      - Si no → valor_usado = valor_estimado, es_override = False
-
-    El valor_estimado siempre se conserva — lo necesita el botón "Auto" del frontend.
-    """
     def _build(nombre: str, estimado: PE) -> ParametroResponse:
         if nombre in overrides:
             return ParametroResponse(
@@ -475,17 +860,17 @@ def _aplicar_overrides(
         )
 
     return ParametrosResponse(
-        ticket_medio=             _build("ticket_medio",             estimados.ticket_medio),
-        clientes_dia_conservador= _build("clientes_dia_conservador", estimados.clientes_dia_conservador),
-        clientes_dia_optimista=   _build("clientes_dia_optimista",   estimados.clientes_dia_optimista),
-        dias_apertura_mes=        _build("dias_apertura_mes",        estimados.dias_apertura_mes),
-        alquiler_mensual=         _build("alquiler_mensual",         estimados.alquiler_mensual),
-        num_empleados=            estimados.num_empleados,
-        salarios_mensual=         _build("salarios_mensual",         estimados.salarios_mensual),
-        otros_fijos_mensual=      _build("otros_fijos_mensual",      estimados.otros_fijos_mensual),
-        coste_mercancia_pct=      _build("coste_mercancia_pct",      estimados.coste_mercancia_pct),
-        reforma_local=            _build("reforma_local",            estimados.reforma_local),
-        equipamiento=             _build("equipamiento",             estimados.equipamiento),
-        deposito_fianza=          _build("deposito_fianza",          estimados.deposito_fianza),
-        otros_iniciales=          _build("otros_iniciales",          estimados.otros_iniciales),
+        ticket_medio=        _build("ticket_medio",        estimados.ticket_medio),
+        clients_per_day=     _build("clients_per_day",     estimados.clients_per_day),
+        max_capacity=        estimados.max_capacity,
+        dias_apertura_mes=   _build("dias_apertura_mes",   estimados.dias_apertura_mes),
+        alquiler_mensual=    _build("alquiler_mensual",    estimados.alquiler_mensual),
+        num_empleados=       estimados.num_empleados,
+        salarios_mensual=    _build("salarios_mensual",    estimados.salarios_mensual),
+        otros_fijos_mensual= _build("otros_fijos_mensual", estimados.otros_fijos_mensual),
+        coste_mercancia_pct= _build("coste_mercancia_pct", estimados.coste_mercancia_pct),
+        reforma_local=       _build("reforma_local",       estimados.reforma_local),
+        equipamiento=        _build("equipamiento",        estimados.equipamiento),
+        deposito_fianza=     _build("deposito_fianza",     estimados.deposito_fianza),
+        otros_iniciales=     _build("otros_iniciales",     estimados.otros_iniciales),
     )

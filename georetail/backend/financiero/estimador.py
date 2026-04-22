@@ -8,13 +8,37 @@ from __future__ import annotations
 import logging, math
 from dataclasses import dataclass, field
 from typing import Optional
+import numpy as np
+
 from db.conexion import get_db
 
 logger = logging.getLogger(__name__)
 
-_SS_EMPRESA = 0.31  # Seguridad Social empresa ~31% sobre salario bruto
-_FACTOR_CONSERVADOR = 0.60
-_FACTOR_OPTIMISTA   = 1.15
+_SS_EMPRESA          = 0.31   # Seguridad Social empresa ~31% sobre salario bruto
+_FACTOR_CONSERVADOR  = 0.60
+_FACTOR_OPTIMISTA    = 1.15
+_MAX_CAPTURE_RATE    = 0.15   # límite hard: nunca > 15% del flujo peatonal
+_DEFAULT_OCCUPANCY   = 0.65   # ocupación conservadora para negocios de cita
+
+# Clasificación del modelo de negocio por sector
+_BUSINESS_MODEL_MAP: dict[str, str] = {
+    "restauracion":  "restaurant",
+    "tatuajes":      "appointment_based",
+    "estetica":      "appointment_based",
+    "clinica":       "appointment_based",
+    "peluqueria":    "appointment_based",
+    "shisha_lounge": "hybrid",
+    "moda":          "retail_walkin",
+    "supermercado":  "retail_walkin",
+    "farmacia":      "retail_walkin",
+}
+
+
+def _determinar_modelo_negocio(sector: str, bench: dict) -> str:
+    if bench.get("is_appointment_based"):
+        return "appointment_based"
+    return _BUSINESS_MODEL_MAP.get(sector, "retail_walkin")
+
 
 # Google Places precio_nivel (1-4) → ticket medio estimado por sector
 _TICKET_POR_NIVEL = {
@@ -47,6 +71,10 @@ class PE:
 @dataclass
 class ParametrosEstimados:
     ticket_medio:               PE = field(default_factory=lambda: PE(0,"","baja"))
+    # ── Demanda: valor único base (el calculador deriva escenarios × 0.6/1.0/1.2)
+    clients_per_day:            PE = field(default_factory=lambda: PE(0,"","baja"))
+    max_capacity:               float = 0.0
+    # Mantenidos para carga desde BD y compatibilidad slider legacy
     clientes_dia_conservador:   PE = field(default_factory=lambda: PE(0,"","baja"))
     clientes_dia_optimista:     PE = field(default_factory=lambda: PE(0,"","baja"))
     dias_apertura_mes:          PE = field(default_factory=lambda: PE(26,"","alta"))
@@ -59,6 +87,7 @@ class ParametrosEstimados:
     deposito_fianza:            PE = field(default_factory=lambda: PE(0,"","alta"))
     otros_iniciales:            PE = field(default_factory=lambda: PE(0,"","media"))
     num_empleados:              int = 1
+    business_model_type:        str = "retail_walkin"
 
 
 async def estimar_parametros(zona_id: str, sector: str, perfil: dict) -> ParametrosEstimados:
@@ -78,15 +107,26 @@ async def estimar_parametros(zona_id: str, sector: str, perfil: dict) -> Paramet
     m2 = local.get("m2") or perfil.get("m2_aprox") or 60.0
 
     p = ParametrosEstimados()
+    p.business_model_type = _determinar_modelo_negocio(sector, bench)
     p.dias_apertura_mes = _dias(dias_apertura, bench)
     p.ticket_medio      = _ticket(sector, precio_nivel_mediana, bench)
     p.alquiler_mensual  = _alquiler(local, vz, m2)
 
-    es_cita = bench.get("is_appointment_based", False)
-    cc, co  = (_clientes_cita(m2, bench) if es_cita
-               else _clientes_flujo(sector, vz, comp, bench))
-    p.clientes_dia_conservador = cc
-    p.clientes_dia_optimista   = co
+    es_cita = bench.get("is_appointment_based", False) or p.business_model_type == "appointment_based"
+    pe_base, max_cap = (_clientes_cita_base(m2, bench) if es_cita
+                        else _clientes_flujo_base(sector, vz, comp, bench))
+
+    p.clients_per_day = pe_base
+    p.max_capacity    = max_cap
+    # Derivados para compatibilidad con la tabla de precálculo
+    p.clientes_dia_conservador = PE(
+        max(1.0, round(pe_base.valor * 0.60, 1)), pe_base.fuente, pe_base.confianza,
+        pe_base.rango_min, pe_base.rango_max,
+    )
+    p.clientes_dia_optimista = PE(
+        max(1.0, round(min(pe_base.valor * 1.20, max_cap), 1)), pe_base.fuente, pe_base.confianza,
+        pe_base.rango_min, pe_base.rango_max,
+    )
 
     p.num_empleados      = max(1, math.ceil(m2 / (bench.get("empleados_por_m2") or 20)))
     p.salarios_mensual   = _salarios(p.num_empleados, bench)
@@ -115,42 +155,68 @@ def _ticket(sector, precio_nivel, bench) -> PE:
     return PE(round(bmid,2),"Benchmarks sectoriales INE (sin datos precio zona)","baja",round(bmin),round(bmax))
 
 
-def _clientes_flujo(sector, vz, comp, bench) -> tuple[PE,PE]:
+def _clientes_flujo_base(sector: str, vz: dict, comp: dict, bench: dict) -> tuple[PE, float]:
+    """Retail / restaurant / hybrid — demanda basada en flujo peatonal.
+    Aplica hard-cap al 15% del flujo total (nunca más).
+    Devuelve (PE_base, max_capacity).
+    """
     fm = vz.get("flujo_peatonal_manana") or 0
     ft = vz.get("flujo_peatonal_tarde")  or 0
     fn = vz.get("flujo_peatonal_noche")  or 0
-    pesos = _PESO_FLUJO.get(sector, _PESO_FLUJO["default"])
+    footfall_total = fm + ft + fn
+
+    pesos     = _PESO_FLUJO.get(sector, _PESO_FLUJO["default"])
     ponderado = fm*pesos["manana"]*6 + ft*pesos["tarde"]*6 + fn*pesos["noche"]*3
     peso_total = pesos["manana"]*6 + pesos["tarde"]*6 + pesos["noche"]*3
-    flujo_h = ponderado/peso_total if peso_total else 0
-    horas = bench.get("horas_apertura_dia", 9.0)
-    pax = flujo_h * horas
-    conv = (bench.get("conversion_rate_min",0.005) + bench.get("conversion_rate_max",0.02)) / 2
-    nc = comp.get("num_competidores",0) or 0
-    share = 1/(nc+1)
-    sat = comp.get("score_saturacion",50) or 50
-    if sat > 75: share *= 0.80
+    flujo_h   = ponderado / peso_total if peso_total else 0
+    horas     = bench.get("horas_apertura_dia", 9.0)
+    pax       = flujo_h * horas
+
+    conv = (bench.get("conversion_rate_min", 0.005) + bench.get("conversion_rate_max", 0.02)) / 2
+    nc   = comp.get("num_competidores", 0) or 0
+    share = 1 / (nc + 1)
+    sat   = comp.get("score_saturacion", 50) or 50
+    if sat > 75:  share *= 0.80
     elif sat < 25: share *= 1.20
-    base = pax * conv * share
-    bc = max(1.0, round(base*_FACTOR_CONSERVADOR,1))
-    bo = max(1.0, round(base*_FACTOR_OPTIMISTA,1))
-    tiene = (fm+ft+fn) > 0
-    f = "Aforadors Open Data BCN × tasa conversión × reparto mercado" if tiene else "Benchmarks (sin datos flujo zona)"
-    conf = "media" if tiene else "baja"
-    smax = max(100.0, bo*1.6)
-    return (PE(bc,f,conf,1.0,smax), PE(bo,f,conf,1.0,smax))
+
+    raw_demand = pax * conv * share
+
+    # Hard-cap: nunca superar el 15% del flujo peatonal diario total
+    if footfall_total > 0:
+        max_realistic = footfall_total * _MAX_CAPTURE_RATE
+        raw_demand    = min(raw_demand, max_realistic)
+
+    base = max(1.0, round(raw_demand, 1))
+    # Para retail, la capacidad máxima es el techo de demanda (no hay barrera física diferente)
+    max_cap = max(base * 2.5, footfall_total * _MAX_CAPTURE_RATE if footfall_total > 0 else base * 2.5, 10.0)
+
+    tiene = footfall_total > 0
+    fuente = ("Aforadors Open Data BCN × tasa captación × reparto mercado"
+               if tiene else "Benchmarks sectoriales (sin datos de flujo)")
+    conf   = "media" if tiene else "baja"
+    smax   = max(50.0, max_cap)
+
+    return PE(base, fuente, conf, 1.0, smax), float(max_cap)
 
 
-def _clientes_cita(m2, bench) -> tuple[PE,PE]:
-    e_m2 = bench.get("empleados_por_m2", 15.0) or 15.0  # evita división por cero
-    puestos = max(1, math.floor(m2/e_m2))
-    cmin = bench.get("clientes_dia_por_puesto_min",2.0)
-    cmax = bench.get("clientes_dia_por_puesto_max",5.0)
-    bc = max(1.0, round(puestos*cmin*_FACTOR_CONSERVADOR,1))
-    bo = max(1.0, round(puestos*cmax,1))
-    f = f"Benchmarks × {puestos} puestos ({e_m2}m²/puesto)"
-    smax = max(20.0, bo*1.5)
-    return (PE(bc,f,"media",1.0,smax), PE(bo,f,"media",1.0,smax))
+def _clientes_cita_base(m2: float, bench: dict) -> tuple[PE, float]:
+    """Appointment-based — demanda basada en capacidad del local.
+    Ignora flujo peatonal como base principal.
+    Devuelve (PE_base, max_capacity).
+    """
+    e_m2    = bench.get("empleados_por_m2", 15.0) or 15.0
+    puestos = max(1, math.floor(m2 / e_m2))
+    cmin    = bench.get("clientes_dia_por_puesto_min", 2.0)
+    cmax    = bench.get("clientes_dia_por_puesto_max", 5.0)
+
+    max_capacity = float(puestos * cmax)
+    # Base conservador con ocupación del 65%
+    base = max(1.0, round(puestos * (cmin + cmax) / 2 * _DEFAULT_OCCUPANCY, 1))
+
+    fuente = f"Benchmarks × {puestos} puesto(s) × {_DEFAULT_OCCUPANCY:.0%} ocupación ({e_m2:.0f}m²/puesto)"
+    smax   = max(max_capacity, 20.0)
+
+    return PE(base, fuente, "media", 1.0, smax), max_capacity
 
 
 def _alquiler(local, vz, m2) -> PE:

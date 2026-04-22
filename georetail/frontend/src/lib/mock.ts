@@ -533,68 +533,35 @@ function buildProyeccion() {
   return meses;
 }
 
+// Helper para mock de ParametroResponse (7 campos v2)
+function mkParam(
+  valor: number, fuente: string, rmin: number, rmax: number,
+  confianza: "alta" | "media" | "baja" = "media",
+): import("./types").ParametroResponse {
+  return {
+    valor_estimado: valor,
+    valor_usado: valor,
+    es_override: false,
+    fuente,
+    confianza,
+    rango_min: rmin,
+    rango_max: rmax,
+  };
+}
+
 export const MOCK_FINANCIERO: FinancieroResponse = {
   parametros: {
-    ticket_medio: {
-      valor_usado: 180,
-      fuente: "Sector tatuajes Barcelona 2024",
-      rango_min: 80,
-      rango_max: 400,
-    },
-    alquiler_mensual: {
-      valor_usado: 1900,
-      fuente: "Datos zona Gràcia",
-      rango_min: 1400,
-      rango_max: 2800,
-    },
-    clientes_dia_conservador: {
-      valor_usado: 4,
-      fuente: "Estimación sector + flujo peatonal",
-      rango_min: 2,
-      rango_max: 10,
-    },
-    clientes_dia_optimista: {
-      valor_usado: 6,
-      fuente: "Estimación sector + captación digital",
-      rango_min: 3,
-      rango_max: 14,
-    },
-    dias_apertura_mes: {
-      valor_usado: 24,
-      fuente: "Operativa estándar",
-      rango_min: 18,
-      rango_max: 30,
-    },
-    salarios_mensual: {
-      valor_usado: 2600,
-      fuente: "Convenio + estructura mínima",
-      rango_min: 1500,
-      rango_max: 5200,
-    },
-    otros_fijos_mensual: {
-      valor_usado: 650,
-      fuente: "Suministros + software + gestoría",
-      rango_min: 300,
-      rango_max: 1400,
-    },
-    coste_mercancia_pct: {
-      valor_usado: 0.18,
-      fuente: "Materiales y consumibles",
-      rango_min: 0.08,
-      rango_max: 0.35,
-    },
-    reforma_local: {
-      valor_usado: 12000,
-      fuente: "Reforma ligera especializada",
-      rango_min: 5000,
-      rango_max: 25000,
-    },
-    num_empleados: {
-      valor_usado: 2,
-      fuente: "Operativa mínima",
-      rango_min: 1,
-      rango_max: 6,
-    },
+    ticket_medio:        mkParam(180, "Sector tatuajes Barcelona 2024", 80, 400, "alta"),
+    clients_per_day:     mkParam(5, "Estimación sector + flujo peatonal", 2, 14, "media"),
+    alquiler_mensual:    mkParam(1900, "Datos zona Gràcia", 1400, 2800, "alta"),
+    dias_apertura_mes:   mkParam(24, "Operativa estándar", 18, 30, "alta"),
+    salarios_mensual:    mkParam(2600, "Convenio + estructura mínima", 1500, 5200, "media"),
+    otros_fijos_mensual: mkParam(650, "Suministros + software + gestoría", 300, 1400, "media"),
+    coste_mercancia_pct: mkParam(0.18, "Materiales y consumibles", 0.08, 0.35, "alta"),
+    reforma_local:       mkParam(12000, "Reforma ligera especializada", 5000, 25000, "baja"),
+    equipamiento:        mkParam(8000, "Benchmarks sectoriales", 4000, 15000, "baja"),
+    deposito_fianza:     mkParam(3800, "Art. 36 LAU — 2 meses", 1800, 5600, "alta"),
+    otros_iniciales:     mkParam(3500, "Licencias + gestoría apertura", 2000, 6000, "media"),
   },
   inversion_total: 28000,
   desglose_inversion: {

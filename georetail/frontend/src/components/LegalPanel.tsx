@@ -22,119 +22,7 @@ function Skeleton({ h = 16, w = "100%" }: { h?: number; w?: string }) {
   );
 }
 
-// ─── Tramite card ─────────────────────────────────────────────────────────────
-
-function TramiteCard({ tramite }: { tramite: TramiteLegal }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className={`${styles.tramite} ${open ? styles.tramiteOpen : ""}`}>
-      <button className={styles.tramiteHeader} onClick={() => setOpen((o) => !o)}>
-        <span className={styles.tramiteNum}>{tramite.numero}</span>
-        <span className={styles.tramiteTitulo}>{tramite.titulo}</span>
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 10 10"
-          className={styles.tramiteChevron}
-          style={{ transform: open ? "rotate(180deg)" : "none" }}
-        >
-          <path
-            d="M2 3.5l3 3 3-3"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            fill="none"
-            strokeLinecap="round"
-          />
-        </svg>
-      </button>
-
-      {open && (
-        <div className={styles.tramiteBody}>
-          {tramite.alerta && (
-            <div className={styles.tramiteAlerta}>
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ flexShrink: 0 }}>
-                <path d="M6.5 1.5l5.2 9H1.3l5.2-9z" stroke="var(--yellow)" strokeWidth="1.2" />
-                <path d="M6.5 5.5v2M6.5 9h.01" stroke="var(--yellow)" strokeWidth="1.2" strokeLinecap="round" />
-              </svg>
-              <span>{tramite.alerta}</span>
-            </div>
-          )}
-
-          {tramite.nombre_oficial && (
-            <p className={styles.tramiteNombreOficial}>
-              Nombre oficial: <em>{tramite.nombre_oficial}</em>
-            </p>
-          )}
-
-          <div className={styles.tramiteField}>
-            <span className={styles.tramiteFieldLabel}>Qué es</span>
-            <p className={styles.tramiteFieldValue}>{tramite.que_es}</p>
-          </div>
-
-          <div className={styles.tramiteField}>
-            <span className={styles.tramiteFieldLabel}>Dónde se hace</span>
-            <p className={styles.tramiteFieldValue}>{tramite.donde}</p>
-          </div>
-
-          {tramite.documentos && tramite.documentos.length > 0 && (
-            <div className={styles.tramiteField}>
-              <span className={styles.tramiteFieldLabel}>Documentos necesarios</span>
-              <ul className={styles.tramiteDocList}>
-                {tramite.documentos.map((doc, i) => (
-                  <li key={i}>{doc}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div className={styles.tramiteMeta}>
-            {tramite.tiempo_estimado && (
-              <span className={styles.tramiteMetaItem}>
-                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                  <circle cx="5.5" cy="5.5" r="4.5" stroke="currentColor" strokeWidth="1.2" />
-                  <path d="M5.5 3v2.5l1.5 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                </svg>
-                {tramite.tiempo_estimado}
-              </span>
-            )}
-            {tramite.coste_estimado && (
-              <span className={styles.tramiteMetaItem}>
-                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                  <circle cx="5.5" cy="5.5" r="4.5" stroke="currentColor" strokeWidth="1.2" />
-                  <path d="M5.5 3v5M4 4.5h2a1 1 0 010 2H4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
-                </svg>
-                {tramite.coste_estimado}
-              </span>
-            )}
-          </div>
-
-          {tramite.enlace && (
-            <a
-              href={tramite.enlace}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={styles.tramiteEnlace}
-            >
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                <path
-                  d="M4.5 2.5H2.5a1 1 0 00-1 1v5a1 1 0 001 1h5a1 1 0 001-1V6.5"
-                  stroke="currentColor"
-                  strokeWidth="1.2"
-                  strokeLinecap="round"
-                />
-                <path d="M6.5 1.5h3v3M9.5 1.5L5.5 5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-              </svg>
-              Acceder al trámite oficial
-            </a>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Fase accordion ───────────────────────────────────────────────────────────
+// ─── Fase colors ──────────────────────────────────────────────────────────────
 
 const FASE_COLORS = [
   "var(--accent)",
@@ -144,19 +32,183 @@ const FASE_COLORS = [
   "#EC4899",
 ];
 
-function FaseAccordion({ fase, index }: { fase: FaseRoadmap; index: number }) {
-  const [open, setOpen] = useState(index === 0);
-  const color = FASE_COLORS[index % FASE_COLORS.length];
+// ─── Tramite card ─────────────────────────────────────────────────────────────
+
+function TramiteCard({ tramite, isLast }: { tramite: TramiteLegal; isLast: boolean }) {
+  const [open, setOpen] = useState(false);
 
   return (
-    <div className={styles.fase} style={{ "--fase-color": color } as React.CSSProperties}>
-      <button className={styles.faseHeader} onClick={() => setOpen((o) => !o)}>
-        <span className={styles.faseNumBadge} style={{ background: `${color}22`, borderColor: `${color}44`, color }}>
-          F{fase.numero}
+    <div className={`${styles.tramiteRow} ${open ? styles.tramiteRowOpen : ""}`}>
+      {/* Left: timeline node + vertical connector */}
+      <div className={styles.tramiteTimelineCol}>
+        <div className={styles.tramiteNode}>
+          <span className={styles.tramiteNodeNum}>{tramite.numero}</span>
+        </div>
+        {!isLast && <div className={styles.tramiteConnector} />}
+      </div>
+
+      {/* Right: collapsible card */}
+      <div className={`${styles.tramiteContent} ${isLast ? styles.tramiteContentLast : ""}`}>
+        <button className={styles.tramiteHeader} onClick={() => setOpen((o) => !o)}>
+          <span className={styles.tramiteTitleBlock}>
+            <span className={styles.tramiteTitulo}>{tramite.titulo}</span>
+            {!open && (tramite.donde || tramite.tiempo_estimado) && (
+              <span className={styles.tramiteSubtitle}>
+                {tramite.donde}
+                {tramite.donde && tramite.tiempo_estimado && " · "}
+                {tramite.tiempo_estimado}
+              </span>
+            )}
+          </span>
+          <div className={styles.tramiteHeaderRight}>
+            {tramite.enlace && !open && (
+              <span className={styles.tramiteLinkBadge} aria-label="Enlace oficial disponible">
+                <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                  <path d="M3.5 1.5H1.5a1 1 0 00-1 1v5a1 1 0 001 1h5a1 1 0 001-1V5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                  <path d="M5.5 1.5h2v2M7.5 1.5L4.5 4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+                Enlace
+              </span>
+            )}
+            {tramite.alerta && !open && (
+              <span className={styles.tramiteAlertaBadge}>
+                <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                  <path d="M4.5 1L8 7.5H1L4.5 1z" stroke="currentColor" strokeWidth="1.2"/>
+                  <path d="M4.5 3.5v1.5M4.5 6.5h.01" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+              </span>
+            )}
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 10 10"
+              className={styles.tramiteChevron}
+              style={{ transform: open ? "rotate(180deg)" : "none" }}
+            >
+              <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+            </svg>
+          </div>
+        </button>
+
+        {open && (
+          <div className={styles.tramiteBody}>
+            {tramite.alerta && (
+              <div className={styles.tramiteAlerta}>
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ flexShrink: 0 }}>
+                  <path d="M6.5 1.5l5.2 9H1.3l5.2-9z" stroke="var(--yellow)" strokeWidth="1.2" />
+                  <path d="M6.5 5.5v2M6.5 9h.01" stroke="var(--yellow)" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+                <span>{tramite.alerta}</span>
+              </div>
+            )}
+
+            {tramite.nombre_oficial && (
+              <p className={styles.tramiteNombreOficial}>
+                Nombre oficial: <em>{tramite.nombre_oficial}</em>
+              </p>
+            )}
+
+            <div className={styles.tramiteField}>
+              <span className={styles.tramiteFieldLabel}>Qué es</span>
+              <p className={styles.tramiteFieldValue}>{tramite.que_es}</p>
+            </div>
+
+            <div className={styles.tramiteField}>
+              <span className={styles.tramiteFieldLabel}>Dónde se hace</span>
+              <p className={styles.tramiteFieldValue}>{tramite.donde}</p>
+            </div>
+
+            {tramite.documentos && tramite.documentos.length > 0 && (
+              <div className={styles.tramiteField}>
+                <span className={styles.tramiteFieldLabel}>Documentos necesarios</span>
+                <ul className={styles.tramiteDocList}>
+                  {tramite.documentos.map((doc, i) => (
+                    <li key={i}>{doc}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className={styles.tramiteMeta}>
+              {tramite.tiempo_estimado && (
+                <span className={styles.tramiteMetaItem}>
+                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                    <circle cx="5.5" cy="5.5" r="4.5" stroke="currentColor" strokeWidth="1.2" />
+                    <path d="M5.5 3v2.5l1.5 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  </svg>
+                  {tramite.tiempo_estimado}
+                </span>
+              )}
+              {tramite.coste_estimado && (
+                <span className={styles.tramiteMetaItem}>
+                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                    <circle cx="5.5" cy="5.5" r="4.5" stroke="currentColor" strokeWidth="1.2" />
+                    <path d="M5.5 3v5M4 4.5h2a1 1 0 010 2H4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+                  </svg>
+                  {tramite.coste_estimado}
+                </span>
+              )}
+            </div>
+
+            {tramite.enlace && (
+              <a
+                href={tramite.enlace}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.tramiteEnlace}
+              >
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                  <path
+                    d="M4.5 2.5H2.5a1 1 0 00-1 1v5a1 1 0 001 1h5a1 1 0 001-1V6.5"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                  />
+                  <path d="M6.5 1.5h3v3M9.5 1.5L5.5 5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+                Acceder al trámite oficial
+              </a>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Fase accordion (controlled) ─────────────────────────────────────────────
+
+interface FaseProps {
+  fase: FaseRoadmap;
+  index: number;
+  isOpen: boolean;
+  onToggle: () => void;
+}
+
+function FaseAccordion({ fase, index, isOpen, onToggle }: FaseProps) {
+  const color = FASE_COLORS[index % FASE_COLORS.length];
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Scroll into view when opened via stepper
+  useEffect(() => {
+    if (isOpen && ref.current) {
+      ref.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [isOpen]);
+
+  return (
+    <div
+      ref={ref}
+      className={styles.fase}
+      style={{ "--fase-color": color } as React.CSSProperties}
+    >
+      <button className={styles.faseHeader} onClick={onToggle}>
+        <span className={styles.faseNumBadge} style={{ "--step-color": color } as React.CSSProperties}>
+          {fase.numero}
         </span>
         <div className={styles.faseTitleBlock}>
           <span className={styles.faseTitulo}>{fase.titulo}</span>
-          {fase.descripcion && !open && (
+          {fase.descripcion && !isOpen && (
             <span className={styles.faseDesc}>{fase.descripcion}</span>
           )}
         </div>
@@ -168,20 +220,20 @@ function FaseAccordion({ fase, index }: { fase: FaseRoadmap; index: number }) {
           height="10"
           viewBox="0 0 10 10"
           className={styles.faseChevron}
-          style={{ transform: open ? "rotate(180deg)" : "none", color }}
+          style={{ transform: isOpen ? "rotate(180deg)" : "none", color }}
         >
           <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
         </svg>
       </button>
 
-      {open && (
+      {isOpen && (
         <div className={styles.faseBody}>
           {fase.descripcion && (
             <p className={styles.faseDescExpanded}>{fase.descripcion}</p>
           )}
           <div className={styles.tramiteList}>
-            {fase.tramites.map((t) => (
-              <TramiteCard key={t.numero} tramite={t} />
+            {fase.tramites.map((t, idx) => (
+              <TramiteCard key={t.numero} tramite={t} isLast={idx === fase.tramites.length - 1} />
             ))}
           </div>
         </div>
@@ -196,6 +248,7 @@ export default function LegalPanel({ zona, sessionId }: Props) {
   const [roadmap, setRoadmap] = useState<LegalRoadmapResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
+  const [openFaseIndex, setOpenFaseIndex] = useState<number>(0);
   const hasFetched = useRef(false);
 
   const load = useCallback(async () => {
@@ -208,7 +261,7 @@ export default function LegalPanel({ zona, sessionId }: Props) {
       setRoadmap(data);
     } catch (e) {
       console.error("Error cargando roadmap legal:", e);
-      hasFetched.current = false; // permitir reintento manual
+      hasFetched.current = false;
       setError(e instanceof Error ? e.message : "No se pudo cargar el análisis legal.");
     } finally {
       setLoading(false);
@@ -219,7 +272,10 @@ export default function LegalPanel({ zona, sessionId }: Props) {
     load();
   }, [load]);
 
-  // ── Loading state ──
+  const handleFaseToggle = (i: number) => {
+    setOpenFaseIndex((prev) => (prev === i ? -1 : i));
+  };
+
   if (loading) {
     return (
       <div className={styles.container}>
@@ -231,7 +287,6 @@ export default function LegalPanel({ zona, sessionId }: Props) {
     );
   }
 
-  // ── Error state ──
   if (error !== "") {
     return (
       <div className={styles.container}>
@@ -249,7 +304,6 @@ export default function LegalPanel({ zona, sessionId }: Props) {
     );
   }
 
-  // ── Empty / loading skeleton ──
   if (!roadmap) {
     return (
       <div className={styles.container}>
@@ -320,7 +374,7 @@ export default function LegalPanel({ zona, sessionId }: Props) {
                     <rect x="6" y="9" width="4" height="4" rx="0.5" stroke="var(--accent)" strokeWidth="1.1" />
                   </svg>
                 )}
-                {i === 2 && (
+                {i >= 2 && (
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path d="M8 2L2 5v4c0 3 2.5 5.5 6 6.5 3.5-1 6-3.5 6-6.5V5L8 2z" stroke="var(--accent)" strokeWidth="1.2" strokeLinejoin="round" />
                   </svg>
@@ -336,7 +390,7 @@ export default function LegalPanel({ zona, sessionId }: Props) {
         </div>
       </section>
 
-      {/* ── Fases ── */}
+      {/* ── Fases (controlled accordions) ── */}
       <section className={styles.section}>
         <h3 className={styles.sectionTitle}>
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -346,7 +400,13 @@ export default function LegalPanel({ zona, sessionId }: Props) {
         </h3>
         <div className={styles.faseList}>
           {roadmap.fases.map((fase, i) => (
-            <FaseAccordion key={fase.id} fase={fase} index={i} />
+            <FaseAccordion
+              key={fase.id}
+              fase={fase}
+              index={i}
+              isOpen={openFaseIndex === i}
+              onToggle={() => handleFaseToggle(i)}
+            />
           ))}
         </div>
       </section>
@@ -376,6 +436,25 @@ export default function LegalPanel({ zona, sessionId }: Props) {
         </p>
       </section>
 
+      {/* ── Próximos pasos ── */}
+      {roadmap.proximos_pasos && roadmap.proximos_pasos.length > 0 && (
+        <section className={styles.section}>
+          <h3 className={styles.sectionTitle}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2 6h8M7 3l3 3-3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Próximos pasos
+          </h3>
+          <div className={styles.pasosList}>
+            {roadmap.proximos_pasos.map((paso, i) => (
+              <div key={i} className={styles.pasoItem}>
+                <span className={styles.pasoNum}>{i + 1}</span>
+                <span className={styles.pasoTexto}>{paso}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
     </div>
   );

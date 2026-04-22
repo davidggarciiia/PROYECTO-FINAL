@@ -113,13 +113,13 @@
 .desgloseBarFill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent), #10B981);
+  background: linear-gradient(90deg, #6366F1, #10B981);
   transition: width 0.4s ease;
 }
 
 .desglosePct {
   font-size: 10px;
-  color: var(--text-subtle);
+  color: #64748B;
   text-align: right;
   font-weight: 600;
 }
@@ -144,8 +144,8 @@
   font-weight: 500;
   color: #CBD5F5;
 
-  background: var(--accent-weak);
-  border: 1px solid var(--accent-border);
+  background: rgba(99,102,241,0.08);
+  border: 1px solid rgba(99,102,241,0.2);
   border-radius: 8px;
 
   display: inline-flex;
@@ -307,3 +307,35 @@
   color: var(--text-subtle);
 }
 .sliderFuente { color: var(--text-subtle); font-style: italic; }
+
+/* ── v2: shared ── */
+.chartExplanation {
+  font-size: 11px;
+  color: var(--text-subtle);
+  line-height: 1.55;
+  margin: 8px 0 0;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding-top: 8px;
+}
+
+.scenarioTabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+.scenarioTab {
+  all: unset;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 6px;
+  transition: all 0.15s;
+  color: var(--text-muted);
+}
+.scenarioTab:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+.scenarioTabActive {
+  background: rgba(255,255,255,0.1);
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,0.15);
+}

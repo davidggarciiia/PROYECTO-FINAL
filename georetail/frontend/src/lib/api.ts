@@ -8,6 +8,8 @@ import type {
   LegalRoadmapResponse,
   CompetenciaDetalle,
   TransporteDetalleZona,
+  OpcionesCuestionarioResponse,
+  BusinessContext,
 } from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -49,6 +51,36 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     });
+  },
+
+  opcionesCuestionario: async (): Promise<OpcionesCuestionarioResponse> => {
+    if (USE_MOCK) {
+      return mockFetch<OpcionesCuestionarioResponse>(
+        {
+          sectores: [
+            { codigo: "restauracion", label: "Restauración" },
+            { codigo: "moda", label: "Moda" },
+          ],
+          subsectores_por_sector: {},
+          niveles_socioeconomicos: [
+            { codigo: "medio", label: "Medio" },
+            { codigo: "medio-alto", label: "Medio-alto" },
+          ],
+          estilos_vida: [],
+          horarios_pico: [],
+          horarios_apertura: [],
+          modelos_servicio: [],
+          escalas_operativas: [],
+          densidades: [],
+          tipos_calle: [],
+          tipos_flujo: [],
+          distritos_bcn: ["Eixample", "Gràcia"],
+          flags_legales_por_sector: {},
+        },
+        120,
+      );
+    }
+    return apiFetch<OpcionesCuestionarioResponse>("/api/cuestionario/opciones");
   },
 
   cuestionario: async (body: CuestionarioRequest): Promise<CuestionarioResponse> => {
@@ -137,7 +169,8 @@ export const api = {
   financiero: async (
     zona_id: string,
     session_id: string,
-    overrides: Record<string, number> = {}
+    overrides: Record<string, number> = {},
+    business_context?: BusinessContext,
   ): Promise<FinancieroResponse> => {
     if (USE_MOCK) {
       const { MOCK_FINANCIERO } = await import("./mock");
@@ -147,14 +180,18 @@ export const api = {
         result.parametros.ticket_medio.valor_usado = overrides.ticket_medio;
       if (overrides.alquiler_mensual)
         result.parametros.alquiler_mensual.valor_usado = overrides.alquiler_mensual;
-      if (overrides.clientes_dia_conservador)
-        result.parametros.clientes_dia_conservador.valor_usado =
-          overrides.clientes_dia_conservador;
+      if (overrides.clients_per_day)
+        result.parametros.clients_per_day.valor_usado = overrides.clients_per_day;
       return mockFetch(result, 600);
     }
     return apiFetch<FinancieroResponse>("/api/financiero", {
       method: "POST",
-      body: JSON.stringify({ zona_id, session_id, overrides }),
+      body: JSON.stringify({
+        zona_id,
+        session_id,
+        overrides,
+        ...(business_context ? { business_context } : {}),
+      }),
     });
   },
 

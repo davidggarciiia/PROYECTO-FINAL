@@ -31,6 +31,7 @@ from routers.llm_router import close_llm_clients
 # Endpoints
 from api.buscar       import router as router_buscar
 from api.cuestionario import router as router_cuestionario
+from api.opciones     import router as router_opciones
 from api.local        import router as router_local
 from api.locales      import router as router_locales
 from api.legal        import router as router_legal
@@ -131,6 +132,7 @@ app.add_middleware(
 # Registrar todos los routers
 app.include_router(router_buscar,       prefix="/api", tags=["búsqueda"])
 app.include_router(router_cuestionario, prefix="/api", tags=["cuestionario"])
+app.include_router(router_opciones,     prefix="/api", tags=["cuestionario"])
 app.include_router(router_local,        prefix="/api", tags=["zonas"])
 app.include_router(router_locales,      prefix="/api", tags=["zonas"])
 app.include_router(router_legal,        prefix="/api", tags=["legal"])

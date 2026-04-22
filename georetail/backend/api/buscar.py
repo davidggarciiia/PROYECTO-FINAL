@@ -26,7 +26,10 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from schemas.models import ZonaResumen, ColorZona, EstadoBusqueda, PerfilRefinado
+from schemas.models import (
+    ZonaResumen, ColorZona, EstadoBusqueda, PerfilRefinado,
+    PerfilEstructurado, PublicoObjetivo, Operacion, UbicacionIdeal,
+)
 from api._utils import score_to_color
 from agente.validador import validar_negocio
 from agente.refinador import generar_pregunta_senal, refinar
@@ -48,10 +51,13 @@ router = APIRouter(tags=["buscar"])
 
 class BuscarRequest(BaseModel):
     descripcion: str = Field(
-        ...,
-        min_length=10,
+        "",
         max_length=1000,
-        description="Descripción del negocio en lenguaje natural",
+        description=(
+            "Descripción del negocio en lenguaje natural. "
+            "Obligatoria si `perfil_estructurado` no viene — en ese caso debe tener >=10 chars. "
+            "Puede venir vacía cuando el frontend usa el formulario tipo test."
+        ),
         examples=["Quiero abrir una cafetería de especialidad en un barrio de diseño"],
     )
     ciudad: Literal["Barcelona"] = Field(
@@ -68,6 +74,17 @@ class BuscarRequest(BaseModel):
     session_id: Optional[str] = Field(
         None,
         description="Pasar si el usuario ya tiene sesión (ej: vuelve del cuestionario).",
+    )
+    # ── Camino rápido: cuestionario tipo test ───────────────────────────────
+    # Si viene, el endpoint se salta `validar_negocio` y `refinar` (ahorra
+    # 1-3s y coste LLM) y construye el perfil directamente desde el form.
+    # Solo se llama a `refinar()` si `perfil_estructurado.matices` no está vacío.
+    perfil_estructurado: Optional[PerfilEstructurado] = Field(
+        None,
+        description=(
+            "Payload del cuestionario estructurado. Si viene, se usa como fuente "
+            "de verdad y se omite el LLM (excepto para el campo opcional `matices`)."
+        ),
     )
 
 
@@ -90,6 +107,46 @@ class BuscarResponse(BaseModel):
 
 
 # ─── Helper ───────────────────────────────────────────────────────────────────
+
+def _validacion_desde_perfil_estructurado(pe: PerfilEstructurado) -> dict:
+    """
+    Construye el `dict validacion` que normalmente devuelve `validar_negocio` a
+    partir del cuestionario estructurado. No llama al LLM: todos los campos se
+    derivan del formulario. El subsector, si viene, se añade como un idea_tag.
+    """
+    idea_tags: list[str] = []
+    if pe.subsector:
+        idea_tags.append(pe.subsector)
+    return {
+        "es_retail":              True,
+        "inviable_legal":         False,
+        "motivo_legal":           None,
+        "motivo":                 None,
+        "informacion_suficiente": True,
+        "sector_detectado":       pe.sector or "desconocido",
+        "idea_tags":              idea_tags,
+        "perfil_negocio":         {},
+        "concepto_negocio":       {},
+        "variables_conocidas":    {},
+        "preguntas_necesarias":   [],
+    }
+
+
+def _perfil_refinado_desde_form(pe: PerfilEstructurado) -> dict:
+    """
+    Traduce el formulario estructurado a un `PerfilRefinado` serializable.
+    Todo lo que el LLM normalmente extraería (público, operación, ubicación)
+    viene ya tipado — se copia tal cual. `signal_preservation_score` = 100
+    porque el usuario lo ha declarado explícitamente.
+    """
+    return PerfilRefinado(
+        publico_objetivo=pe.publico_objetivo,
+        operacion=pe.operacion,
+        ubicacion_ideal=pe.ubicacion_ideal,
+        nuances_detected=[],
+        signal_preservation_score=100,
+    ).model_dump()
+
 
 def _build_zona_resumen(z: dict) -> ZonaResumen:
     """
@@ -131,7 +188,33 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
       - "error_tipo_negocio"→ mostrar mensaje de error
       - "inviable_legal"    → mostrar advertencia legal + botón "Saber más"
     """
+    # ── 0. Validar que hay cuestionario o descripción ────────────────────────
+    if body.perfil_estructurado is None:
+        if not body.descripcion or len(body.descripcion.strip()) < 10:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Debes enviar `descripcion` (≥10 caracteres) o `perfil_estructurado`."
+                ),
+            )
+    else:
+        if not body.perfil_estructurado.sector:
+            raise HTTPException(
+                status_code=422,
+                detail="`perfil_estructurado.sector` es obligatorio.",
+            )
+
     # ── 1. Sesión ─────────────────────────────────────────────────────────────
+    # Si viene el cuestionario estructurado, sus filtros prácticos tienen
+    # precedencia sobre los `presupuesto_max/m2/distritos` del cuerpo raíz.
+    pe = body.perfil_estructurado
+    filtros_efectivos = {
+        "presupuesto_max": pe.presupuesto_max if pe else body.presupuesto_max,
+        "m2_min":          pe.m2_min          if pe else body.m2_min,
+        "m2_max":          pe.m2_max          if pe else body.m2_max,
+        "distritos":       pe.distritos       if pe else body.distritos,
+    }
+
     session_id = body.session_id or str(uuid4())
     sesion = await get_sesion(session_id)
 
@@ -142,32 +225,40 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
             datos={
                 "descripcion_original": body.descripcion,
                 "ciudad": body.ciudad,
-                "filtros": {
-                    "presupuesto_max": body.presupuesto_max,
-                    "m2_min":         body.m2_min,
-                    "m2_max":         body.m2_max,
-                    "distritos":      body.distritos,
-                },
+                "filtros": filtros_efectivos,
                 "perfil": {},
             },
             ip_hash=ip_hash,
         )
+    elif pe is not None:
+        # Sesión existente + nuevo cuestionario → actualizar filtros en la sesión.
+        sesion["filtros"] = filtros_efectivos
+        try:
+            await actualizar_sesion(session_id, {"filtros": filtros_efectivos})
+        except Exception as exc:
+            logger.warning("No se pudieron actualizar filtros desde el test: %s", exc)
 
-    # ── 2. Validación LLM ─────────────────────────────────────────────────────
-    try:
-        validacion = await validar_negocio(body.descripcion, session_id)
-    except Exception as exc:
-        logger.error("Error en validacion LLM: %s", exc, exc_info=True)
-        validacion = {
-            "es_retail":             True,
-            "inviable_legal":        False,
-            "motivo_legal":          None,
-            "motivo":                None,
-            "informacion_suficiente": False,
-            "sector_detectado":      "desconocido",
-            "variables_conocidas":   {},
-            "preguntas_necesarias":  ["sector", "m2", "presupuesto", "cliente"],
-        }
+    # ── 2. Validación: LLM o desde cuestionario estructurado ─────────────────
+    if pe is not None:
+        # Fast path: el formulario ya contiene toda la información necesaria.
+        # Ni `validar_negocio` ni `refinar` se llaman (salvo `matices`, más abajo).
+        logger.info("buscar: fast path (cuestionario estructurado) sector=%s", pe.sector)
+        validacion = _validacion_desde_perfil_estructurado(pe)
+    else:
+        try:
+            validacion = await validar_negocio(body.descripcion, session_id)
+        except Exception as exc:
+            logger.error("Error en validacion LLM: %s", exc, exc_info=True)
+            validacion = {
+                "es_retail":             True,
+                "inviable_legal":        False,
+                "motivo_legal":          None,
+                "motivo":                None,
+                "informacion_suficiente": False,
+                "sector_detectado":      "desconocido",
+                "variables_conocidas":   {},
+                "preguntas_necesarias":  ["sector", "m2", "presupuesto", "cliente"],
+            }
 
     # ── 3a. Negocio no apto ───────────────────────────────────────────────────
     if not validacion["es_retail"]:
@@ -199,84 +290,83 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
         "variables":      validacion["variables_conocidas"],
     }
 
-    # ── 3c-bis. Capa de refinamiento estructurado (PerfilRefinado) ───────────
-    # Se cachea por hash(descripción) para evitar repetir la llamada LLM si el
-    # usuario pulsa "buscar" otra vez con el mismo texto dentro de la sesión.
-    #
-    # FIX BUG-007: Race condition — dos requests concurrentes con la misma
-    # descripción pueden llegar aquí con cache_prev vacío y ambas llaman al LLM.
-    # Solución: distributed lock en Redis (SET NX EX 30s) antes de llamar al LLM.
-    # Solo el primer waiter que obtenga el lock llama al LLM y escribe en Redis.
-    # El segundo waiter espera brevemente y lee el resultado ya calculado.
-    _TTL_REFINADO = 3600  # 1 hora en segundos
-    descripcion_hash = hashlib.md5(body.descripcion.strip().encode("utf-8")).hexdigest()
-    cache_prev = (sesion.get("perfil") or {}).get("perfil_refinado_cache") or {}
-    perfil_refinado_dict: dict = cache_prev.get(descripcion_hash) or {}
+    # Persistir flags legales + overrides financieros para que /api/legal y
+    # /api/financiero puedan consumirlos sin volver a pedírselos al usuario.
+    if pe is not None:
+        if pe.flags_legales is not None:
+            perfil["flags_legales"] = pe.flags_legales.model_dump(exclude_none=True)
+        if pe.overrides_financieros is not None:
+            perfil["overrides_financieros"] = pe.overrides_financieros.model_dump(exclude_none=True)
+        if pe.subsector:
+            perfil["subsector"] = pe.subsector
 
-    if not perfil_refinado_dict:
-        redis = get_redis()
-        redis_cache_key = f"perfil_refinado:{descripcion_hash}"
-        redis_lock_key = f"{redis_cache_key}:lock"
+    # ── 3c-bis. Construir PerfilRefinado ────────────────────────────────────
+    # Dos caminos posibles:
+    #   (A) Fast path: el cuestionario ya contiene los campos estructurados.
+    #       Se mapea directo y solo se invoca `refinar()` si hay `matices`.
+    #   (B) Flujo clásico: el LLM refina la descripción y se cachea en Redis.
 
-        # Check Redis cache first (covers cross-session deduplication).
-        cached_raw = await redis.get(redis_cache_key)
-        if cached_raw:
-            import json as _json
+    if pe is not None:
+        # ── (A) Fast path — sin LLM salvo `matices` ─────────────────────────
+        perfil_refinado_dict = _perfil_refinado_desde_form(pe)
+        if pe.matices and pe.matices.strip():
             try:
-                perfil_refinado_dict = _json.loads(cached_raw)
-            except Exception:
-                perfil_refinado_dict = {}
+                perfil_matices = await refinar(
+                    descripcion=pe.matices.strip(),
+                    sector_detectado=pe.sector,
+                    tags_previos=[pe.subsector] if pe.subsector else [],
+                    session_id=session_id,
+                )
+                # Fusionar nuances_detected y rellenar campos vacíos del form.
+                matices_dict = perfil_matices.model_dump()
+                perfil_refinado_dict["nuances_detected"] = (
+                    matices_dict.get("nuances_detected") or []
+                )
+                # Si el form no especificó ciertos campos y el LLM los detecta
+                # en los matices, los copiamos (no sobrescribimos lo ya dicho).
+                for bloque in ("propuesta_valor",):
+                    valor = matices_dict.get(bloque)
+                    if valor:
+                        perfil_refinado_dict[bloque] = valor
+            except Exception as exc:
+                logger.warning("refinar(matices) falló: %s — se ignora", exc)
+
+        perfil["perfil_refinado"] = perfil_refinado_dict
+        # No hay loop de señal en fast path (signal_preservation_score=100).
+
+    else:
+        # ── (B) Flujo clásico con LLM + cache Redis ─────────────────────────
+        # Se cachea por hash(descripción) para evitar repetir la llamada LLM si el
+        # usuario pulsa "buscar" otra vez con el mismo texto dentro de la sesión.
+        #
+        # FIX BUG-007: Race condition — dos requests concurrentes con la misma
+        # descripción pueden llegar aquí con cache_prev vacío y ambas llaman al LLM.
+        # Solución: distributed lock en Redis (SET NX EX 30s) antes de llamar al LLM.
+        # Solo el primer waiter que obtenga el lock llama al LLM y escribe en Redis.
+        # El segundo waiter espera brevemente y lee el resultado ya calculado.
+        _TTL_REFINADO = 3600  # 1 hora en segundos
+        descripcion_hash = hashlib.md5(body.descripcion.strip().encode("utf-8")).hexdigest()
+        cache_prev = (sesion.get("perfil") or {}).get("perfil_refinado_cache") or {}
+        perfil_refinado_dict: dict = cache_prev.get(descripcion_hash) or {}
 
         if not perfil_refinado_dict:
-            # Try to acquire distributed lock (NX = only if not exists, EX = 30s TTL).
-            got_lock = await redis.set(redis_lock_key, "1", nx=True, ex=30)
-            if got_lock:
-                try:
-                    perfil_refinado_model = await refinar(
-                        descripcion=body.descripcion,
-                        sector_detectado=perfil["sector"],
-                        tags_previos=perfil["idea_tags"],
-                        session_id=session_id,
-                    )
-                    perfil_refinado_dict = perfil_refinado_model.model_dump()
-                except Exception as exc:
-                    logger.warning("Refinador falló: %s — continuando con perfil vacío", exc)
-                    perfil_refinado_dict = PerfilRefinado().model_dump()
-                finally:
-                    # Write result to Redis before releasing lock so waiters can read it.
-                    try:
-                        import json as _json
-                        await redis.set(redis_cache_key, _json.dumps(perfil_refinado_dict), ex=_TTL_REFINADO)
-                    except Exception as exc:
-                        logger.warning("No se pudo escribir perfil_refinado en Redis: %s", exc)
-                    await redis.delete(redis_lock_key)
-            else:
-                # Another request is computing the same profile — poll cache until the
-                # holder publishes the result. The holder's lock TTL is 30s y el LLM
-                # tarda normalmente 2-5s; esperamos hasta 30s en pasos de 0.25s para no
-                # duplicar la llamada al LLM en requests concurrentes de la misma query.
+            redis = get_redis()
+            redis_cache_key = f"perfil_refinado:{descripcion_hash}"
+            redis_lock_key = f"{redis_cache_key}:lock"
+
+            # Check Redis cache first (covers cross-session deduplication).
+            cached_raw = await redis.get(redis_cache_key)
+            if cached_raw:
                 import json as _json
-                _POLL_INTERVAL_S = 0.25
-                _POLL_MAX_S = 30.0
-                waited = 0.0
-                while waited < _POLL_MAX_S:
-                    await asyncio.sleep(_POLL_INTERVAL_S)
-                    waited += _POLL_INTERVAL_S
-                    cached_raw = await redis.get(redis_cache_key)
-                    if cached_raw:
-                        try:
-                            perfil_refinado_dict = _json.loads(cached_raw)
-                        except Exception:
-                            perfil_refinado_dict = {}
-                        if perfil_refinado_dict:
-                            break
-                    # Si el lock desapareció SIN haber publicado cache, el holder falló
-                    # → salimos del polling y caemos al fallback LLM propio.
-                    lock_still_held = await redis.get(redis_lock_key)
-                    if not lock_still_held and not cached_raw:
-                        break
-                if not perfil_refinado_dict:
-                    # Fallback: lock holder may have failed; call LLM ourselves.
+                try:
+                    perfil_refinado_dict = _json.loads(cached_raw)
+                except Exception:
+                    perfil_refinado_dict = {}
+
+            if not perfil_refinado_dict:
+                # Try to acquire distributed lock (NX = only if not exists, EX = 30s TTL).
+                got_lock = await redis.set(redis_lock_key, "1", nx=True, ex=30)
+                if got_lock:
                     try:
                         perfil_refinado_model = await refinar(
                             descripcion=body.descripcion,
@@ -286,42 +376,89 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
                         )
                         perfil_refinado_dict = perfil_refinado_model.model_dump()
                     except Exception as exc:
-                        logger.warning("Refinador (fallback) falló: %s — continuando con perfil vacío", exc)
+                        logger.warning("Refinador falló: %s — continuando con perfil vacío", exc)
                         perfil_refinado_dict = PerfilRefinado().model_dump()
+                    finally:
+                        # Write result to Redis before releasing lock so waiters can read it.
+                        try:
+                            import json as _json
+                            await redis.set(redis_cache_key, _json.dumps(perfil_refinado_dict), ex=_TTL_REFINADO)
+                        except Exception as exc:
+                            logger.warning("No se pudo escribir perfil_refinado en Redis: %s", exc)
+                        await redis.delete(redis_lock_key)
+                else:
+                    # Another request is computing the same profile — poll cache until the
+                    # holder publishes the result. The holder's lock TTL is 30s y el LLM
+                    # tarda normalmente 2-5s; esperamos hasta 30s en pasos de 0.25s para no
+                    # duplicar la llamada al LLM en requests concurrentes de la misma query.
+                    import json as _json
+                    _POLL_INTERVAL_S = 0.25
+                    _POLL_MAX_S = 30.0
+                    waited = 0.0
+                    while waited < _POLL_MAX_S:
+                        await asyncio.sleep(_POLL_INTERVAL_S)
+                        waited += _POLL_INTERVAL_S
+                        cached_raw = await redis.get(redis_cache_key)
+                        if cached_raw:
+                            try:
+                                perfil_refinado_dict = _json.loads(cached_raw)
+                            except Exception:
+                                perfil_refinado_dict = {}
+                            if perfil_refinado_dict:
+                                break
+                        # Si el lock desapareció SIN haber publicado cache, el holder falló
+                        # → salimos del polling y caemos al fallback LLM propio.
+                        lock_still_held = await redis.get(redis_lock_key)
+                        if not lock_still_held and not cached_raw:
+                            break
+                    if not perfil_refinado_dict:
+                        # Fallback: lock holder may have failed; call LLM ourselves.
+                        try:
+                            perfil_refinado_model = await refinar(
+                                descripcion=body.descripcion,
+                                sector_detectado=perfil["sector"],
+                                tags_previos=perfil["idea_tags"],
+                                session_id=session_id,
+                            )
+                            perfil_refinado_dict = perfil_refinado_model.model_dump()
+                        except Exception as exc:
+                            logger.warning("Refinador (fallback) falló: %s — continuando con perfil vacío", exc)
+                            perfil_refinado_dict = PerfilRefinado().model_dump()
 
-    perfil["perfil_refinado"] = perfil_refinado_dict
-    perfil["perfil_refinado_cache"] = {**cache_prev, descripcion_hash: perfil_refinado_dict}
+        perfil["perfil_refinado"] = perfil_refinado_dict
+        perfil["perfil_refinado_cache"] = {**cache_prev, descripcion_hash: perfil_refinado_dict}
 
-    # ── 3c-ter. Loop de preservación de señal ────────────────────────────────
-    # Si el LLM declara score<70 y aún no hemos gastado los 3 rounds, pedimos
-    # al usuario una aclaración específica antes de rankear zonas.
-    signal_score = int(perfil_refinado_dict.get("signal_preservation_score") or 0)
-    rounds_usados = int((sesion.get("perfil") or {}).get("signal_rounds", 0))
-    if signal_score < _SIGNAL_THRESHOLD and rounds_usados < _SIGNAL_MAX_ROUNDS:
-        perfil_mod = PerfilRefinado(**perfil_refinado_dict)
-        pregunta_en = await generar_pregunta_senal(
-            perfil_refinado=perfil_mod,
-            descripcion=body.descripcion,
-            session_id=session_id,
-        )
-        if pregunta_en:
-            try:
-                pregunta_es = await traducir(pregunta_en, session_id)
-            except Exception:
-                pregunta_es = pregunta_en
-            # Persistir: incrementamos rounds y guardamos perfil_refinado actualizado
-            perfil["signal_rounds"] = rounds_usados + 1
-            try:
-                await actualizar_sesion(session_id, {"perfil": perfil})
-            except Exception as exc:
-                logger.warning("No se pudo actualizar perfil en loop señal: %s", exc)
-            progreso = int(min(90, 30 + rounds_usados * 20))
-            return BuscarResponse(
+        # ── 3c-ter. Loop de preservación de señal ────────────────────────────
+        # Si el LLM declara score<70 y aún no hemos gastado los 3 rounds, pedimos
+        # al usuario una aclaración específica antes de rankear zonas.
+        # Solo aplica al flujo clásico — el fast path tiene score=100.
+        signal_score = int(perfil_refinado_dict.get("signal_preservation_score") or 0)
+        rounds_usados = int((sesion.get("perfil") or {}).get("signal_rounds", 0))
+        if signal_score < _SIGNAL_THRESHOLD and rounds_usados < _SIGNAL_MAX_ROUNDS:
+            perfil_mod = PerfilRefinado(**perfil_refinado_dict)
+            pregunta_en = await generar_pregunta_senal(
+                perfil_refinado=perfil_mod,
+                descripcion=body.descripcion,
                 session_id=session_id,
-                estado=EstadoBusqueda.CUESTIONARIO,
-                pregunta=pregunta_es,
-                progreso_cuestionario=progreso,
             )
+            if pregunta_en:
+                try:
+                    pregunta_es = await traducir(pregunta_en, session_id)
+                except Exception:
+                    pregunta_es = pregunta_en
+                # Persistir: incrementamos rounds y guardamos perfil_refinado actualizado
+                perfil["signal_rounds"] = rounds_usados + 1
+                try:
+                    await actualizar_sesion(session_id, {"perfil": perfil})
+                except Exception as exc:
+                    logger.warning("No se pudo actualizar perfil en loop señal: %s", exc)
+                progreso = int(min(90, 30 + rounds_usados * 20))
+                return BuscarResponse(
+                    session_id=session_id,
+                    estado=EstadoBusqueda.CUESTIONARIO,
+                    pregunta=pregunta_es,
+                    progreso_cuestionario=progreso,
+                )
 
     filtros = sesion["filtros"]
     zonas_candidatas = await filtrar_zonas_candidatas(filtros)

@@ -83,6 +83,35 @@
   }
 }
 
+/* ── Mode tabs (Texto | Cuestionario) ── */
+.modeTabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+}
+.modeTab {
+  flex: 1;
+  padding: 7px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.modeTab:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.modeTabActive {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ── Form ── */
 .form {
   display: flex;

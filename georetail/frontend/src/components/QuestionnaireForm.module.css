@@ -1,0 +1,184 @@
+/* ══════════════════════════════════════════════════════
+   QuestionnaireForm — formulario tipo test dentro del panel
+   del SearchBox. Ancho fijo 300px, scroll vertical interno.
+   ══════════════════════════════════════════════════════ */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.form::-webkit-scrollbar { width: 6px; }
+.form::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.loading,
+.loadErr {
+  padding: 18px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.loadErr { color: var(--red); }
+
+/* ── Fieldset / sección ── */
+.fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px 10px;
+  margin: 0;
+  background: var(--surface-2);
+}
+.legend {
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-subtle);
+}
+.req { color: var(--red); margin-left: 2px; }
+
+.label {
+  display: block;
+  margin: 8px 0 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.hint {
+  font-size: 11px;
+  color: var(--text-subtle);
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+
+/* ── Selects e inputs ── */
+.select,
+.input,
+.textarea {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.select:focus,
+.input:focus,
+.textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+.textarea {
+  resize: none;
+  line-height: 1.4;
+}
+
+/* ── Chips multiselect / radio ── */
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.chip {
+  padding: 4px 9px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 100px;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.chipOn {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ── Ticket (€–€€€€€) ── */
+.ticketRow {
+  display: flex;
+  gap: 4px;
+}
+.ticketBtn {
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 11px;
+  background: var(--surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.12s;
+  font-weight: 600;
+}
+.ticketBtn:hover { color: var(--text); }
+.ticketOn {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Fila de 2 columnas para m²/financiero ── */
+.row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+/* ── Checkboxes con descripción ── */
+.checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 6px 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.35;
+}
+.checkbox input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.checkbox small {
+  display: block;
+  font-size: 10.5px;
+  color: var(--text-subtle);
+  margin-top: 2px;
+}
+.checkbox strong {
+  font-weight: 600;
+}
+
+/* ── Submit ── */
+.submit {
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

@@ -490,19 +490,19 @@ class ParametroResponse(BaseModel):
 
 
 class ParametrosResponse(BaseModel):
-    ticket_medio:             ParametroResponse
-    clientes_dia_conservador: ParametroResponse
-    clientes_dia_optimista:   ParametroResponse
-    dias_apertura_mes:        ParametroResponse
-    alquiler_mensual:         ParametroResponse
-    num_empleados:            int
-    salarios_mensual:         ParametroResponse
-    otros_fijos_mensual:      ParametroResponse
-    coste_mercancia_pct:      ParametroResponse
-    reforma_local:            ParametroResponse
-    equipamiento:             ParametroResponse
-    deposito_fianza:          ParametroResponse
-    otros_iniciales:          ParametroResponse
+    ticket_medio:        ParametroResponse
+    clients_per_day:     ParametroResponse  # único slider de clientes (v2)
+    max_capacity:        float              # límite físico
+    dias_apertura_mes:   ParametroResponse
+    alquiler_mensual:    ParametroResponse
+    num_empleados:       int
+    salarios_mensual:    ParametroResponse
+    otros_fijos_mensual: ParametroResponse
+    coste_mercancia_pct: ParametroResponse
+    reforma_local:       ParametroResponse
+    equipamiento:        ParametroResponse
+    deposito_fianza:     ParametroResponse
+    otros_iniciales:     ParametroResponse
 
 
 class FinancieroRequest(BaseModel):
@@ -514,14 +514,136 @@ class FinancieroRequest(BaseModel):
 class ProyeccionMes(BaseModel):
     mes:                   int
     ingresos_conservador:  float
+    ingresos_base:         float = 0.0
     ingresos_optimista:    float
     costes_variables:      float
     costes_fijos:          float
     ebitda_conservador:    float
+    ebitda_base:           float = 0.0
     ebitda_optimista:      float
     acumulado_conservador: float
+    acumulado_base:        float = 0.0
     acumulado_optimista:   float
     ramp_factor:           float
+    # Bandas de volatilidad ±15% para escenario base (v3)
+    ingresos_base_low:     int = 0
+    ingresos_base_high:    int = 0
+
+
+# ── Bloques v2 del panel financiero ───────────────────────────────────────────
+
+class DecisionBlock(BaseModel):
+    recomendacion:     str   # "si" | "riesgo" | "no"
+    beneficio_mensual: float
+    payback:           int
+    capital_necesario: float
+    gap_capital:       float
+
+
+class EconomiaBase(BaseModel):
+    ingresos_mensuales:      float
+    clientes_dia:            float
+    ticket_medio:            float
+    conversion_pct:          float
+    max_potential_customers: float
+    ocupacion_efectiva:      float = 0.0
+
+
+class EstructuraCostes(BaseModel):
+    alquiler:         float
+    personal:         float
+    variable:         float
+    otros:            float
+    beneficio:        float
+    perdida:          float
+    ingresos_totales: float
+
+
+class BreakEvenPunto(BaseModel):
+    clientes:       float
+    ingresos:       float
+    costes_totales: float
+
+
+class BreakEvenInfo(BaseModel):
+    clientes_be:         int
+    ingresos_be:         float
+    clientes_base:       float
+    margen_sobre_be_pct: float
+    chart:               list[BreakEvenPunto]
+
+
+class MetricasClave(BaseModel):
+    roi_conservador:   float
+    roi_base:          float
+    roi_optimista:     float
+    margen_bruto_pct:  float
+    payback_meses:     int
+    mes_caja_positiva: int
+
+
+class Riesgo(BaseModel):
+    tipo:    str   # "bloqueo" | "warning"
+    mensaje: str
+
+
+class Insight(BaseModel):
+    type:       str   # "risk" | "opportunity"
+    message:    str
+    suggestion: str
+
+
+class ModeloDemanda(BaseModel):
+    flujo_peatonal_dia:      float
+    max_potential_customers: float
+    capture_rate:            float
+
+
+class CorreccionAplicada(BaseModel):
+    parametro:       str
+    valor_original:  float
+    valor_corregido: float
+    motivo:          str
+
+
+class CapacityModelInfo(BaseModel):
+    tipo:                      str
+    descripcion:               str
+    units:                     int
+    sessions_per_unit_per_day: float
+    max_clients_day:           float
+
+
+# ── Validación financiera LLM (v3) ────────────────────────────────────────────
+
+class ProblemaDetectado(BaseModel):
+    tipo:        str  # snake_case code del catálogo del prompt
+    descripcion: str  # explicación con números reales del input
+    impacto:     str  # "alto" | "medio" | "bajo"
+
+
+class AjusteRecomendado(BaseModel):
+    variable:       str
+    accion:         str  # "reducir" | "aumentar" | "revisar"
+    rango_sugerido: str
+    motivo:         str
+
+
+class ChecksDetallados(BaseModel):
+    capacidad: str  # "ok" | "warning" | "error"
+    costes:    str
+    margenes:  str
+    roi:       str
+    payback:   str
+
+
+class ValidacionFinanciera(BaseModel):
+    coherencia_global:    str   # "alta" | "media" | "baja"
+    veredicto:            str   # "fiable" | "optimista" | "no_creible"
+    problemas_detectados: list[ProblemaDetectado] = Field(default_factory=list)
+    ajustes_recomendados: list[AjusteRecomendado] = Field(default_factory=list)
+    supuestos_peligrosos: list[str]               = Field(default_factory=list)
+    checks_detallados:    ChecksDetallados
 
 
 class FinancieroResponse(BaseModel):
@@ -529,19 +651,40 @@ class FinancieroResponse(BaseModel):
     inversion_total:              float
     desglose_inversion:           dict
     ingresos_anuales_conservador: float
+    ingresos_anuales_base:        float = 0.0
     ingresos_anuales_optimista:   float
     margen_bruto_pct:             float
     ebitda_anual_conservador:     float
+    ebitda_anual_base:            float = 0.0
     ebitda_anual_optimista:       float
     roi_3a_conservador:           float
+    roi_3a_base:                  float = 0.0
     roi_3a_optimista:             float
     payback_meses_conservador:    int
+    payback_meses_base:           int = 999
     payback_meses_optimista:      int
     breakeven_clientes_dia:       int
     proyeccion:                   list[ProyeccionMes]
     margen_sector_tipico:         float
     alquiler_sobre_ventas_pct:    float
     alerta_alquiler:              bool
+    # Bloques v2
+    decision:          Optional[DecisionBlock]    = None
+    economia_base:     Optional[EconomiaBase]     = None
+    estructura_costes: Optional[EstructuraCostes] = None
+    break_even:        Optional[BreakEvenInfo]    = None
+    metricas_clave:    Optional[MetricasClave]    = None
+    riesgos:           list[Riesgo]               = Field(default_factory=list)
+    insights:          list[Insight]              = Field(default_factory=list)
+    modelo_demanda:    Optional[ModeloDemanda]    = None
+    # Modelo v3
+    business_model_type:    str                              = "retail_walkin"
+    correcciones_aplicadas: list[CorreccionAplicada]         = Field(default_factory=list)
+    capacity_model:         Optional[CapacityModelInfo]      = None
+    tipo_negocio:           str                              = "nuevo"
+    validation_flags:       list[str]                        = Field(default_factory=list)
+    ocupacion_efectiva:     float                            = 0.0
+    validacion_financiera:  Optional[ValidacionFinanciera]   = None
 
 
 # ── Locales lista ─────────────────────────────────────────────────────────────
@@ -659,3 +802,90 @@ class TransporteDetalleZona(BaseModel):
     total_lineas:  int
     total_paradas: int
     lineas:        list[LineaCercana]
+
+
+# ── Cuestionario estructurado (test alternativo al texto libre) ───────────────
+# Contrato del formulario "tipo test". Cuando llega en `BuscarRequest`, el
+# endpoint /api/buscar se salta el LLM (validar_negocio + refinar) y construye
+# el perfil directamente desde los campos. Solo se invoca refinar() si el
+# usuario escribe algo en `matices`.
+
+class FlagsLegales(BaseModel):
+    """Flags opcionales que el test envía a /api/legal/roadmap para ajustar
+    licencias y requisitos (ej: alcohol → añade llicència de venda de begudes).
+    Todos los campos son opcionales; los que no vienen se asumen False."""
+    servira_alcohol:          Optional[bool] = None
+    con_terraza:              Optional[bool] = None
+    cocina_con_humos:         Optional[bool] = None
+    aparatologia_sanitaria:   Optional[bool] = None
+    tatuajes_invasivos:       Optional[bool] = None
+    club_privado_fumadores:   Optional[bool] = None
+    emision_musica_alta:      Optional[bool] = None
+    venta_menores:            Optional[bool] = None
+
+
+class OverridesFinancieros(BaseModel):
+    """Valores opcionales del test que pre-rellenan /api/financiero overrides.
+    El usuario puede afinar los sliders más tarde en el panel de detalle."""
+    ticket_medio:       Optional[float] = Field(None, ge=0, le=10_000)
+    clientes_dia:       Optional[float] = Field(None, ge=0, le=10_000)
+    num_empleados:      Optional[int]   = Field(None, ge=0, le=500)
+    m2_objetivo:        Optional[float] = Field(None, ge=0, le=5_000)
+
+
+class PerfilEstructurado(BaseModel):
+    """Payload del cuestionario tipo test. Se mapea internamente a
+    `PerfilRefinado` + `sector_detectado` + filtros, sin pasar por LLM (fast
+    path). Solo `sector` es obligatorio."""
+    sector:           str
+    subsector:        Optional[str] = None
+
+    # Mapean 1:1 a PerfilRefinado
+    publico_objetivo: PublicoObjetivo = Field(default_factory=PublicoObjetivo)
+    operacion:        Operacion       = Field(default_factory=Operacion)
+    ubicacion_ideal:  UbicacionIdeal  = Field(default_factory=UbicacionIdeal)
+
+    # Filtros prácticos (mapeable a BuscarRequest.filtros)
+    presupuesto_max:  Optional[float]      = Field(None, gt=0, description="Alquiler mensual máximo en €")
+    m2_min:           Optional[float]      = Field(None, gt=0)
+    m2_max:           Optional[float]      = Field(None, gt=0)
+    distritos:        Optional[list[str]]  = None
+
+    # Conexión con /api/legal y /api/financiero
+    flags_legales:        Optional[FlagsLegales]        = None
+    overrides_financieros: Optional[OverridesFinancieros] = None
+
+    # Texto libre opcional — único campo que dispara refinar() (LLM)
+    matices:          Optional[str] = Field(None, max_length=300)
+
+
+# ── Cuestionario — catálogo de opciones servido al frontend ───────────────────
+# El frontend hace fetch a GET /api/cuestionario/opciones al abrir el test para
+# poblar los <select> y los chips multiselect desde una sola fuente de verdad
+# (la taxonomía del backend, no constantes hardcodeadas).
+
+class SubsectorOpcion(BaseModel):
+    codigo: str
+    label:  str
+
+
+class FlagLegalOpcion(BaseModel):
+    codigo: str
+    label:  str
+    descripcion: Optional[str] = None
+
+
+class OpcionesCuestionarioResponse(BaseModel):
+    sectores:                 list[SubsectorOpcion]
+    subsectores_por_sector:   dict[str, list[SubsectorOpcion]]
+    niveles_socioeconomicos:  list[SubsectorOpcion]
+    estilos_vida:             list[SubsectorOpcion]
+    horarios_pico:            list[SubsectorOpcion]
+    horarios_apertura:        list[SubsectorOpcion]
+    modelos_servicio:         list[SubsectorOpcion]
+    escalas_operativas:       list[SubsectorOpcion]
+    densidades:               list[SubsectorOpcion]
+    tipos_calle:              list[SubsectorOpcion]
+    tipos_flujo:              list[SubsectorOpcion]
+    distritos_bcn:            list[str]
+    flags_legales_por_sector: dict[str, list[FlagLegalOpcion]]

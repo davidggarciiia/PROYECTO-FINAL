@@ -282,10 +282,79 @@ export interface DimensionTurismoDetalle {
   }>;
 }
 
+// ── Cuestionario estructurado (alternativa al texto libre) ───────────────
+// Contrato espejo de `schemas.models.PerfilEstructurado` del backend.
+// Si viene en BuscarRequest, el backend salta el LLM (validar+refinar) y
+// construye el perfil directamente desde el form. Solo `matices` pasa por LLM.
+export interface FlagsLegales {
+  servira_alcohol?: boolean;
+  con_terraza?: boolean;
+  cocina_con_humos?: boolean;
+  aparatologia_sanitaria?: boolean;
+  tatuajes_invasivos?: boolean;
+  club_privado_fumadores?: boolean;
+  emision_musica_alta?: boolean;
+  venta_menores?: boolean;
+}
+
+export interface OverridesFinancieros {
+  ticket_medio?: number;
+  clientes_dia?: number;
+  num_empleados?: number;
+  m2_objetivo?: number;
+}
+
+export interface PerfilEstructurado {
+  sector: string;
+  subsector?: string;
+  publico_objetivo?: PublicoObjetivo;
+  operacion?: Operacion;
+  ubicacion_ideal?: UbicacionIdeal;
+  presupuesto_max?: number;
+  m2_min?: number;
+  m2_max?: number;
+  distritos?: string[];
+  flags_legales?: FlagsLegales;
+  overrides_financieros?: OverridesFinancieros;
+  matices?: string;
+}
+
+export interface SubsectorOpcion {
+  codigo: string;
+  label: string;
+}
+
+export interface FlagLegalOpcion {
+  codigo: string;
+  label: string;
+  descripcion?: string;
+}
+
+export interface OpcionesCuestionarioResponse {
+  sectores: SubsectorOpcion[];
+  subsectores_por_sector: Record<string, SubsectorOpcion[]>;
+  niveles_socioeconomicos: SubsectorOpcion[];
+  estilos_vida: SubsectorOpcion[];
+  horarios_pico: SubsectorOpcion[];
+  horarios_apertura: SubsectorOpcion[];
+  modelos_servicio: SubsectorOpcion[];
+  escalas_operativas: SubsectorOpcion[];
+  densidades: SubsectorOpcion[];
+  tipos_calle: SubsectorOpcion[];
+  tipos_flujo: SubsectorOpcion[];
+  distritos_bcn: string[];
+  flags_legales_por_sector: Record<string, FlagLegalOpcion[]>;
+}
+
 export interface BuscarRequest {
   descripcion: string;
   session_id?: string;
   filtros?: Record<string, unknown>;
+  presupuesto_max?: number;
+  m2_min?: number;
+  m2_max?: number;
+  distritos?: string[];
+  perfil_estructurado?: PerfilEstructurado;
 }
 
 export interface BuscarResponse {
@@ -313,41 +382,193 @@ export interface CuestionarioResponse {
 export interface ProyeccionMes {
   mes: number;
   ingresos_conservador: number;
+  ingresos_base?: number;
   ingresos_optimista: number;
   costes_variables: number;
   costes_fijos: number;
   ebitda_conservador: number;
+  ebitda_base?: number;
   ebitda_optimista: number;
   acumulado_conservador: number;
+  acumulado_base?: number;
   acumulado_optimista: number;
   ramp_factor: number;
+  ingresos_base_low?: number;
+  ingresos_base_high?: number;
 }
 
-export interface ParametroFinanciero {
+export interface ParametroResponse {
+  valor_estimado: number;
   valor_usado: number;
+  es_override: boolean;
   fuente: string;
+  confianza: string;
   rango_min: number;
   rango_max: number;
 }
 
+// Alias legacy usado por paneles antiguos
+export type ParametroFinanciero = ParametroResponse;
+
+// ── Bloques v2 del panel financiero ────────────────────────────────────────
+export interface DecisionBlock {
+  recomendacion: "si" | "riesgo" | "no";
+  beneficio_mensual: number;
+  payback: number;
+  capital_necesario: number;
+  gap_capital: number;
+}
+
+export interface EconomiaBase {
+  ingresos_mensuales: number;
+  clientes_dia: number;
+  ticket_medio: number;
+  conversion_pct: number;
+  max_potential_customers: number;
+  ocupacion_efectiva?: number;
+}
+
+export interface EstructuraCostes {
+  alquiler: number;
+  personal: number;
+  variable: number;
+  otros: number;
+  beneficio: number;
+  perdida: number;
+  ingresos_totales: number;
+}
+
+export interface BreakEvenPunto {
+  clientes: number;
+  ingresos: number;
+  costes_totales: number;
+}
+
+export interface BreakEvenInfo {
+  clientes_be: number;
+  ingresos_be: number;
+  clientes_base: number;
+  margen_sobre_be_pct: number;
+  chart: BreakEvenPunto[];
+}
+
+export interface MetricasClave {
+  roi_conservador: number;
+  roi_base: number;
+  roi_optimista: number;
+  margen_bruto_pct: number;
+  payback_meses: number;
+  mes_caja_positiva: number;
+}
+
+export interface Riesgo {
+  tipo: "bloqueo" | "warning";
+  mensaje: string;
+}
+
+export interface Insight {
+  type: "risk" | "opportunity";
+  message: string;
+  suggestion: string;
+}
+
+export interface ModeloDemanda {
+  flujo_peatonal_dia: number;
+  max_potential_customers: number;
+  capture_rate: number;
+}
+
+export interface CorreccionAplicada {
+  parametro: string;
+  valor_original: number;
+  valor_corregido: number;
+  motivo: string;
+}
+
+export interface CapacityModelInfo {
+  tipo: string;
+  descripcion: string;
+  units: number;
+  sessions_per_unit_per_day: number;
+  max_clients_day: number;
+}
+
+export interface BusinessContext {
+  tipo: "nuevo" | "traspaso";
+  capital_inicial?: number;
+  capacidad_operativa?: number;
+}
+
+// ── Validación LLM (v3) ────────────────────────────────────────────────────
+export interface ProblemaDetectado {
+  tipo: string;
+  descripcion: string;
+  impacto: "alto" | "medio" | "bajo";
+}
+
+export interface AjusteRecomendado {
+  variable: string;
+  accion: "reducir" | "aumentar" | "revisar";
+  rango_sugerido: string;
+  motivo: string;
+}
+
+export interface ChecksDetallados {
+  capacidad: string;
+  costes: string;
+  margenes: string;
+  roi: string;
+  payback: string;
+}
+
+export interface ValidacionFinanciera {
+  coherencia_global: "alta" | "media" | "baja";
+  veredicto: "fiable" | "optimista" | "no_creible";
+  problemas_detectados: ProblemaDetectado[];
+  ajustes_recomendados: AjusteRecomendado[];
+  supuestos_peligrosos: string[];
+  checks_detallados: ChecksDetallados;
+}
+
 export interface FinancieroResponse {
-  parametros: Record<string, ParametroFinanciero>;
+  parametros: Record<string, ParametroResponse>;
   inversion_total: number;
   desglose_inversion: Record<string, number>;
   ingresos_anuales_conservador: number;
+  ingresos_anuales_base?: number;
   ingresos_anuales_optimista: number;
   margen_bruto_pct: number;
   ebitda_anual_conservador: number;
+  ebitda_anual_base?: number;
   ebitda_anual_optimista: number;
   roi_3a_conservador: number;
+  roi_3a_base?: number;
   roi_3a_optimista: number;
   payback_meses_conservador: number;
+  payback_meses_base?: number;
   payback_meses_optimista: number;
   breakeven_clientes_dia: number;
   proyeccion: ProyeccionMes[];
   margen_sector_tipico: number;
   alquiler_sobre_ventas_pct: number;
   alerta_alquiler: boolean;
+  // Bloques v2
+  decision?: DecisionBlock;
+  economia_base?: EconomiaBase;
+  estructura_costes?: EstructuraCostes;
+  break_even?: BreakEvenInfo;
+  metricas_clave?: MetricasClave;
+  riesgos?: Riesgo[];
+  insights?: Insight[];
+  modelo_demanda?: ModeloDemanda;
+  // Contexto v3
+  business_model_type?: string;
+  correcciones_aplicadas?: CorreccionAplicada[];
+  capacity_model?: CapacityModelInfo;
+  tipo_negocio?: "nuevo" | "traspaso";
+  validation_flags?: string[];
+  ocupacion_efectiva?: number;
+  validacion_financiera?: ValidacionFinanciera;
 }
 
 export interface LocalDetalleResponse {

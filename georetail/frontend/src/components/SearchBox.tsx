@@ -3,7 +3,10 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { api } from "@/lib/api";
 import type { ZonaPreview } from "@/lib/types";
+import QuestionnaireForm from "./QuestionnaireForm";
 import styles from "./SearchBox.module.css";
+
+type SearchMode = "texto" | "test";
 
 interface Props {
   onResults: (zonas: ZonaPreview[], sessionId: string) => void;
@@ -32,6 +35,7 @@ export default function SearchBox({
   onOpenChange,
 }: Props) {
   const [open, setOpen]       = useState(false);
+  const [mode, setMode]       = useState<SearchMode>("texto");
   const [input, setInput]     = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
@@ -218,7 +222,31 @@ export default function SearchBox({
       {open && (
         <div className={styles.panel}>
 
-          {/* Cuestionario header */}
+          {/* Tabs: Texto libre | Cuestionario tipo test */}
+          {!cuestionario?.active && (
+            <div className={styles.modeTabs} role="tablist" aria-label="Modo de búsqueda">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === "texto"}
+                className={`${styles.modeTab} ${mode === "texto" ? styles.modeTabActive : ""}`}
+                onClick={() => { setMode("texto"); setError(""); }}
+              >
+                ✍️ Texto libre
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === "test"}
+                className={`${styles.modeTab} ${mode === "test" ? styles.modeTabActive : ""}`}
+                onClick={() => { setMode("test"); setError(""); }}
+              >
+                📋 Cuestionario
+              </button>
+            </div>
+          )}
+
+          {/* Cuestionario adaptativo (LLM señal) — solo rama texto */}
           {cuestionario?.active && (
             <div className={styles.cuestionarioHeader}>
               <div className={styles.cuestionarioProgress}>
@@ -231,43 +259,61 @@ export default function SearchBox({
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className={styles.form}>
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                cuestionario?.active
-                  ? "Escribe tu respuesta..."
-                  : "Describe tu negocio: tipo, público, estilo..."
-              }
-              rows={3}
-              disabled={loading}
-              className={styles.textarea}
+          {mode === "test" && !cuestionario?.active ? (
+            <QuestionnaireForm
+              sessionId={sessionId}
+              loading={loading}
+              setLoading={setLoading}
+              onResults={(zonas, sid) => {
+                onResults(zonas, sid);
+                setInput("");
+                setCuestionario(null);
+                openSearchBox(false);
+              }}
+              onError={(msg) => setError(msg)}
+              onCuestionarioSenal={(pregunta, progreso, sid) => {
+                setCuestionario({ active: true, pregunta, progreso, sessionId: sid });
+              }}
             />
-            <div className={styles.formActions}>
-              <button
-                type="submit"
-                disabled={loading || !input.trim()}
-                className={`btn btn-primary ${styles.sendBtn}`}
-              >
-                {loading
-                  ? <><div className="spinner" /><span>Analizando...</span></>
-                  : cuestionario?.active ? "Responder →" : "Buscar ubicación →"
+          ) : (
+            <form onSubmit={handleSubmit} className={styles.form}>
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  cuestionario?.active
+                    ? "Escribe tu respuesta..."
+                    : "Describe tu negocio: tipo, público, estilo..."
                 }
-              </button>
-              {cuestionario?.active && (
+                rows={3}
+                disabled={loading}
+                className={styles.textarea}
+              />
+              <div className={styles.formActions}>
                 <button
-                  type="button"
-                  onClick={cancelarCuestionario}
-                  className={styles.cancelBtn}
+                  type="submit"
+                  disabled={loading || !input.trim()}
+                  className={`btn btn-primary ${styles.sendBtn}`}
                 >
-                  Cancelar
+                  {loading
+                    ? <><div className="spinner" /><span>Analizando...</span></>
+                    : cuestionario?.active ? "Responder →" : "Buscar ubicación →"
+                  }
                 </button>
-              )}
-            </div>
-          </form>
+                {cuestionario?.active && (
+                  <button
+                    type="button"
+                    onClick={cancelarCuestionario}
+                    className={styles.cancelBtn}
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
 
           {error && (
             <div className={styles.error}>
@@ -279,7 +325,7 @@ export default function SearchBox({
             </div>
           )}
 
-          {!cuestionario?.active && !hasResults && examples && examples.length > 0 && (
+          {mode === "texto" && !cuestionario?.active && !hasResults && examples && examples.length > 0 && (
             <div className={styles.examples}>
               <div className={styles.examplesLabel}>Ejemplos</div>
               <div className={styles.exampleChips}>
