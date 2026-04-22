@@ -479,8 +479,8 @@ _RESTRICCIONES_DISTRITO: dict[str, dict[str, str]] = {
 
 _CACHE_TTL = 60 * 60 * 24 * 30  # 30 días — las regulaciones no cambian a diario
 
-_SISTEMA_LEGAL = """Eres un asesor legal especializado en apertura de negocios en Barcelona.
-Tu tarea es generar un roadmap burocrático detallado y preciso para abrir un negocio en Barcelona.
+_SISTEMA_LEGAL = """Eres un asesor experto en apertura de negocios y licencias de actividad en Barcelona. \
+Tu tarea es generar un "Roadmap Burocrático" estructurado, claro y útil para un emprendedor.
 Responde SIEMPRE en español. Sé concreto, útil y honesto sobre los riesgos.
 Responde ÚNICAMENTE con JSON válido, sin texto adicional ni markdown."""
 
@@ -491,45 +491,77 @@ def _build_prompt(
     sector_datos: dict,
     restriccion_texto: Optional[str],
 ) -> str:
-    restricciones_str = json.dumps(sector_datos.get("restricciones_geograficas", []), ensure_ascii=False)
+    zona_restringida = restriccion_texto is not None
+    zona_str = "SÍ" if zona_restringida else "NO"
     licencias_str = json.dumps(sector_datos.get("licencias_necesarias", []), ensure_ascii=False)
     req_local_str = json.dumps(sector_datos.get("requisitos_local", []), ensure_ascii=False)
     req_op_str = json.dumps(sector_datos.get("requisitos_operativos", []), ensure_ascii=False)
-    zona_restringida = restriccion_texto is not None
+    restricciones_str = json.dumps(sector_datos.get("restricciones_geograficas", []), ensure_ascii=False)
+    modelo_legal = sector_datos.get("modelo_legal") or "empresa/autónomo estándar"
 
-    restriccion_block = f"""
-RESTRICCIÓN ESPECÍFICA DE ZONA:
-{restriccion_texto}
-""" if restriccion_texto else "No hay restricciones especiales conocidas para esta zona concreta."
+    alerta_zona_block = ""
+    if zona_restringida:
+        alerta_zona_block = f"""
+⚠️ AVISO IMPORTANTE PARA TU LOCAL EN {distrito}: Has seleccionado un local en una zona con \
+Plan de Usos Restrictivo o Moratoria. Restricción específica: {restriccion_texto}
+- Consecuencia 1: El proceso de licencia puede ser más lento y caro.
+- Consecuencia 2: Riesgo real de denegación si hay muchos locales del mismo tipo en el entorno.
+Incluye esta alerta en el primer trámite de la Fase 1."""
 
-    return f"""Genera un roadmap burocrático completo para abrir el siguiente negocio en Barcelona:
+    return f"""[ROL]
+Eres un asesor experto en apertura de negocios y licencias de actividad en Barcelona. \
+Genera un "Roadmap Burocrático" estructurado para el siguiente emprendedor.
 
-NEGOCIO: {tipo_negocio}
-DISTRITO: {distrito}
-ZONA RESTRINGIDA: {"SÍ" if zona_restringida else "NO"}
-{restriccion_block}
+[VARIABLES DE ENTRADA]
+1. TIPO_DE_NEGOCIO: {tipo_negocio}
+2. DISTRITO: {distrito}
+3. ZONA_RESTRINGIDA: {zona_str}
+{alerta_zona_block}
 
-DATOS LEGALES BASE (usa esto como fuente de verdad):
+[DATOS LEGALES BASE — usa esto como fuente de verdad]
 Licencias necesarias: {licencias_str}
 Requisitos del local: {req_local_str}
 Requisitos operativos: {req_op_str}
-Restricciones geográficas generales: {restricciones_str}
-Modelo legal especial: {sector_datos.get("modelo_legal") or "ninguno"}
+Restricciones geográficas: {restricciones_str}
+Modelo legal especial: {modelo_legal}
 
-Devuelve EXACTAMENTE este JSON (sin texto adicional):
+[EQUIPO EXTERNO IMPRESCINDIBLE]
+Siempre incluye estos 3 perfiles con costes reales para Barcelona 2026:
+1. Gestoría / Asesoría Fiscal — alta empresa, nóminas, impuestos trimestrales (50-80€/mes)
+2. Arquitecto o Ingeniero Técnico — proyecto técnico visado (imprescindible para licencia actividad)
+3. Servicio de Prevención Ajeno — obligatorio al contratar el primer empleado
+
+[ESTRUCTURA DE FASES]
+Crea exactamente 5 fases en este orden:
+- Fase 1: Viabilidad previa (Informe de Compatibilidad Urbanística y restricciones de zona)
+- Fase 2: Constitución legal y fiscal (alta empresa/autónomo, NIF, IAE, RETA)
+- Fase 3: Licencias de actividad y local (proyecto técnico, licencia actividad, permisos sectoriales)
+- Fase 4: Puesta a punto operativa (protección de datos, apertura centro trabajo, obligaciones Cataluña)
+- Fase 5: Checklist de apertura (inspección, certificados, seguros, apertura oficial)
+
+[INSTRUCCIONES DE CALIDAD]
+- Cada trámite debe tener: titulo, nombre_oficial, que_es (lenguaje llano), donde, documentos, tiempo_estimado, coste_estimado, enlace (URL real oficial), alerta (solo si hay riesgo real, sino null)
+- Costes y tiempos realistas para Barcelona 2026
+- Epígrafe IAE correcto para el tipo de negocio
+- Forma jurídica: incluye consejo autónomo vs SL con ventajas/desventajas
+- Si ZONA_RESTRINGIDA=SÍ, el trámite 1 debe tener alerta con el texto de restricción
+- proximos_pasos: 3-5 acciones urgentes ordenadas por prioridad
+
+[FORMATO DE RESPUESTA — JSON EXACTO]
 {{
   "tipo_negocio": "{tipo_negocio}",
   "distrito": "{distrito}",
   "zona_restringida": {str(zona_restringida).lower()},
-  "restriccion_detalle": {json.dumps(restriccion_texto or "")},
   "equipo_externo": [
-    {{"nombre": "...", "descripcion": "...", "coste_aprox": "..."}}
+    {{"nombre": "Gestoría / Asesoría Fiscal", "descripcion": "...", "coste_aprox": "50-80€/mes"}},
+    {{"nombre": "Arquitecto o Ingeniero Técnico", "descripcion": "...", "coste_aprox": "..."}},
+    {{"nombre": "Servicio de Prevención Ajeno", "descripcion": "...", "coste_aprox": "..."}}
   ],
   "fases": [
     {{
-      "id": "fase_1",
+      "id": "viabilidad",
       "numero": 1,
-      "titulo": "...",
+      "titulo": "Viabilidad previa",
       "descripcion": "...",
       "tramites": [
         {{
@@ -541,27 +573,26 @@ Devuelve EXACTAMENTE este JSON (sin texto adicional):
           "documentos": ["..."],
           "tiempo_estimado": "...",
           "coste_estimado": "...",
-          "enlace": "https://...",
-          "alerta": "..."
+          "enlace": "https://seuelectronica.ajuntament.barcelona.cat/es/tramits-telematics",
+          "alerta": {json.dumps(restriccion_texto) if zona_restringida else "null"}
         }}
       ]
     }}
   ],
   "costes_resumen": [
-    {{"concepto": "...", "coste": "..."}}
+    {{"concepto": "Gestoría (apertura + 1er año)", "coste": "600-900€"}},
+    {{"concepto": "Proyecto Técnico Visado", "coste": "..."}},
+    {{"concepto": "Tasas Ayuntamiento (Licencia Actividad)", "coste": "..."}},
+    {{"concepto": "Legalización suministros (boletín eléctrico)", "coste": "200-600€"}},
+    {{"concepto": "Seguros obligatorios (Resp. Civil, 1er año)", "coste": "..."}},
+    {{"concepto": "TOTAL APROX. EN PAPELEO", "coste": "..."}}
   ],
-  "proximos_pasos": ["..."]
-}}
-
-INSTRUCCIONES:
-- Crea 3-5 fases lógicas (viabilidad, constitución, licencias, operación, apertura)
-- Cada fase debe tener 1-4 trámites concretos y accionables
-- Los costes deben ser realistas para Barcelona 2026
-- Los enlaces deben ser URLs reales del Ajuntament o organismos oficiales
-- Si zona_restringida=true, añade una alerta clara en el primer trámite
-- El campo "alerta" solo se rellena cuando hay algo importante a advertir (puede ser null)
-- equipo_externo: incluye gestoría, arquitecto/ingeniero técnico, y prevención de riesgos si aplica
-- proximos_pasos: 3-5 acciones inmediatas ordenadas por urgencia"""
+  "proximos_pasos": [
+    "Solicitar Informe de Compatibilidad Urbanística ANTES de firmar el alquiler.",
+    "...",
+    "..."
+  ]
+}}"""
 
 
 @router.post(
