@@ -87,6 +87,10 @@ const DIMS: Array<{ key: keyof ScoresDimensiones; label: string; Icon: () => JSX
 
 interface Props {
   scores: ScoresDimensiones;
+  /** Callback opcional: invocado con la key de la dimensión cuando el usuario
+   *  pulsa su barra. Si se proporciona, las barras se renderizan como botones
+   *  clickables; si no, quedan como lectura pura. */
+  onDimensionClick?: (dim: keyof ScoresDimensiones) => void;
 }
 
 // Hex values for inline styles (CSS vars can't be used in template-string color mixing)
@@ -95,7 +99,7 @@ const SCORE_COLOR = (pct: number) =>
 const SCORE_COLOR_DIM = (pct: number) =>
   pct >= 75 ? "#10B98166" : pct >= 50 ? "#F59E0B66" : "#EF444466";
 
-export default function ScoreBars({ scores }: Props) {
+export default function ScoreBars({ scores, onDimensionClick }: Props) {
   const dims = DIMS.filter(d => scores[d.key] !== undefined && scores[d.key] !== null);
   if (dims.length === 0) return null;
 
@@ -106,8 +110,9 @@ export default function ScoreBars({ scores }: Props) {
         const pct = Math.min(100, Math.max(0, val));
         const hex = SCORE_COLOR(pct);
         const dim = SCORE_COLOR_DIM(pct);
-        return (
-          <div key={key} className={styles.bar}>
+
+        const content = (
+          <>
             <div className={styles.barRow}>
               <span className={styles.barIcon}><Icon /></span>
               <span className={styles.barLabel}>{label}</span>
@@ -123,6 +128,25 @@ export default function ScoreBars({ scores }: Props) {
                 }}
               />
             </div>
+          </>
+        );
+
+        if (onDimensionClick) {
+          return (
+            <button
+              key={key}
+              type="button"
+              className={`${styles.bar} ${styles.barClickable}`}
+              onClick={() => onDimensionClick(key)}
+              aria-label={`Ver detalle de ${label}`}
+            >
+              {content}
+            </button>
+          );
+        }
+        return (
+          <div key={key} className={styles.bar}>
+            {content}
           </div>
         );
       })}

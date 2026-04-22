@@ -319,7 +319,9 @@ _OSM_TIPO_MAP: dict[str, str] = {
 
 async def _descargar_overpass() -> list[dict]:
     """Consulta OSM Overpass per a venues culturals i musicals a Barcelona."""
-    async with httpx.AsyncClient(timeout=_OVERPASS_TIMEOUT, follow_redirects=True) as client:
+    # Overpass rechaza POST sin User-Agent con HTTP 406 Not Acceptable.
+    headers = {"User-Agent": "GeoRetail/1.0 (barcelona; venues ocio cultural)"}
+    async with httpx.AsyncClient(timeout=_OVERPASS_TIMEOUT, follow_redirects=True, headers=headers) as client:
         for url in _OVERPASS_URLS:
             try:
                 r = await client.post(url, data={"data": _OVERPASS_QUERY})

@@ -244,6 +244,44 @@ export interface ZonaDetalle {
   resumen_global_llm?: string | null;
 }
 
+/** Detalle narrativo de la dimensión Turismo (endpoint lazy, drawer). */
+export interface DimensionTurismoDetalle {
+  zona_id: string;
+  zona_nombre: string;
+  radio_m: number;
+  score_turismo: number | null;
+  resumen: string;
+  hechos: {
+    landmarks_count: number;
+    hoteles_count: number;
+    venues_count: number;
+    airbnb_density_500m: number | null;
+    booking_hoteles_500m: number | null;
+    dist_playa_m: number | null;
+    dist_landmark_top3_m: number | null;
+    score_turismo_hut: number | null;
+  };
+  landmarks: Array<{
+    nombre: string;
+    distancia_m: number;
+    wikidata_id: string | null;
+    peso: number | null;
+  }>;
+  hoteles: Array<{
+    nombre: string;
+    tipo: string;
+    estrellas: number | null;
+    rating: number | null;
+    distancia_m: number;
+  }>;
+  venues: Array<{
+    nombre: string;
+    tipo: string;
+    fuente: string | null;
+    distancia_m: number;
+  }>;
+}
+
 export interface BuscarRequest {
   descripcion: string;
   session_id?: string;

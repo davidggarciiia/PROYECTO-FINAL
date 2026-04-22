@@ -6,6 +6,28 @@
 
 .bar { display: flex; flex-direction: column; gap: 6px; }
 
+/* Variant: barra clickable (renderizada como <button>). Reset nativo +
+   hover que pinta un fondo sutil e indica que se puede abrir. */
+.barClickable {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 6px 8px;
+  margin: -6px -8px;
+  border-radius: 10px;
+  cursor: pointer;
+  width: auto;
+  text-align: left;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.barClickable:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+.barClickable:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+}
+
 .barRow {
   display: flex;
   align-items: center;

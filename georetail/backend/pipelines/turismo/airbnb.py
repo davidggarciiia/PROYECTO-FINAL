@@ -22,6 +22,7 @@ import csv
 import gzip
 import io
 import logging
+import os
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -113,42 +114,54 @@ async def ejecutar() -> dict:
 
 async def _descargar_listings() -> list[dict]:
     """
-    Descarga el CSV.gz de InsideAirbnb, lo descomprime en memoria y parsea
-    los campos relevantes. Devuelve lista de dicts con lat, lng y ocupacion.
+    Carga el CSV de InsideAirbnb: primero intenta el archivo local limpiado
+    en `$CSV_DIR/turisme/listings.csv.gz` (generado por `scripts/limpiar_airbnb`),
+    y solo si no existe prueba las URLs públicas.
 
-    Fix HTTP 403: se prueban múltiples URLs con headers de navegador completos
-    (Referer + Origin de insideairbnb.com) hasta encontrar una que responda 200.
-    Si todas fallan con 403, se documenta el error y se devuelve lista vacía.
+    Fix HTTP 403 InsideAirbnb: el servidor público bloquea acceso directo;
+    por eso el camino preferido en producción es la descarga manual + limpieza
+    DuckDB que deja el .gz en el volumen compartido.
     """
     raw_gz: bytes = b""
 
-    async with httpx.AsyncClient(
-        timeout=_TIMEOUT_S,
-        follow_redirects=True,
-        headers=_AIRBNB_HEADERS,
-    ) as client:
-        for url in _AIRBNB_URLS:
-            try:
-                logger.info("Intentando InsideAirbnb URL: %s", url)
-                r = await client.get(url)
-                if r.status_code == 200:
-                    raw_gz = r.content
-                    logger.info("InsideAirbnb descarga OK desde %s (%d bytes)", url, len(raw_gz))
-                    break
-                elif r.status_code == 403:
-                    logger.warning(
-                        "InsideAirbnb HTTP 403 para %s — "
-                        "el servidor bloquea acceso directo. "
-                        "Para datos actualizados, descargar manualmente desde "
-                        "http://insideairbnb.com/get-the-data/ y colocar en /data/listings.csv.gz",
-                        url,
-                    )
-                else:
-                    logger.warning("InsideAirbnb HTTP %d para %s", r.status_code, url)
-            except httpx.TimeoutException:
-                logger.error("Timeout descargando InsideAirbnb %s (>%ds)", url, _TIMEOUT_S)
-            except Exception as exc:
-                logger.error("Error descargando InsideAirbnb %s: %s", url, exc)
+    # 1. Preferencia: CSV local ya limpiado por scripts/limpiar_airbnb.
+    csv_dir = Path(os.environ.get("CSV_DIR", "/data/csv"))
+    local_cleaned = csv_dir / "turisme" / "listings.csv.gz"
+    if local_cleaned.exists() and local_cleaned.stat().st_size > 1000:
+        raw_gz = local_cleaned.read_bytes()
+        logger.info(
+            "InsideAirbnb: usando CSV local limpiado %s (%d bytes)",
+            local_cleaned, len(raw_gz),
+        )
+
+    # 2. Fallback HTTP: solo si no teníamos el CSV local.
+    if not raw_gz:
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT_S,
+            follow_redirects=True,
+            headers=_AIRBNB_HEADERS,
+        ) as client:
+            for url in _AIRBNB_URLS:
+                try:
+                    logger.info("Intentando InsideAirbnb URL: %s", url)
+                    r = await client.get(url)
+                    if r.status_code == 200:
+                        raw_gz = r.content
+                        logger.info("InsideAirbnb descarga OK desde %s (%d bytes)", url, len(raw_gz))
+                        break
+                    elif r.status_code == 403:
+                        logger.warning(
+                            "InsideAirbnb HTTP 403 para %s — el servidor bloquea acceso directo. "
+                            "Descargar manualmente desde http://insideairbnb.com/get-the-data/ "
+                            "y procesar con `python -m scripts.limpiar_airbnb`.",
+                            url,
+                        )
+                    else:
+                        logger.warning("InsideAirbnb HTTP %d para %s", r.status_code, url)
+                except httpx.TimeoutException:
+                    logger.error("Timeout descargando InsideAirbnb %s (>%ds)", url, _TIMEOUT_S)
+                except Exception as exc:
+                    logger.error("Error descargando InsideAirbnb %s: %s", url, exc)
 
     if not raw_gz:
         # Intentar leer desde archivo local si existe (descarga manual)

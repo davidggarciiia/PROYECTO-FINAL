@@ -112,7 +112,9 @@ async def _osm_alojamientos() -> list[dict]:
     """
     resultados: list[dict] = []
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
+    # Overpass rechaza POST sin User-Agent con HTTP 406 Not Acceptable.
+    headers = {"User-Agent": "GeoRetail/1.0 (barcelona; booking lodging)"}
+    async with httpx.AsyncClient(timeout=_TIMEOUT_S, headers=headers) as client:
         for url in _OVERPASS_URLS:
             try:
                 resp = await client.post(url, data={"data": query})

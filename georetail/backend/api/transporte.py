@@ -74,26 +74,30 @@ async def transporte_zona(
         rows = await conn.fetch(
             """
             WITH zc AS (
-                SELECT ST_Centroid(geometria)::geography AS centro
+                -- Usamos el polígono completo de la zona (no el centroide)
+                -- para que ST_Distance devuelva la distancia al borde más
+                -- cercano. Así una parada que caiga dentro de la zona
+                -- obtiene distancia 0 y no queda fuera del radio.
+                SELECT geometria::geography AS poly
                 FROM zonas WHERE id = $1
             )
             SELECT l.tipo,
                    l.codigo,
                    l.nombre,
                    l.color_hex AS color,
-                   MIN(ST_Distance(p.geometria::geography, zc.centro)) AS dist_min_m,
+                   MIN(ST_Distance(p.geometria::geography, zc.poly)) AS dist_min_m,
                    JSONB_AGG(
                        JSONB_BUILD_OBJECT(
                            'nombre',      p.nombre,
-                           'distancia_m', ST_Distance(p.geometria::geography, zc.centro),
+                           'distancia_m', ST_Distance(p.geometria::geography, zc.poly),
                            'tipo',        l.tipo
                        )
-                       ORDER BY ST_Distance(p.geometria::geography, zc.centro) ASC
+                       ORDER BY ST_Distance(p.geometria::geography, zc.poly) ASC
                    ) AS paradas
             FROM zc, lineas_transporte l
             JOIN paradas_lineas pl      ON pl.linea_id = l.id
             JOIN paradas_transporte p   ON p.id        = pl.parada_id
-            WHERE ST_DWithin(p.geometria::geography, zc.centro, $2)
+            WHERE ST_DWithin(p.geometria::geography, zc.poly, $2)
             GROUP BY l.id, l.tipo, l.codigo, l.nombre, l.color_hex
             ORDER BY dist_min_m ASC
             """,

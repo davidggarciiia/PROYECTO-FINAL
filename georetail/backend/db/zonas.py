@@ -434,6 +434,7 @@ async def get_competencia_zona(zona_id: str, sector: str, radio_m: int = 500,
         _es_vulnerable,
         SECTORES_COMPETIDORES,
         SECTORES_COMPLEMENTARIOS,
+        SINERGIA_MAX_M,
     )
 
     async with get_db() as conn:
@@ -548,7 +549,13 @@ async def get_competencia_zona(zona_id: str, sector: str, radio_m: int = 500,
             precio_nivel=row.get("precio_nivel"),
         )
         es_directo = sc in sectores_comp
-        es_compl   = sc in sectores_compl and not es_directo
+        # Sinergia real sólo si el complementario está lo bastante cerca
+        # como para formar eje comercial compacto con la zona objetivo.
+        es_compl   = (
+            sc in sectores_compl
+            and not es_directo
+            and neg.distancia_m <= SINERGIA_MAX_M
+        )
         vulnerable = _es_vulnerable(neg)
 
         row_sub = row.get("subsector_codigo")

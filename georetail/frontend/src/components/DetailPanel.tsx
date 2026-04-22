@@ -16,6 +16,7 @@ import FinancialPanel from "./FinancialPanel";
 import LegalPanel from "./LegalPanel";
 import ScoreBars from "./ScoreBars";
 import TransportePanel from "./TransportePanel";
+import DimensionDrawer from "./DimensionDrawer";
 import styles from "./DetailPanel.module.css";
 
 const CompetenciaPanel = dynamic(() => import("./CompetenciaPanel"), {
@@ -194,6 +195,8 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
   const [competencia, setCompetencia] = useState<CompetenciaDetalle | null>(null);
   const [loadingComp, setLoadingComp] = useState(false);
   const [competenciaError, setCompetenciaError] = useState<string | null>(null);
+  // Drawer con ingredientes concretos (landmarks, venues...) de una dimensión.
+  const [activeDim, setActiveDim] = useState<keyof ScoresDimensiones | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const dragState = useRef({ active: false, startX: 0, startW: DEFAULT_W });
 
@@ -407,7 +410,16 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
                     </div>
                   </div>
                   <div className={styles.sectionCard}>
-                    {z.scores_dimensiones && <ScoreBars scores={z.scores_dimensiones} />}
+                    {z.scores_dimensiones && (
+                      <ScoreBars
+                        scores={z.scores_dimensiones}
+                        onDimensionClick={(dim) => setActiveDim(dim)}
+                      />
+                    )}
+                    <p className={styles.scoreBarsHint}>
+                      Pulsa una dimensión para ver los ingredientes concretos
+                      (landmarks, hoteles, venues…).
+                    </p>
                   </div>
                 </section>
 
@@ -559,6 +571,13 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
 
         {tab === "legal" && <LegalPanel zona={zona} sessionId={sessionId} />}
       </div>
+
+      <DimensionDrawer
+        zona_id={zona.zona_id}
+        session_id={sessionId}
+        dimension={activeDim}
+        onClose={() => setActiveDim(null)}
+      />
     </div>
   );
 }

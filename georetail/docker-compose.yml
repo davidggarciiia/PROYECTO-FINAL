@@ -60,6 +60,7 @@ services:
       CELERY_BROKER_URL:      redis://redis:6379/1
       CELERY_RESULT_BACKEND:  redis://redis:6379/2
       GOSOM_BASE_URL:         http://gosom-scraper:8080
+      CSV_DIR:                /data/csv/_cleaned
     ports:
       - "8000:8000"
     volumes:
@@ -89,6 +90,7 @@ services:
       CELERY_BROKER_URL:      redis://redis:6379/1
       CELERY_RESULT_BACKEND:  redis://redis:6379/2
       GOSOM_BASE_URL:         http://gosom-scraper:8080
+      CSV_DIR:                /data/csv/_cleaned
     volumes:
       - ./backend:/app
       - models_data:/data/models

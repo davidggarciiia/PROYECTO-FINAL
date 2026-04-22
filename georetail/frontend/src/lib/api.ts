@@ -127,6 +127,13 @@ export const api = {
     return apiFetch<CompetenciaDetalle>(`/api/competencia/${encodeURIComponent(zona_id)}?${params.toString()}`);
   },
 
+  dimensionTurismo: async (zona_id: string, session_id: string) => {
+    const params = new URLSearchParams({ session_id });
+    return apiFetch<import("./types").DimensionTurismoDetalle>(
+      `/api/dimension/turismo/${encodeURIComponent(zona_id)}?${params.toString()}`,
+    );
+  },
+
   financiero: async (
     zona_id: string,
     session_id: string,

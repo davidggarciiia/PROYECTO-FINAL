@@ -56,14 +56,24 @@ SECTORES_COMPETIDORES: dict[str, list[str]] = {
     "shisha_lounge": ["shisha_lounge", "restauracion"],
 }
 
-# Sectores que COMPLEMENTAN (generan tráfico del mismo target)
+# Sectores que COMPLEMENTAN (generan tráfico del mismo target real).
+# Regla: sólo pares con público objetivo compartido y decisión de consumo
+# encadenada. Se descartan asociaciones débiles tipo moda↔restauración que
+# sólo comparten "paseante" — esa señal ya la captura flujo_peatonal.
+# Además, db.zonas.get_competencia_zona exige distancia < SINERGIA_MAX_M
+# para clasificar un negocio como sinérgico en la lista del panel.
 SECTORES_COMPLEMENTARIOS: dict[str, list[str]] = {
-    "restauracion":  ["moda", "estetica", "shisha_lounge"],
-    "tatuajes":      ["moda", "shisha_lounge"],
-    "moda":          ["estetica", "restauracion"],
-    "estetica":      ["moda", "restauracion"],
-    "shisha_lounge": ["restauracion", "moda", "estetica"],
+    "restauracion":  ["shisha_lounge"],            # ocio nocturno encadenado
+    "tatuajes":      ["moda", "estetica"],         # cultura urbana + cuidado imagen
+    "moda":          ["estetica"],                 # imagen personal
+    "estetica":      ["moda", "tatuajes"],         # imagen personal + cultura urbana
+    "shisha_lounge": ["restauracion"],             # ocio nocturno encadenado
 }
+
+# Umbral de distancia para clasificar un complementario como "sinérgico real"
+# en la lista del panel. Más allá del radio típico de un eje comercial compacto
+# (esquina, plaza, calle corta) la sinergia de público se diluye.
+SINERGIA_MAX_M = 200
 
 # Umbral para considerar un competidor "vulnerable" (desplazable)
 RATING_VULNERABLE = 3.5

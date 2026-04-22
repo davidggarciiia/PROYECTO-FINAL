@@ -252,6 +252,13 @@
   padding: 18px;
 }
 
+.scoreBarsHint {
+  margin: 14px 0 0 0;
+  font-size: 11px;
+  color: var(--text-subtle);
+  font-style: italic;
+}
+
 .summaryText {
   margin: 0;
   font-size: 15px;

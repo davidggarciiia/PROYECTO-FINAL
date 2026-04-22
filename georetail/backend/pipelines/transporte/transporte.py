@@ -120,37 +120,45 @@ async def _cargar_lineas() -> int:
 
 
 async def _cargar_paradas() -> int:
-    """Descarga y guarda todas las paradas desde /parades."""
+    """Descarga y guarda todas las paradas: bus (/parades) + metro (/estacions).
+
+    TMB expone endpoints separados por modo. /parades es bus-only y /estacions
+    lista las estaciones de metro con coordenadas. Tram y FGC no están bajo
+    esta API — pertenecen a operadores externos (TRAM S.A., FGC Generalitat)
+    y se cargan vía sus pipelines propios cuando existen.
+    """
     if not settings.TMB_APP_ID or not settings.TMB_APP_KEY:
         return 0
 
     params = {"app_id": settings.TMB_APP_ID, "app_key": settings.TMB_APP_KEY}
     async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.get(f"{_TMB_BASE}/parades", params=params)
-        resp.raise_for_status()
-        paradas = resp.json().get("features", [])
+        # 1. Bus
+        resp_bus = await client.get(f"{_TMB_BASE}/parades", params=params)
+        resp_bus.raise_for_status()
+        bus_feats = resp_bus.json().get("features", [])
+
+        # 2. Metro (estacions)
+        resp_metro = await client.get(f"{_TMB_BASE}/estacions", params=params)
+        metro_feats = (
+            resp_metro.json().get("features", []) if resp_metro.status_code == 200 else []
+        )
 
     async with get_db() as conn:
         n = 0
-        for parada in paradas:
+        # Bus — CODI_PARADA + NOM_PARADA.
+        for parada in bus_feats:
             props = parada.get("properties", {})
-            geom  = parada.get("geometry", {})
-            coords = geom.get("coordinates", [None, None])
-
-            if not coords or coords[0] is None or coords[1] is None:
+            coords = (parada.get("geometry") or {}).get("coordinates") or [None, None]
+            if coords[0] is None or coords[1] is None:
                 continue
-
             lng, lat = float(coords[0]), float(coords[1])
-
             await conn.execute(
                 """
                 INSERT INTO paradas_transporte
                     (id, nombre, lat, lng, geometria, accesible_pmr, fuente)
-                VALUES (
-                    $1, $2, $3, $4,
-                    ST_SetSRID(ST_MakePoint($4, $3), 4326),
-                    $5, 'tmb'
-                )
+                VALUES ($1, $2, $3, $4,
+                        ST_SetSRID(ST_MakePoint($4, $3), 4326),
+                        FALSE, 'tmb')
                 ON CONFLICT (id) DO UPDATE
                 SET nombre = EXCLUDED.nombre,
                     lat    = EXCLUDED.lat,
@@ -160,11 +168,43 @@ async def _cargar_paradas() -> int:
                 str(props.get("CODI_PARADA", "")),
                 str(props.get("NOM_PARADA", "")),
                 lat, lng,
-                False,  # ACCESIBLE_PMR no disponible en este endpoint
             )
             n += 1
 
-    logger.info("Paradas cargadas: %d", n)
+        # Metro — CODI_ESTACIO + NOM_ESTACIO. Usamos un prefijo `m_` para
+        # distinguirlos del bus (códigos numéricos pueden colisionar).
+        for est in metro_feats:
+            props = est.get("properties", {})
+            coords = (est.get("geometry") or {}).get("coordinates") or [None, None]
+            if coords[0] is None or coords[1] is None:
+                continue
+            lng, lat = float(coords[0]), float(coords[1])
+            # Usamos CODI_GRUP_ESTACIO porque es el único identificador que
+            # aparece también en `/linies/metro/{codi}/estacions`; eso permite
+            # que la relación parada-línea y el upsert apunten al mismo id.
+            codi = str(props.get("CODI_GRUP_ESTACIO", "") or props.get("CODI_ESTACIO", ""))
+            if not codi:
+                continue
+            await conn.execute(
+                """
+                INSERT INTO paradas_transporte
+                    (id, nombre, lat, lng, geometria, accesible_pmr, fuente)
+                VALUES ($1, $2, $3, $4,
+                        ST_SetSRID(ST_MakePoint($4, $3), 4326),
+                        FALSE, 'tmb')
+                ON CONFLICT (id) DO UPDATE
+                SET nombre = EXCLUDED.nombre,
+                    lat    = EXCLUDED.lat,
+                    lng    = EXCLUDED.lng,
+                    geometria = EXCLUDED.geometria
+                """,
+                f"m_{codi}",
+                str(props.get("NOM_ESTACIO", "") or ""),
+                lat, lng,
+            )
+            n += 1
+
+    logger.info("Paradas cargadas: %d (bus+metro)", n)
     return n
 
 
@@ -190,20 +230,68 @@ async def _cargar_paradas_por_linea() -> None:
             tipo      = linea["tipo"]
             familia   = _TIPO_FAMILIA.get(tipo, "bus")
 
+            # TMB distingue /parades (bus) vs /estacions (metro). Tram y FGC
+            # no están expuestos por esta API; se saltan sin emitir warning.
+            # Para metro usamos CODI_GRUP_ESTACIO (único común entre el
+            # endpoint global /estacions y el de línea /linies/metro/{codi}/estacions).
+            if tipo == "metro":
+                endpoint = f"{_TMB_BASE}/linies/metro/{codi}/estacions"
+                prefijo_id = "m_"
+                key_codi = "CODI_GRUP_ESTACIO"
+                key_nom  = "NOM_ESTACIO"
+            elif tipo == "bus":
+                endpoint = f"{_TMB_BASE}/linies/bus/{codi}/parades"
+                prefijo_id = ""
+                key_codi = "CODI_PARADA"
+                key_nom  = "NOM_PARADA"
+            else:
+                # tram / fgc / rodalies — sin endpoint TMB.
+                continue
+
             try:
-                resp = await client.get(
-                    f"{_TMB_BASE}/linies/{familia}/{codi}/parades",
-                    params=params,
-                )
+                resp = await client.get(endpoint, params=params)
                 if resp.status_code != 200:
                     continue
 
                 parades = resp.json().get("features", [])
                 async with get_db() as conn:
                     for p in parades:
-                        codi_parada = str(p.get("properties", {}).get("CODI_PARADA", "") or "")
-                        if not codi_parada:
+                        props_p = p.get("properties", {})
+                        geom_p  = p.get("geometry", {}) or {}
+                        codi_bruto = str(props_p.get(key_codi, "") or props_p.get("CODI_GRUP_ESTACIO", "") or "")
+                        if not codi_bruto:
                             continue
+                        codi_parada = f"{prefijo_id}{codi_bruto}"
+
+                        # El endpoint genérico /parades solo devuelve bus. Para
+                        # metro/tram/FGC las paradas llegan aquí por primera
+                        # vez — hay que upsertarlas en paradas_transporte
+                        # antes de registrar la relación, o el JOIN quedará
+                        # huérfano y el panel no mostrará la línea.
+                        coords = geom_p.get("coordinates") or [None, None]
+                        lng_p = coords[0] if len(coords) >= 2 else None
+                        lat_p = coords[1] if len(coords) >= 2 else None
+                        if lat_p is not None and lng_p is not None:
+                            await conn.execute(
+                                """
+                                INSERT INTO paradas_transporte
+                                    (id, nombre, lat, lng, geometria, accesible_pmr, fuente)
+                                VALUES (
+                                    $1, $2, $3, $4,
+                                    ST_SetSRID(ST_MakePoint($4, $3), 4326),
+                                    FALSE, 'tmb'
+                                )
+                                ON CONFLICT (id) DO UPDATE
+                                SET nombre    = EXCLUDED.nombre,
+                                    lat       = EXCLUDED.lat,
+                                    lng       = EXCLUDED.lng,
+                                    geometria = EXCLUDED.geometria
+                                """,
+                                codi_parada,
+                                str(props_p.get(key_nom, "") or ""),
+                                float(lat_p), float(lng_p),
+                            )
+
                         await conn.execute(
                             """
                             INSERT INTO paradas_lineas (parada_id, linea_id)

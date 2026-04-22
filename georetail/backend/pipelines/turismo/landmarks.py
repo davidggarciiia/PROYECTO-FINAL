@@ -127,7 +127,9 @@ async def _overpass_landmarks() -> list[dict]:
     out center tags;
     """
     data: Optional[dict] = None
-    async with httpx.AsyncClient(timeout=_TIMEOUT_S + 10) as client:
+    # Overpass rechaza POST sin User-Agent con HTTP 406 Not Acceptable.
+    headers = {"User-Agent": "GeoRetail/1.0 (barcelona; tourism landmarks)"}
+    async with httpx.AsyncClient(timeout=_TIMEOUT_S + 10, headers=headers) as client:
         for url in _OVERPASS_URLS:
             try:
                 resp = await client.post(url, data={"data": query})

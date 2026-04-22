@@ -13,15 +13,15 @@ interface Props {
 type CompTab = "amenaza" | "oportunidad" | "sinergicos";
 
 /**
- * MiniMap — mapa Leaflet con:
- *  - Buffers concéntricos 150/300/500 m alrededor de la zona objetivo.
- *  - Un marker por cada competidor (rojo amenaza, verde oportunidad, azul sinérgico).
- *    Se pintan cuando el backend envía lat/lng individuales (tras migración 029).
- *  - FIFA-style links animados:
- *      púrpura — clúster de "directos subsector" a <150 m entre sí
- *      verde   — zona ↔ sus sinérgicos más cercanos
- *      rojo    — anillo rotante sobre las 3 "cadenas dominantes" (top num_resenas)
- *  - Respeta @media (prefers-reduced-motion: reduce).
+ * MiniMap — mapa Leaflet minimal y legible:
+ *  - Dos buffers (150 m y 500 m) con etiqueta de radio.
+ *  - Punto azul pulsante = zona objetivo.
+ *  - Un círculo por competidor, color por tipo:
+ *      rojo  = amenaza (directa no vulnerable)
+ *      verde = oportunidad (directa desplazable)
+ *      azul  = sinérgico (complementario a <200 m)
+ *  - Click en un competidor abre popup con nombre, rating, distancia y botón
+ *    "Ver en Google Maps".
  */
 function MiniMap({ zona, amenaza, oportunidad, sinergicos }: {
   zona: ZonaPreview;
@@ -42,39 +42,73 @@ function MiniMap({ zona, amenaza, oportunidad, sinergicos }: {
     const map = L.map(mapRef.current, {
       center: [zona.lat, zona.lng],
       zoom: 16,
-      zoomControl: false,
+      zoomControl: true,
       attributionControl: false,
     });
     mapInstanceRef.current = map;
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
 
-    // ── Buffers concéntricos 150/300/500 m (los tres radios del scorer) ─────
-    [500, 300, 150].forEach((r, i) => {
-      L.circle([zona.lat, zona.lng], {
-        radius: r,
-        fillColor: "rgba(59,130,246,0.04)",
-        color: "rgba(59,130,246,0.35)",
-        weight: 1,
-        opacity: 0.55 - i * 0.1,
-        fillOpacity: 0.05 - i * 0.012,
-        dashArray: "4,4",
-      }).addTo(map);
-    });
+    // Buffers 150 / 500 m — sólo dos para no saturar.
+    L.circle([zona.lat, zona.lng], {
+      radius: 500,
+      fillColor: "rgba(59,130,246,0.03)",
+      color: "rgba(59,130,246,0.45)",
+      weight: 1,
+      fillOpacity: 0.03,
+      dashArray: "6,6",
+    }).addTo(map).bindTooltip("500 m", { permanent: false, direction: "top" });
 
-    // ── Zona objetivo ───────────────────────────────────────────────────────
+    L.circle([zona.lat, zona.lng], {
+      radius: 150,
+      fillColor: "rgba(59,130,246,0.05)",
+      color: "rgba(59,130,246,0.7)",
+      weight: 1.5,
+      fillOpacity: 0.05,
+      dashArray: "4,4",
+    }).addTo(map).bindTooltip("150 m", { permanent: false, direction: "top" });
+
+    // Zona objetivo.
     L.circleMarker([zona.lat, zona.lng], {
       radius: 10,
       fillColor: "#3b82f6",
       color: "#1d4ed8",
       weight: 2,
-      opacity: 1,
-      fillOpacity: 0.8,
-      className: "kp-zona-target",  // animado via CSS
-    }).addTo(map).bindTooltip("Tu zona", { permanent: false });
+      fillOpacity: 0.9,
+      className: "kp-zona-target",
+    }).addTo(map).bindTooltip("Tu zona", { direction: "top" });
 
-    // ── Marcadores por competidor (sólo si el backend nos dio lat/lng) ──────
-    const pintar = (list: CompetidorDetalle[], color: string, border: string, tipoLabel: string) => {
+    // Popup reusable para cada competidor.
+    const popupHtml = (c: CompetidorDetalle, tipo: string, tipoColor: string) => {
+      const q = encodeURIComponent(`${c.nombre} ${zona.lat},${zona.lng}`);
+      const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${q}`;
+      const rating = c.rating != null ? `★ ${c.rating.toFixed(1)}` : "—";
+      const resenas = c.num_resenas != null ? `${c.num_resenas} reseñas` : "";
+      const dist = c.distancia_m != null ? `${Math.round(c.distancia_m)} m` : "";
+      const precio = c.precio_nivel != null ? "€".repeat(c.precio_nivel) : "";
+      const subsector = c.subsector ?? c.sector ?? "";
+      return `
+        <div style="font-family:inherit;min-width:180px">
+          <div style="font-weight:600;font-size:13px;margin-bottom:4px;line-height:1.25">${c.nombre}</div>
+          <div style="font-size:11px;color:${tipoColor};font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">${tipo} · ${subsector}</div>
+          <div style="font-size:12px;color:#444;line-height:1.6">
+            ${rating}${resenas ? ` · ${resenas}` : ""}<br>
+            ${dist}${precio ? ` · ${precio}` : ""}
+          </div>
+          <a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-block;margin-top:8px;font-size:12px;font-weight:600;color:#1d4ed8;text-decoration:none;border-bottom:1px solid currentColor">
+            Ver en Google Maps ↗
+          </a>
+        </div>`;
+    };
+
+    const pintar = (
+      list: CompetidorDetalle[],
+      color: string,
+      border: string,
+      tipoLabel: string,
+      tipoColor: string,
+    ) => {
       list.forEach((c) => {
         if (c.lat == null || c.lng == null) return;
         L.circleMarker([c.lat, c.lng], {
@@ -82,84 +116,15 @@ function MiniMap({ zona, amenaza, oportunidad, sinergicos }: {
           fillColor: color,
           color: border,
           weight: 1.5,
-          opacity: 0.9,
-          fillOpacity: 0.85,
-        }).addTo(map).bindTooltip(
-          `<b>${c.nombre}</b><br>${c.subsector ?? c.sector ?? tipoLabel}` +
-            (c.distancia_m != null ? ` · ${Math.round(c.distancia_m)} m` : "") +
-            (c.rating != null ? ` · ★${c.rating.toFixed(1)}` : ""),
-          { direction: "top", opacity: 0.95 },
-        );
+          fillOpacity: 0.9,
+        })
+          .addTo(map)
+          .bindPopup(popupHtml(c, tipoLabel, tipoColor));
       });
     };
-    pintar(amenaza,     "#ef4444", "#991b1b", "amenaza");
-    pintar(oportunidad, "#22c55e", "#166534", "oportunidad");
-    pintar(sinergicos,  "#3b82f6", "#1e40af", "sinérgico");
-
-    // ── FIFA link 1: clúster de directos del mismo subsector (púrpura) ──────
-    // Regla: pares de amenazas con misma subsector (o macro directo) a <150 m
-    // entre sí. Transmite "aquí hay un clúster saturado".
-    const directosMismoSub = amenaza.filter(
-      (c) => c.lat != null && c.lng != null &&
-             (c.es_competencia_directa_subsector || c.es_competencia_directa),
-    );
-    for (let i = 0; i < directosMismoSub.length; i++) {
-      for (let j = i + 1; j < directosMismoSub.length; j++) {
-        const a = directosMismoSub[i];
-        const b = directosMismoSub[j];
-        const dist = haversine(a.lat!, a.lng!, b.lat!, b.lng!);
-        if (dist < 150) {
-          L.polyline([[a.lat!, a.lng!], [b.lat!, b.lng!]], {
-            color: "#a855f7",
-            weight: 1.8,
-            opacity: 0.85,
-            dashArray: "6 4",
-            className: "kp-fifa-direct",
-          }).addTo(map);
-        }
-      }
-    }
-
-    // ── FIFA link 2: zona → 8 sinérgicos más cercanos (verde) ───────────────
-    const sinergicosConCoord = sinergicos.filter((c) => c.lat != null && c.lng != null);
-    sinergicosConCoord.slice(0, 8).forEach((c) => {
-      L.polyline([[zona.lat, zona.lng], [c.lat!, c.lng!]], {
-        color: "#22c55e",
-        weight: 1.4,
-        opacity: 0.75,
-        dashArray: "4 6",
-        className: "kp-fifa-compl",
-      }).addTo(map);
-    });
-
-    // ── FIFA link 3: anillo rotante sobre top-3 "cadenas" (rojo) ────────────
-    // Identifica los 3 competidores con más reseñas como proxy de marca
-    // dominante. Se pinta como divIcon que rota via CSS.
-    const cadenas = [...amenaza, ...oportunidad]
-      .filter((c) => c.lat != null && c.lng != null && (c.num_resenas ?? 0) >= 100)
-      .sort((a, b) => (b.num_resenas ?? 0) - (a.num_resenas ?? 0))
-      .slice(0, 3);
-    cadenas.forEach((c) => {
-      const ring = L.divIcon({
-        className: "",
-        html: `<div class="kp-dominant-ring"></div>`,
-        iconSize: [36, 36],
-        iconAnchor: [18, 18],
-      });
-      L.marker([c.lat!, c.lng!], { icon: ring, interactive: false }).addTo(map);
-    });
-
-    // ── Resumen en esquina ──────────────────────────────────────────────────
-    const summary = L.divIcon({
-      className: "",
-      html: `<div style="background:rgba(15,15,25,0.9);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:6px 10px;font-size:11px;color:#fff;white-space:nowrap;line-height:1.6">
-        <span style="color:#ef4444">●</span> ${amenaza.length} amenazas &nbsp;
-        <span style="color:#22c55e">●</span> ${oportunidad.length} oportunidades &nbsp;
-        <span style="color:#3b82f6">●</span> ${sinergicos.length} sinérgicos
-      </div>`,
-      iconAnchor: [0, 0],
-    });
-    L.marker([zona.lat - 0.003, zona.lng], { icon: summary }).addTo(map);
+    pintar(amenaza,     "#ef4444", "#991b1b", "Amenaza",     "#b91c1c");
+    pintar(oportunidad, "#22c55e", "#166534", "Oportunidad", "#15803d");
+    pintar(sinergicos,  "#3b82f6", "#1e40af", "Sinérgico",   "#1d4ed8");
 
     return () => {
       map.remove();
@@ -167,21 +132,17 @@ function MiniMap({ zona, amenaza, oportunidad, sinergicos }: {
     };
   }, [zona.lat, zona.lng, amenaza, oportunidad, sinergicos]);
 
-  return <div ref={mapRef} className={styles.miniMap} />;
-}
-
-/** Distancia Haversine en metros entre dos pares lat/lng. */
-function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371e3;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const phi1 = toRad(lat1);
-  const phi2 = toRad(lat2);
-  const dphi = toRad(lat2 - lat1);
-  const dlam = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dphi / 2) ** 2 +
-    Math.cos(phi1) * Math.cos(phi2) * Math.sin(dlam / 2) ** 2;
-  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return (
+    <div className={styles.mapWrapper}>
+      <div ref={mapRef} className={styles.miniMap} />
+      <div className={styles.mapLegend}>
+        <span><span className={styles.legendDot} style={{ background: "#3b82f6" }} /> Tu zona</span>
+        <span><span className={styles.legendDot} style={{ background: "#ef4444" }} /> Amenaza</span>
+        <span><span className={styles.legendDot} style={{ background: "#22c55e" }} /> Oportunidad</span>
+        <span><span className={styles.legendDot} style={{ background: "#3b82f6", border: "1px solid #1e40af" }} /> Sinérgico</span>
+      </div>
+    </div>
+  );
 }
 
 function PrecioGap({ ps }: { ps: NonNullable<CompetenciaDetalle["precio_segmento"]> }) {
@@ -217,20 +178,39 @@ function PrecioGap({ ps }: { ps: NonNullable<CompetenciaDetalle["precio_segmento
   );
 }
 
-function CompetitorCard({ c, showAmenaza = false }: { c: CompetidorDetalle; showAmenaza?: boolean }) {
+function CompetitorCard({ c, showAmenaza = false, zona }: {
+  c: CompetidorDetalle;
+  showAmenaza?: boolean;
+  zona: ZonaPreview;
+}) {
   const amenazaColor = c.amenaza_score != null
     ? c.amenaza_score > 70 ? "#ef4444"
     : c.amenaza_score > 40 ? "#f59e0b"
     : "#22c55e"
     : undefined;
 
+  // Google Maps no soporta `center` en la URL de búsqueda, así que embebemos
+  // el lat/lng en la propia query para que resuelva al negocio cercano.
+  const lat = c.lat ?? zona.lat;
+  const lng = c.lng ?? zona.lng;
+  const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${c.nombre} ${lat},${lng}`)}`;
+
   return (
-    <div className={styles.competitorCard}>
+    <a
+      href={gmapsUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={styles.competitorCard}
+      title="Abrir en Google Maps"
+    >
       <div className={styles.competitorHeader}>
         <span className={styles.competitorName}>{c.nombre}</span>
-        {c.distancia_m != null && (
-          <span className={styles.competitorDist}>{Math.round(c.distancia_m)}m</span>
-        )}
+        <span className={styles.competitorHeaderRight}>
+          {c.distancia_m != null && (
+            <span className={styles.competitorDist}>{Math.round(c.distancia_m)}m</span>
+          )}
+          <span className={styles.competitorExtLink} aria-hidden>↗</span>
+        </span>
       </div>
       <div className={styles.competitorMeta}>
         {c.rating != null && (
@@ -242,8 +222,8 @@ function CompetitorCard({ c, showAmenaza = false }: { c: CompetidorDetalle; show
         {c.precio_nivel != null && (
           <span className={styles.competitorPrecio}>{"€".repeat(c.precio_nivel)}</span>
         )}
-        {c.sector && (
-          <span className={styles.competitorSector}>{c.sector}</span>
+        {(c.subsector ?? c.sector) && (
+          <span className={styles.competitorSector}>{c.subsector ?? c.sector}</span>
         )}
       </div>
       {showAmenaza && c.amenaza_score != null && (
@@ -260,7 +240,7 @@ function CompetitorCard({ c, showAmenaza = false }: { c: CompetidorDetalle; show
           </div>
         </div>
       )}
-    </div>
+    </a>
   );
 }
 
@@ -309,20 +289,30 @@ function ResumenMercado({ data }: { data: CompetenciaDetalle }) {
   const scLabel = sc >= 70 ? "Buena" : sc >= 45 ? "Moderada" : "Difícil";
   const scColor = sc >= 70 ? "var(--green)" : sc >= 45 ? "var(--yellow)" : "var(--red)";
 
-  // Cluster: contexto de aglomeración
-  const clusterSub =
-    data.score_cluster >= 80 ? "Zona destino" :
-    data.score_cluster >= 55 ? "Cluster activo" :
-    data.score_cluster >= 30 ? "Poco consolidado" :
-    "Sin masa crítica";
-  const clusterColor =
-    data.score_cluster >= 70 ? "var(--green)" :
-    data.score_cluster >= 40 ? "var(--yellow)" : "var(--red)";
-
-  // Amenaza: invertida para visualización (100 = sin amenaza)
-  const amenazaInv = Math.max(0, 100 - data.amenaza_incumbentes);
-  const amenazaLabel = `Presión: ${data.amenaza_incumbentes < 30 ? "baja" : data.amenaza_incumbentes < 60 ? "media" : "alta"}`;
-  const amenazaColor = amenazaInv >= 70 ? "var(--green)" : amenazaInv >= 40 ? "var(--yellow)" : "var(--red)";
+  // Densidad competitiva: fusiona cluster + amenaza en una sola lectura.
+  // Cluster alto = hay masa crítica de público (bueno). Amenaza alta = los
+  // incumbentes son fuertes (malo). Combinamos en "densidad saludable":
+  //   densidad = 0.55·cluster + 0.45·(100 - amenaza)
+  // Leer: alto = calle comercial viva con hueco para ti;
+  //       bajo = o está muerta, o está saturada por competidores fuertes.
+  const densidad = Math.round(
+    0.55 * data.score_cluster + 0.45 * Math.max(0, 100 - data.amenaza_incumbentes)
+  );
+  const densidadColor =
+    densidad >= 65 ? "var(--green)" : densidad >= 40 ? "var(--yellow)" : "var(--red)";
+  // Sublabel contextual: explica el motivo real del score.
+  let densidadSub: string;
+  if (data.score_cluster < 30) {
+    densidadSub = "Poca masa crítica comercial";
+  } else if (data.amenaza_incumbentes >= 65) {
+    densidadSub = "Hay público pero competidores fuertes";
+  } else if (data.score_cluster >= 65 && data.amenaza_incumbentes < 45) {
+    densidadSub = "Eje activo con hueco";
+  } else if (data.score_cluster >= 45) {
+    densidadSub = "Zona comercial moderada";
+  } else {
+    densidadSub = "Densidad baja";
+  }
 
   // Oportunidad
   const oportunidadSub =
@@ -332,6 +322,12 @@ function ResumenMercado({ data }: { data: CompetenciaDetalle }) {
   const oportunidadColor =
     data.oportunidad_mercado >= 70 ? "var(--green)" :
     data.oportunidad_mercado >= 45 ? "var(--yellow)" : "var(--red)";
+
+  // Sinergias: etiqueta según negocios reales en radio 200 m
+  const nSin = data.sinergicos.length;
+  const sinergiasSub = nSin === 0
+    ? "Sin complementarios a <200 m"
+    : `${nSin} negocio${nSin === 1 ? "" : "s"} a <200 m`;
 
   // HHI badge
   const hhiLabel = data.hhi_index < 0.15 ? "Atomizado" : data.hhi_index < 0.40 ? "Moderado" : "Concentrado";
@@ -343,7 +339,7 @@ function ResumenMercado({ data }: { data: CompetenciaDetalle }) {
       <div className={styles.rmHeader}>
         <div className={styles.rmTitleRow}>
           <span className={styles.rmTitle}>Resumen de mercado</span>
-          <span className={`${styles.hhiBadge} ${hhiClass}`}>{hhiLabel}</span>
+          <span className={`${styles.hhiBadge} ${hhiClass}`} title="Concentración de mercado (HHI)">{hhiLabel}</span>
         </div>
         <div className={styles.rmScoreGlobal}>
           <span className={styles.rmScoreNum} style={{ color: scColor }}>{Math.round(sc)}</span>
@@ -354,19 +350,13 @@ function ResumenMercado({ data }: { data: CompetenciaDetalle }) {
         </div>
       </div>
 
-      {/* 4 score bars */}
+      {/* 3 score bars: densidad (cluster+amenaza) / oportunidad / sinergias */}
       <div className={styles.rmBars}>
         <ScoreBar
-          label="Aglomeración"
-          value={data.score_cluster}
-          color={clusterColor}
-          sublabel={clusterSub}
-        />
-        <ScoreBar
-          label="Zona libre"
-          value={amenazaInv}
-          color={amenazaColor}
-          sublabel={amenazaLabel}
+          label="Densidad competitiva"
+          value={densidad}
+          color={densidadColor}
+          sublabel={densidadSub}
         />
         <ScoreBar
           label="Oportunidad"
@@ -378,7 +368,7 @@ function ResumenMercado({ data }: { data: CompetenciaDetalle }) {
           label="Sinergias"
           value={data.score_complementarios}
           color={data.score_complementarios >= 60 ? "var(--green)" : data.score_complementarios >= 35 ? "var(--yellow)" : "var(--red)"}
-          sublabel={`${data.sinergicos.length} negocios sinérgicos`}
+          sublabel={sinergiasSub}
         />
       </div>
     </div>
@@ -472,6 +462,7 @@ export default function CompetenciaPanel({ competencia: data, loading, zona }: P
             <CompetitorCard
               key={i}
               c={c}
+              zona={zona}
               showAmenaza={compTab === "amenaza"}
             />
           ))
