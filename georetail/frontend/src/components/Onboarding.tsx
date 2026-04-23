@@ -127,12 +127,12 @@ export default function Onboarding({ onSubmit, onStartQuestionnaire }: Props) {
                   disabled={!onStartQuestionnaire}
                 >
                   <div className={styles.modeTileIco} aria-hidden="true">📋</div>
-                  <div className={styles.modeTileTitle}>Cuestionario guiado</div>
+                  <div className={styles.modeTileTitle}>Responder 5 preguntas</div>
                   <div className={styles.modeTileDesc}>
-                    Formulario por pasos: sector, subsector, público, presupuesto.
-                    Ideal si ya tienes claros los parámetros.
+                    Guía rápida con 5 decisiones clave — sector, concepto, público,
+                    zona y presupuesto. Sin jerga técnica.
                   </div>
-                  <div className={styles.modeTileCta}>Empezar cuestionario →</div>
+                  <div className={styles.modeTileCta}>Empezar guiado →</div>
                 </button>
               </div>
             </div>

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import Onboarding from "@/components/Onboarding";
+import QuickQuestionnaire from "@/components/QuickQuestionnaire";
 import SearchBox from "@/components/SearchBox";
 import Statusbar from "@/components/map/Statusbar";
 import MapCanvas, { type BasemapId } from "@/components/map/MapCanvas";
@@ -13,13 +14,15 @@ import ActiveDock from "@/components/map/ActiveDock";
 import Dossier from "@/components/map/Dossier";
 import LoadingOverlay from "@/components/map/LoadingOverlay";
 import styles from "./page.module.css";
-import type { ZonaPreview, LocalDetalleResponse } from "@/lib/types";
+import type { ZonaPreview, LocalDetalleResponse, PerfilEstructurado } from "@/lib/types";
 import { api } from "@/lib/api";
+
+type View = "onboarding" | "wizard" | "map";
 
 const BCN_CENTER = { lat: 41.3851, lng: 2.1734, zoom: 13 };
 
 export default function AppPage() {
-  const [started, setStarted]             = useState(false);
+  const [view, setView]                   = useState<View>("onboarding");
   const [searchQuery, setSearchQuery]     = useState("");
   const [sessionId, setSessionId]         = useState("");
   const [zonas, setZonas]                 = useState<ZonaPreview[]>([]);
@@ -33,7 +36,6 @@ export default function AppPage() {
 
   const [basemap, setBasemap]             = useState<BasemapId>("dark");
   const [coords, setCoords]               = useState(BCN_CENTER);
-  const [openTestTick, setOpenTestTick]   = useState(0);
 
   const activeZone = useMemo(
     () => zonas.find((z) => z.zona_id === activeId) ?? null,
@@ -88,24 +90,86 @@ export default function AppPage() {
     [sessionId],
   );
 
-  // Onboarding submit -> start + first search
+  // Búsqueda estructurada desde el wizard — equivalente a fetchZonas pero
+  // mandando `perfil_estructurado` en vez de descripción libre.
+  const fetchZonasStructured = useCallback(
+    async (pe: PerfilEstructurado) => {
+      setLoading(true);
+      setErrorMsg(null);
+      try {
+        const res = await api.buscar({
+          descripcion: "",
+          perfil_estructurado: pe,
+          session_id: sessionId || undefined,
+        });
+        if (res.estado === "ok" && Array.isArray(res.zonas)) {
+          const adapted: ZonaPreview[] = res.zonas.map((z) => ({
+            zona_id: z.zona_id,
+            nombre: z.nombre,
+            barrio: z.barrio,
+            distrito: z.distrito,
+            lat: z.lat,
+            lng: z.lng,
+            score_global: z.score_global,
+            m2: z.m2_disponibles,
+            alquiler_mensual: z.alquiler_estimado,
+            color: z.color,
+          }));
+          setZonas(adapted);
+          if (res.session_id) setSessionId(res.session_id);
+          if (adapted.length > 0) setActiveId(adapted[0].zona_id);
+        } else if (res.estado === "error_tipo_negocio") {
+          setErrorMsg(res.motivo || "Sector no soportado.");
+        } else if (res.estado === "inviable_legal") {
+          setErrorMsg(res.motivo || "Combinación no viable legalmente.");
+        }
+      } catch (e) {
+        console.error("api.buscar (wizard) error:", e);
+        const msg = e instanceof Error ? e.message : String(e);
+        setErrorMsg(
+          /Failed to fetch|NetworkError/i.test(msg)
+            ? "Error conectando con el motor. ¿Backend corriendo en :8000?"
+            : `Error del motor: ${msg}`,
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [sessionId],
+  );
+
+  // Onboarding submit (texto libre) -> mapa + primera búsqueda
   const handleOnboardingSubmit = useCallback(
     (q: string) => {
       setSearchQuery(q);
-      setStarted(true);
+      setView("map");
       void fetchZonas(q);
     },
     [fetchZonas],
   );
 
-  // Onboarding -> "Cuestionario guiado": entra al mapa y abre SearchBox en pestaña test
+  // Onboarding -> "Cuestionario guiado": wizard full-screen
   const handleOnboardingQuestionnaire = useCallback(() => {
-    setStarted(true);
-    setOpenTestTick((t: number) => t + 1);
+    setView("wizard");
+  }, []);
+
+  // Wizard completado: entra al mapa con la búsqueda estructurada
+  const handleWizardComplete = useCallback(
+    (pe: PerfilEstructurado) => {
+      setSearchQuery(pe.subsector || pe.sector);
+      setView("map");
+      void fetchZonasStructured(pe);
+    },
+    [fetchZonasStructured],
+  );
+
+  // Wizard "Volver" en el primer paso: regresa al Onboarding
+  const handleWizardBack = useCallback(() => {
+    setView("onboarding");
   }, []);
 
   const handleRestart = useCallback(() => {
-    setStarted(false);
+    setView("onboarding");
     setSearchQuery("");
     setZonas([]);
     setActiveId(null);
@@ -154,11 +218,21 @@ export default function AppPage() {
   void dimsActive;  // se pasa a ActiveDock para las barras del dock
 
   // Onboarding stage
-  if (!started) {
+  if (view === "onboarding") {
     return (
       <Onboarding
         onSubmit={handleOnboardingSubmit}
         onStartQuestionnaire={handleOnboardingQuestionnaire}
+      />
+    );
+  }
+
+  // Wizard stage — pantalla principal cuando se elige "Cuestionario guiado"
+  if (view === "wizard") {
+    return (
+      <QuickQuestionnaire
+        onComplete={handleWizardComplete}
+        onBack={handleWizardBack}
       />
     );
   }
@@ -207,7 +281,6 @@ export default function AppPage() {
         <SearchBox
           sessionId={sessionId}
           hasResults={zonas.length > 0}
-          openTestTick={openTestTick}
           onResults={(nuevasZonas, sid) => {
             setZonas(nuevasZonas);
             if (sid) setSessionId(sid);

@@ -16,9 +16,6 @@ interface Props {
   examples?: string[];
   hasResults?: boolean;
   onOpenChange?: (open: boolean) => void;
-  // Contador monotónico: cada incremento fuerza abrir el panel en pestaña "test".
-  // Útil para entrar al mapa ya en modo cuestionario desde el Onboarding.
-  openTestTick?: number;
 }
 
 interface CuestionarioState {
@@ -36,7 +33,6 @@ export default function SearchBox({
   examples,
   hasResults,
   onOpenChange,
-  openTestTick,
 }: Props) {
   const [open, setOpen]       = useState(false);
   const [mode, setMode]       = useState<SearchMode>("texto");
@@ -58,18 +54,6 @@ export default function SearchBox({
       onQueryUsed?.();
     }
   }, [externalQuery, onQueryUsed, openSearchBox]);
-
-  // Abrir panel en pestaña "Cuestionario" cuando el padre incrementa openTestTick.
-  useEffect(() => {
-    if (openTestTick && openTestTick > 0) {
-      setMode("test");
-      openSearchBox(true);
-      setError("");
-      setCuestionario(null);
-    }
-    // openSearchBox is stable via useCallback
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openTestTick]);
 
   useEffect(() => {
     if (open) {

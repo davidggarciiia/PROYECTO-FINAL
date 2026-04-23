@@ -186,12 +186,117 @@ def _build_sectores() -> list[SubsectorOpcion]:
     ]
 
 
+# Traducción ES de los labels de subsector. La taxonomía canónica en
+# scoring/concepto/taxonomy.py mantiene los labels en inglés porque alimentan
+# el matching NLP por embeddings; aquí los traducimos solo para presentación.
+# Respetamos calcos ya asentados en el sector retail español: brunch,
+# streetwear, spa, coworking, fine dining, take-away, delivery.
+_SLUG_SUBSECTOR_ES: dict[str, str] = {
+    # restauracion
+    "specialty_coffee":     "Café de especialidad",
+    "neighborhood_cafe":    "Cafetería de barrio",
+    "express_cafe":         "Cafetería take-away",
+    "coworking_cafe":       "Café-coworking",
+    "dog_friendly_cafe":    "Café pet friendly",
+    "brunch_house":         "Brunch",
+    "fine_dining":          "Alta cocina / fine dining",
+    "cocktail_bar":         "Coctelería",
+    "street_food_counter":  "Street food / barra rápida",
+    "vegan_bistro":         "Bistró vegano",
+    # moda
+    "premium_boutique":     "Boutique premium",
+    "vintage_store":        "Tienda vintage",
+    "streetwear_store":     "Streetwear",
+    "sneaker_shop":         "Tienda de sneakers",
+    "jewelry_store":        "Joyería boutique",
+    "home_decor_store":     "Decoración de hogar",
+    "concept_store":        "Concept store / diseño",
+    # estetica
+    "hair_salon":           "Peluquería",
+    "barber_shop":          "Barbería",
+    "nail_studio":          "Estudio de uñas",
+    "brow_lash_bar":        "Cejas y pestañas",
+    "beauty_clinic":        "Clínica estética",
+    "day_spa":              "Spa urbano",
+    "skin_clinic":          "Clínica de la piel",
+    # tatuajes
+    "tattoo_studio":        "Estudio de tatuajes",
+    "piercing_studio":      "Estudio de piercing",
+    "tattoo_gallery":       "Galería de tatuaje",
+    "cosmetic_tattoo":      "Micropigmentación",
+    "fine_line_studio":     "Tatuaje fine line",
+    "street_tattoo":        "Tatuaje walk-in",
+    "body_art_collective":  "Colectivo de body art",
+    # shisha_lounge
+    "classic_lounge":       "Shisha lounge clásico",
+    "premium_lounge":       "Shisha lounge premium",
+    "terrace_lounge":       "Shisha con terraza",
+    "student_lounge":       "Shisha estudiantes",
+    "tourist_lounge":       "Shisha turístico",
+    "music_lounge":         "Shisha con música / DJ",
+    "food_lounge":          "Shisha con cocina",
+    # salud
+    "dental_clinic":        "Clínica dental",
+    "physio_clinic":        "Fisioterapia",
+    "psychology_center":    "Centro de psicología",
+    "dermatology_clinic":   "Dermatología",
+    "optician":             "Óptica",
+    "pharmacy":             "Farmacia",
+    "aesthetic_medicine":   "Medicina estética",
+    # deporte
+    "boutique_gym":         "Gimnasio boutique",
+    "yoga_studio":          "Estudio de yoga",
+    "pilates_reformer":     "Pilates reformer",
+    "crossfit_box":         "Box de CrossFit",
+    "martial_arts":         "Artes marciales",
+    "personal_training":    "Entrenamiento personal",
+    "dance_fitness":        "Baile / fitness",
+    # educacion
+    "language_academy":     "Academia de idiomas",
+    "tutoring_center":      "Academia de refuerzo",
+    "nursery_school":       "Guardería",
+    "music_school":         "Escuela de música",
+    "art_school":           "Escuela de arte",
+    "coding_academy":       "Academia de programación",
+    "exam_prep_center":     "Preparación de exámenes",
+    # alimentacion
+    "grocery_store":        "Super de barrio",
+    "greengrocer":          "Frutería",
+    "butcher_shop":         "Carnicería",
+    "fishmonger":           "Pescadería",
+    "delicatessen":         "Delicatessen",
+    "wine_shop":            "Vinoteca",
+    "bakery_takeaway":      "Panadería take-away",
+    # servicios
+    "laundromat":           "Lavandería autoservicio",
+    "mobile_repair":        "Reparación de móviles",
+    "locksmith":            "Cerrajería",
+    "florist":              "Floristería",
+    "pet_grooming":         "Peluquería canina",
+    "copy_shop":            "Copistería",
+    "coworking_office":     "Coworking",
+    # otro (genéricos)
+    "generic_retail":        "Comercio minorista",
+    "generic_destination":   "Local de destino",
+    "generic_service":       "Servicio de barrio",
+    "generic_showroom":      "Showroom / estudio",
+    "generic_food_counter":  "Barra de comida",
+    "generic_workshop":      "Taller / maker space",
+    "generic_premium_space": "Espacio premium",
+}
+
+
 def _build_subsectores() -> dict[str, list[SubsectorOpcion]]:
-    """Subsectores por sector a partir de BASE_VARIANTS_BY_SECTOR."""
+    """Subsectores por sector a partir de BASE_VARIANTS_BY_SECTOR.
+
+    El label se toma del diccionario de traducción ES; si falta el slug
+    (nuevo subsector aún no mapeado) cae al label canónico en inglés del
+    tuple como fallback.
+    """
     out: dict[str, list[SubsectorOpcion]] = {}
     for sector, variants in BASE_VARIANTS_BY_SECTOR.items():
         out[sector] = [
-            SubsectorOpcion(codigo=slug, label=label)
+            SubsectorOpcion(codigo=slug, label=_SLUG_SUBSECTOR_ES.get(slug, label))
             for (slug, label, *_rest) in variants
         ]
     return out
