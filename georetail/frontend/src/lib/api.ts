@@ -11,12 +11,7 @@ import type {
   OpcionesCuestionarioResponse,
   BusinessContext,
 } from "./types";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 🔧 MOCK FLAG — cambiar a false para conectar con el backend real
-// ─────────────────────────────────────────────────────────────────────────────
-const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
-// ─────────────────────────────────────────────────────────────────────────────
+import { USE_MOCK } from "./config";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 

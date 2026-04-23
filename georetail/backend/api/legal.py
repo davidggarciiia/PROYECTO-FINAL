@@ -560,17 +560,12 @@ def _build_prompt(
     restriccion_texto: Optional[str],
     flags_legales: dict | None = None,
 ) -> str:
-    licencias_base = sector_datos.get("licencias_necesarias", [])
-    licencias_extra = _licencias_extra_desde_flags(flags_legales)
-    licencias_completas = licencias_base + licencias_extra
-
     zona_restringida = restriccion_texto is not None
     zona_str = "SÍ" if zona_restringida else "NO"
-
-    restricciones_str = json.dumps(sector_datos.get("restricciones_geograficas", []), ensure_ascii=False)
-    licencias_str = json.dumps(licencias_completas, ensure_ascii=False)
+    licencias_str = json.dumps(sector_datos.get("licencias_necesarias", []), ensure_ascii=False)
     req_local_str = json.dumps(sector_datos.get("requisitos_local", []), ensure_ascii=False)
     req_op_str = json.dumps(sector_datos.get("requisitos_operativos", []), ensure_ascii=False)
+    restricciones_str = json.dumps(sector_datos.get("restricciones_geograficas", []), ensure_ascii=False)
     modelo_legal = sector_datos.get("modelo_legal") or "empresa/autónomo estándar"
 
     alerta_zona_block = ""
@@ -582,17 +577,6 @@ Plan de Usos Restrictivo o Moratoria. Restricción específica: {restriccion_tex
 - Consecuencia 2: Riesgo real de denegación si hay muchos locales del mismo tipo en el entorno.
 Incluye esta alerta en el primer trámite de la Fase 1."""
 
-    flags_block = ""
-    if flags_legales:
-        activos = [k for k, v in flags_legales.items() if v]
-        if activos:
-            flags_block = (
-                f"\n\n[CARACTERÍSTICAS DECLARADAS POR EL USUARIO]\n"
-                f"Flags activos: {', '.join(activos)}.\n"
-                "Integra en el roadmap las licencias extra listadas abajo que respondan "
-                "a estas características (venta de alcohol, terraza, aparatología sanitaria, etc.)."
-            )
-
     return f"""[ROL]
 Eres un asesor experto en apertura de negocios y licencias de actividad en Barcelona. \
 Genera un "Roadmap Burocrático" estructurado para el siguiente emprendedor.
@@ -601,7 +585,7 @@ Genera un "Roadmap Burocrático" estructurado para el siguiente emprendedor.
 1. TIPO_DE_NEGOCIO: {tipo_negocio}
 2. DISTRITO: {distrito}
 3. ZONA_RESTRINGIDA: {zona_str}
-{alerta_zona_block}{flags_block}
+{alerta_zona_block}
 
 [DATOS LEGALES BASE — usa esto como fuente de verdad]
 Licencias necesarias: {licencias_str}

@@ -11,6 +11,7 @@ import { api } from "@/lib/api";
 import DossierTabScore from "./DossierTabScore";
 import DossierTabPerfil from "./DossierTabPerfil";
 import DossierTabStub from "./DossierTabStubs";
+import LegalPanel from "../LegalPanel";
 import ProfileChipBar from "./ProfileChipBar";
 import styles from "./Dossier.module.css";
 
@@ -187,7 +188,7 @@ export default function Dossier({ zone, detalle, loading, onClose, sessionId }: 
             <DossierTabPerfil zona={detalle?.zona ?? null} />
           )}
           {tab === "financiero" && <DossierTabStub variant="financiero" />}
-          {tab === "legal" && <DossierTabStub variant="legal" />}
+          {tab === "legal" && <LegalPanel zona={zone} sessionId={sessionId} />}
         </div>
       </aside>
     </div>
