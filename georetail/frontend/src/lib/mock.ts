@@ -560,7 +560,13 @@ const DETAIL_OVERRIDES: Record<string, Partial<LocalDetalleResponse["zona"]>> = 
   },
 };
 
+const FEATURED_ZONA_IDS = new Set(FEATURED_ZONES.map((z) => z.zona_id));
+
 export function getMockDetalle(zona_id: string): LocalDetalleResponse {
+  // Solo las 3 zonas "featured" tienen detalle completo coherente (dimensiones,
+  // competidores, análisis IA). Las ~100 zonas generadas son SOLO pin en el
+  // mapa — no inventamos competencia ni narrativa, el usuario verá el header
+  // con nombre/barrio/alquiler/score y el resto vacío.
   const override = DETAIL_OVERRIDES[zona_id];
   if (override) {
     return {
@@ -581,20 +587,15 @@ export function getMockDetalle(zona_id: string): LocalDetalleResponse {
     };
   }
 
-  // Zona generada: adaptamos BASE_DETAIL con datos del array mock para que
-  // nombre, barrio, distrito, coords, score y alquiler coincidan con el pin.
+  if (FEATURED_ZONA_IDS.has(zona_id)) return BASE_DETAIL;
+
+  // Zona generada: solo cabecera. Sin dimensiones, competidores ni análisis
+  // inventados. Evita incoherencias tipo "restaurante con competencia tatuajes".
   const zonaMock = MOCK_BUSCAR.zonas?.find((z) => z.zona_id === zona_id);
   if (!zonaMock) return BASE_DETAIL;
 
-  const dims = { ...BASE_DETAIL.zona.scores_dimensiones! };
-  const scoreDelta = (zonaMock.score_global ?? 60) - 60;
-  (Object.keys(dims) as Array<keyof typeof dims>).forEach((k) => {
-    dims[k] = Math.max(0, Math.min(100, Math.round((dims[k] ?? 60) + scoreDelta * 0.6)));
-  });
-
   return {
     zona: {
-      ...BASE_DETAIL.zona,
       zona_id: zonaMock.zona_id,
       nombre: zonaMock.nombre,
       barrio: zonaMock.barrio,
@@ -604,15 +605,47 @@ export function getMockDetalle(zona_id: string): LocalDetalleResponse {
       direccion: zonaMock.nombre,
       m2: zonaMock.m2_disponibles,
       alquiler_mensual: zonaMock.alquiler_estimado,
-      score_global: zonaMock.score_global ?? 60,
-      probabilidad_supervivencia: zonaMock.probabilidad_supervivencia_3a ?? 0.6,
-      scores_dimensiones: dims,
-      resumen_global_llm: zonaMock.resumen_ia ?? BASE_DETAIL.zona.resumen_global_llm,
+      disponible: true,
+      score_global: zonaMock.score_global,
+      probabilidad_supervivencia: zonaMock.probabilidad_supervivencia_3a,
+      competidores_cercanos: [],
+      alertas: [],
+      resumen_global_llm: zonaMock.resumen_ia ?? null,
     },
   };
 }
 
 export function getMockCompetencia(zona_id: string): CompetenciaDetalle {
+  // Solo featured tienen competencia inventada coherente. El resto devuelve
+  // listas vacías para no mezclar sectores (ej. tatuajes sobre restauración).
+  if (!FEATURED_ZONA_IDS.has(zona_id) && !(zona_id in DETAIL_OVERRIDES)) {
+    return {
+      zona_id,
+      sector: "",
+      radio_m: 500,
+      score_competencia: 0,
+      score_cluster: 0,
+      amenaza_incumbentes: 0,
+      oportunidad_mercado: 0,
+      score_complementarios: 0,
+      num_directos: 0,
+      pct_vulnerables: 0,
+      hhi_index: 0,
+      ratio_complementarios: 0,
+      precio_segmento: {
+        nivel_dominante: 0,
+        etiqueta: "",
+        distribucion: {},
+        tiene_gap: false,
+      },
+      amenaza: [],
+      oportunidad: [],
+      sinergicos: [],
+      fuente: "mock",
+      datos_calculados: false,
+    };
+  }
+
   const zona = getMockDetalle(zona_id).zona;
 
   return {
