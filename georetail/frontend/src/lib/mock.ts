@@ -12,54 +12,221 @@ export const delay = (ms = 700) => new Promise<void>((res) => setTimeout(res, ms
 
 export const MOCK_SESSION_ID = "mock-session-001";
 
+type MockZona = NonNullable<BuscarResponse["zonas"]>[number];
+
+const FEATURED_ZONES: MockZona[] = [
+  {
+    zona_id: "gracia-diagonal",
+    nombre: "C/ Diagonal Gràcia",
+    barrio: "El Camp de Gràcia",
+    distrito: "Gràcia",
+    score_global: 60,
+    probabilidad_supervivencia_3a: 0.69,
+    alquiler_estimado: 1900,
+    m2_disponibles: 70,
+    color: "amarillo",
+    lat: 41.3985,
+    lng: 2.1587,
+    resumen_ia: "Zona con buen entorno comercial pero flujo peatonal bajo.",
+  },
+  {
+    zona_id: "eixample-consell-cent",
+    nombre: "Consell de Cent",
+    barrio: "L'Antiga Esquerra de l'Eixample",
+    distrito: "Eixample",
+    score_global: 82,
+    probabilidad_supervivencia_3a: 0.84,
+    alquiler_estimado: 2800,
+    m2_disponibles: 95,
+    color: "verde",
+    lat: 41.3888,
+    lng: 2.1551,
+    resumen_ia: "Alta densidad comercial y excelente tráfico peatonal.",
+  },
+  {
+    zona_id: "poble-nou-rambla",
+    nombre: "Rambla del Poblenou",
+    barrio: "El Poblenou",
+    distrito: "Sant Martí",
+    score_global: 77,
+    probabilidad_supervivencia_3a: 0.79,
+    alquiler_estimado: 1650,
+    m2_disponibles: 80,
+    color: "verde",
+    lat: 41.4015,
+    lng: 2.1978,
+    resumen_ia: "Zona emergente con perfil joven y menor saturación directa.",
+  },
+];
+
+// Semilla determinista para generar ~100 zonas de relleno por Barcelona.
+// No pretende ser real — los nombres de calle/barrio/distrito vienen de una
+// lista acotada y el resto (score, alquiler, m2, color, lat/lng) se deriva.
+const STREET_SEEDS: Array<{
+  nombre: string;
+  barrio: string;
+  distrito: string;
+  lat: number;
+  lng: number;
+}> = [
+  { nombre: "Passeig de Gràcia",        barrio: "Dreta de l'Eixample",        distrito: "Eixample",         lat: 41.3933, lng: 2.1649 },
+  { nombre: "Rambla de Catalunya",      barrio: "Dreta de l'Eixample",        distrito: "Eixample",         lat: 41.3917, lng: 2.1641 },
+  { nombre: "Gran de Gràcia",           barrio: "Vila de Gràcia",             distrito: "Gràcia",           lat: 41.4022, lng: 2.1566 },
+  { nombre: "Verdi",                    barrio: "Vila de Gràcia",             distrito: "Gràcia",           lat: 41.4056, lng: 2.1582 },
+  { nombre: "Travessera de Gràcia",     barrio: "Vila de Gràcia",             distrito: "Gràcia",           lat: 41.4010, lng: 2.1560 },
+  { nombre: "Torrent de l'Olla",        barrio: "Vila de Gràcia",             distrito: "Gràcia",           lat: 41.4035, lng: 2.1592 },
+  { nombre: "Avinguda Diagonal",        barrio: "Sant Gervasi – Galvany",     distrito: "Sarrià-Sant Gervasi", lat: 41.3948, lng: 2.1400 },
+  { nombre: "Muntaner",                 barrio: "Sant Gervasi – Galvany",     distrito: "Sarrià-Sant Gervasi", lat: 41.3933, lng: 2.1430 },
+  { nombre: "Balmes",                   barrio: "Sant Gervasi – Galvany",     distrito: "Sarrià-Sant Gervasi", lat: 41.3945, lng: 2.1460 },
+  { nombre: "Aribau",                   barrio: "L'Antiga Esquerra Eixample", distrito: "Eixample",         lat: 41.3890, lng: 2.1550 },
+  { nombre: "Enric Granados",           barrio: "L'Antiga Esquerra Eixample", distrito: "Eixample",         lat: 41.3888, lng: 2.1586 },
+  { nombre: "Rocafort",                 barrio: "La Nova Esquerra Eixample",  distrito: "Eixample",         lat: 41.3820, lng: 2.1507 },
+  { nombre: "Comte d'Urgell",           barrio: "La Nova Esquerra Eixample",  distrito: "Eixample",         lat: 41.3832, lng: 2.1510 },
+  { nombre: "Diputació",                barrio: "Dreta de l'Eixample",        distrito: "Eixample",         lat: 41.3907, lng: 2.1680 },
+  { nombre: "Girona",                   barrio: "Dreta de l'Eixample",        distrito: "Eixample",         lat: 41.3944, lng: 2.1728 },
+  { nombre: "Avinguda Meridiana",       barrio: "La Sagrera",                 distrito: "Sant Andreu",      lat: 41.4222, lng: 2.1860 },
+  { nombre: "Carrer Gran de Sant Andreu", barrio: "Sant Andreu de Palomar",   distrito: "Sant Andreu",      lat: 41.4351, lng: 2.1903 },
+  { nombre: "Nou Barris · Fabra i Puig",barrio: "Porta",                      distrito: "Nou Barris",       lat: 41.4345, lng: 2.1766 },
+  { nombre: "Via Júlia",                barrio: "Les Roquetes",               distrito: "Nou Barris",       lat: 41.4416, lng: 2.1723 },
+  { nombre: "Passeig Maragall",         barrio: "El Congrés i els Indians",   distrito: "Sant Andreu",      lat: 41.4213, lng: 2.1776 },
+  { nombre: "Travessera de les Corts",  barrio: "Les Corts",                  distrito: "Les Corts",        lat: 41.3858, lng: 2.1276 },
+  { nombre: "Gran Via de Carles III",   barrio: "Pedralbes",                  distrito: "Les Corts",        lat: 41.3870, lng: 2.1175 },
+  { nombre: "Carrer de Sants",          barrio: "Sants",                      distrito: "Sants-Montjuïc",   lat: 41.3744, lng: 2.1390 },
+  { nombre: "Creu Coberta",             barrio: "Hostafrancs",                distrito: "Sants-Montjuïc",   lat: 41.3755, lng: 2.1435 },
+  { nombre: "Paral·lel",                barrio: "El Poble-sec",               distrito: "Sants-Montjuïc",   lat: 41.3741, lng: 2.1611 },
+  { nombre: "Blai",                     barrio: "El Poble-sec",               distrito: "Sants-Montjuïc",   lat: 41.3727, lng: 2.1647 },
+  { nombre: "Ronda Sant Antoni",        barrio: "Sant Antoni",                distrito: "Eixample",         lat: 41.3803, lng: 2.1634 },
+  { nombre: "Comte Borrell",            barrio: "Sant Antoni",                distrito: "Eixample",         lat: 41.3815, lng: 2.1575 },
+  { nombre: "Tamarit",                  barrio: "Sant Antoni",                distrito: "Eixample",         lat: 41.3789, lng: 2.1580 },
+  { nombre: "Rambla del Raval",         barrio: "El Raval",                   distrito: "Ciutat Vella",     lat: 41.3795, lng: 2.1695 },
+  { nombre: "Hospital",                 barrio: "El Raval",                   distrito: "Ciutat Vella",     lat: 41.3805, lng: 2.1710 },
+  { nombre: "La Rambla",                barrio: "El Gòtic",                   distrito: "Ciutat Vella",     lat: 41.3809, lng: 2.1734 },
+  { nombre: "Ferran",                   barrio: "El Gòtic",                   distrito: "Ciutat Vella",     lat: 41.3810, lng: 2.1754 },
+  { nombre: "Portal de l'Àngel",        barrio: "El Gòtic",                   distrito: "Ciutat Vella",     lat: 41.3846, lng: 2.1732 },
+  { nombre: "Via Laietana",             barrio: "Sant Pere · Santa Caterina", distrito: "Ciutat Vella",     lat: 41.3847, lng: 2.1788 },
+  { nombre: "Argenteria",               barrio: "Sant Pere · Santa Caterina", distrito: "Ciutat Vella",     lat: 41.3838, lng: 2.1808 },
+  { nombre: "Passeig del Born",         barrio: "La Ribera",                  distrito: "Ciutat Vella",     lat: 41.3839, lng: 2.1836 },
+  { nombre: "Princesa",                 barrio: "La Ribera",                  distrito: "Ciutat Vella",     lat: 41.3848, lng: 2.1813 },
+  { nombre: "Passeig Joan de Borbó",    barrio: "La Barceloneta",             distrito: "Ciutat Vella",     lat: 41.3811, lng: 2.1876 },
+  { nombre: "Passeig Marítim",          barrio: "La Barceloneta",             distrito: "Ciutat Vella",     lat: 41.3775, lng: 2.1950 },
+  { nombre: "Avinguda Icària",          barrio: "La Vila Olímpica",           distrito: "Sant Martí",       lat: 41.3898, lng: 2.1987 },
+  { nombre: "Rambla del Poblenou",      barrio: "El Poblenou",                distrito: "Sant Martí",       lat: 41.4024, lng: 2.2000 },
+  { nombre: "Pere IV",                  barrio: "El Poblenou",                distrito: "Sant Martí",       lat: 41.4052, lng: 2.1953 },
+  { nombre: "Marina",                   barrio: "El Parc i la Llacuna",       distrito: "Sant Martí",       lat: 41.4015, lng: 2.1902 },
+  { nombre: "Bac de Roda",              barrio: "El Poblenou",                distrito: "Sant Martí",       lat: 41.4112, lng: 2.2013 },
+  { nombre: "Guipúscoa",                barrio: "El Besòs i el Maresme",      distrito: "Sant Martí",       lat: 41.4250, lng: 2.2088 },
+  { nombre: "Rambla de Prim",           barrio: "El Besòs i el Maresme",      distrito: "Sant Martí",       lat: 41.4180, lng: 2.2116 },
+  { nombre: "Mallorca",                 barrio: "La Sagrada Família",         distrito: "Eixample",         lat: 41.4031, lng: 2.1760 },
+  { nombre: "Provença",                 barrio: "La Sagrada Família",         distrito: "Eixample",         lat: 41.4022, lng: 2.1739 },
+  { nombre: "Sardenya",                 barrio: "La Sagrada Família",         distrito: "Eixample",         lat: 41.4060, lng: 2.1790 },
+  { nombre: "Lesseps",                  barrio: "Vallcarca i els Penitents",  distrito: "Gràcia",           lat: 41.4100, lng: 2.1510 },
+  { nombre: "República Argentina",      barrio: "El Coll",                    distrito: "Gràcia",           lat: 41.4103, lng: 2.1485 },
+  { nombre: "Passeig de Sant Joan",     barrio: "Camp d'en Grassot",          distrito: "Gràcia",           lat: 41.4028, lng: 2.1709 },
+  { nombre: "Pau Claris",               barrio: "Dreta de l'Eixample",        distrito: "Eixample",         lat: 41.3922, lng: 2.1690 },
+  { nombre: "Roger de Llúria",          barrio: "Dreta de l'Eixample",        distrito: "Eixample",         lat: 41.3927, lng: 2.1714 },
+  { nombre: "Bruc",                     barrio: "Dreta de l'Eixample",        distrito: "Eixample",         lat: 41.3950, lng: 2.1727 },
+  { nombre: "Marià Cubí",               barrio: "Sant Gervasi – Galvany",     distrito: "Sarrià-Sant Gervasi", lat: 41.3999, lng: 2.1466 },
+  { nombre: "Via Augusta",              barrio: "Sant Gervasi – la Bonanova", distrito: "Sarrià-Sant Gervasi", lat: 41.4025, lng: 2.1375 },
+  { nombre: "Bonanova",                 barrio: "Sant Gervasi – la Bonanova", distrito: "Sarrià-Sant Gervasi", lat: 41.4058, lng: 2.1338 },
+  { nombre: "Major de Sarrià",          barrio: "Sarrià",                     distrito: "Sarrià-Sant Gervasi", lat: 41.4006, lng: 2.1199 },
+  { nombre: "Numància",                 barrio: "Les Corts",                  distrito: "Les Corts",        lat: 41.3888, lng: 2.1322 },
+  { nombre: "Josep Tarradellas",        barrio: "Sants · Badal",              distrito: "Sants-Montjuïc",   lat: 41.3895, lng: 2.1383 },
+  { nombre: "Entença",                  barrio: "La Nova Esquerra Eixample",  distrito: "Eixample",         lat: 41.3838, lng: 2.1415 },
+  { nombre: "Villarroel",               barrio: "L'Antiga Esquerra Eixample", distrito: "Eixample",         lat: 41.3868, lng: 2.1530 },
+  { nombre: "Casanova",                 barrio: "L'Antiga Esquerra Eixample", distrito: "Eixample",         lat: 41.3877, lng: 2.1513 },
+  { nombre: "València",                 barrio: "L'Antiga Esquerra Eixample", distrito: "Eixample",         lat: 41.3900, lng: 2.1568 },
+  { nombre: "Londres",                  barrio: "La Nova Esquerra Eixample",  distrito: "Eixample",         lat: 41.3870, lng: 2.1452 },
+  { nombre: "Av. Mistral",              barrio: "Sant Antoni",                distrito: "Eixample",         lat: 41.3772, lng: 2.1540 },
+  { nombre: "Av. Roma",                 barrio: "Sant Antoni",                distrito: "Eixample",         lat: 41.3811, lng: 2.1485 },
+  { nombre: "Rambla Brasil",            barrio: "Sants",                      distrito: "Sants-Montjuïc",   lat: 41.3775, lng: 2.1332 },
+  { nombre: "Riera Blanca",             barrio: "Sants · Badal",              distrito: "Sants-Montjuïc",   lat: 41.3781, lng: 2.1258 },
+  { nombre: "Plaça del Sol",            barrio: "Vila de Gràcia",             distrito: "Gràcia",           lat: 41.4028, lng: 2.1551 },
+  { nombre: "Plaça de la Virreina",     barrio: "Vila de Gràcia",             distrito: "Gràcia",           lat: 41.4050, lng: 2.1579 },
+  { nombre: "Asturies",                 barrio: "Vila de Gràcia",             distrito: "Gràcia",           lat: 41.4040, lng: 2.1539 },
+  { nombre: "Ros de Olano",             barrio: "Vila de Gràcia",             distrito: "Gràcia",           lat: 41.4037, lng: 2.1560 },
+  { nombre: "Pi i Margall",             barrio: "La Salut",                   distrito: "Gràcia",           lat: 41.4093, lng: 2.1620 },
+  { nombre: "Dante Alighieri",          barrio: "El Carmel",                  distrito: "Horta-Guinardó",   lat: 41.4276, lng: 2.1561 },
+  { nombre: "Ronda del Guinardó",       barrio: "El Guinardó",                distrito: "Horta-Guinardó",   lat: 41.4191, lng: 2.1655 },
+  { nombre: "Horta · Tajo",             barrio: "Horta",                      distrito: "Horta-Guinardó",   lat: 41.4321, lng: 2.1636 },
+  { nombre: "Av. Borbó",                barrio: "El Baix Guinardó",           distrito: "Horta-Guinardó",   lat: 41.4146, lng: 2.1706 },
+  { nombre: "Pg. Valldaura",            barrio: "Vilapicina",                 distrito: "Nou Barris",       lat: 41.4308, lng: 2.1780 },
+  { nombre: "Pg. Santa Coloma",         barrio: "Trinitat Vella",             distrito: "Sant Andreu",      lat: 41.4482, lng: 2.1900 },
+  { nombre: "Pg. Fabra i Puig",         barrio: "Porta",                      distrito: "Nou Barris",       lat: 41.4336, lng: 2.1749 },
+  { nombre: "Pg. Urrutia",              barrio: "Les Roquetes",               distrito: "Nou Barris",       lat: 41.4421, lng: 2.1736 },
+  { nombre: "Santa Caterina",           barrio: "Sant Pere · Santa Caterina", distrito: "Ciutat Vella",     lat: 41.3866, lng: 2.1804 },
+  { nombre: "Allada-Vermell",           barrio: "La Ribera",                  distrito: "Ciutat Vella",     lat: 41.3851, lng: 2.1826 },
+  { nombre: "Rec",                      barrio: "La Ribera",                  distrito: "Ciutat Vella",     lat: 41.3835, lng: 2.1845 },
+  { nombre: "Còrsega",                  barrio: "L'Antiga Esquerra Eixample", distrito: "Eixample",         lat: 41.3944, lng: 2.1560 },
+  { nombre: "Rosselló",                 barrio: "L'Antiga Esquerra Eixample", distrito: "Eixample",         lat: 41.3960, lng: 2.1576 },
+  { nombre: "Mandri",                   barrio: "Sant Gervasi – la Bonanova", distrito: "Sarrià-Sant Gervasi", lat: 41.4043, lng: 2.1394 },
+  { nombre: "Cardedeu",                 barrio: "La Guineueta",               distrito: "Nou Barris",       lat: 41.4395, lng: 2.1821 },
+  { nombre: "Doctor Pi i Molist",       barrio: "Vilapicina",                 distrito: "Nou Barris",       lat: 41.4325, lng: 2.1799 },
+  { nombre: "Estadi Olímpic",           barrio: "La Marina del Prat Vermell", distrito: "Sants-Montjuïc",   lat: 41.3647, lng: 2.1567 },
+  { nombre: "Doctor Marañón",           barrio: "Pedralbes",                  distrito: "Les Corts",        lat: 41.3861, lng: 2.1157 },
+  { nombre: "Av. Madrid",               barrio: "Les Corts",                  distrito: "Les Corts",        lat: 41.3800, lng: 2.1256 },
+  { nombre: "Plaça Joanic",             barrio: "Vila de Gràcia",             distrito: "Gràcia",           lat: 41.4064, lng: 2.1638 },
+  { nombre: "Plaça del Diamant",        barrio: "Vila de Gràcia",             distrito: "Gràcia",           lat: 41.4036, lng: 2.1580 },
+  { nombre: "Encants Vells",            barrio: "El Fort Pienc",              distrito: "Eixample",         lat: 41.4020, lng: 2.1854 },
+  { nombre: "Glòries",                  barrio: "El Parc i la Llacuna",       distrito: "Sant Martí",       lat: 41.4045, lng: 2.1868 },
+  { nombre: "22@ · Llacuna",            barrio: "El Parc i la Llacuna",       distrito: "Sant Martí",       lat: 41.4020, lng: 2.1973 },
+  { nombre: "Avinguda Diagonal Mar",    barrio: "Diagonal Mar",               distrito: "Sant Martí",       lat: 41.4097, lng: 2.2180 },
+  { nombre: "Plaça del Centre",         barrio: "Les Corts",                  distrito: "Les Corts",        lat: 41.3849, lng: 2.1322 },
+  { nombre: "Plaça Adrià",              barrio: "Sant Gervasi – Galvany",     distrito: "Sarrià-Sant Gervasi", lat: 41.3973, lng: 2.1415 },
+  { nombre: "Plaça Molina",             barrio: "Sant Gervasi – Galvany",     distrito: "Sarrià-Sant Gervasi", lat: 41.4015, lng: 2.1445 },
+  { nombre: "Plaça Osca",               barrio: "Sants",                      distrito: "Sants-Montjuïc",   lat: 41.3742, lng: 2.1376 },
+];
+
+function colorFromScore(score: number): "verde" | "amarillo" | "rojo" {
+  if (score >= 75) return "verde";
+  if (score >= 50) return "amarillo";
+  return "rojo";
+}
+
+function buildExtraZones(): MockZona[] {
+  const out: MockZona[] = [];
+  for (let i = 0; i < STREET_SEEDS.length; i++) {
+    const s = STREET_SEEDS[i];
+    // Generador determinista: cada seed fija score/alquiler/m2 siempre igual.
+    const rot  = (i * 1103515245 + 12345) & 0x7fffffff;
+    const r1   = (rot >> 3)  % 100;   // 0-99
+    const r2   = (rot >> 7)  % 100;
+    const r3   = (rot >> 11) % 100;
+    const score = 40 + Math.round((r1 / 100) * 52);         // 40-92
+    const alquiler = 1100 + Math.round((r2 / 100) * 2700);  // 1100-3800
+    const m2 = 40 + Math.round((r3 / 100) * 140);           // 40-180
+    const prob = Math.round(((score / 100) * 0.82 + 0.12) * 100) / 100;
+    const slug = s.nombre
+      .normalize("NFD")
+      .replace(/[^\w\s-]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .slice(0, 40);
+    out.push({
+      zona_id: `bcn-${i.toString().padStart(3, "0")}-${slug}`,
+      nombre: s.nombre,
+      barrio: s.barrio,
+      distrito: s.distrito,
+      score_global: score,
+      probabilidad_supervivencia_3a: prob,
+      alquiler_estimado: alquiler,
+      m2_disponibles: m2,
+      color: colorFromScore(score),
+      lat: s.lat,
+      lng: s.lng,
+      resumen_ia: `Zona ${s.distrito.toLowerCase()} · ${s.barrio} — perfil derivado de datos demográficos y comerciales.`,
+    });
+  }
+  return out;
+}
+
+const EXTRA_ZONES: MockZona[] = buildExtraZones();
+
 export const MOCK_BUSCAR: BuscarResponse = {
   estado: "ok",
   session_id: MOCK_SESSION_ID,
-  total_zonas_analizadas: 312,
-  zonas: [
-    {
-      zona_id: "gracia-diagonal",
-      nombre: "C/ Diagonal Gràcia",
-      barrio: "El Camp de Gràcia",
-      distrito: "Gràcia",
-      score_global: 60,
-      probabilidad_supervivencia_3a: 0.69,
-      alquiler_estimado: 1900,
-      m2_disponibles: 70,
-      color: "amarillo",
-      lat: 41.3985,
-      lng: 2.1587,
-      resumen_ia: "Zona con buen entorno comercial pero flujo peatonal bajo.",
-    },
-    {
-      zona_id: "eixample-consell-cent",
-      nombre: "Consell de Cent",
-      barrio: "L'Antiga Esquerra de l'Eixample",
-      distrito: "Eixample",
-      score_global: 82,
-      probabilidad_supervivencia_3a: 0.84,
-      alquiler_estimado: 2800,
-      m2_disponibles: 95,
-      color: "verde",
-      lat: 41.3888,
-      lng: 2.1551,
-      resumen_ia: "Alta densidad comercial y excelente tráfico peatonal.",
-    },
-    {
-      zona_id: "poble-nou-rambla",
-      nombre: "Rambla del Poblenou",
-      barrio: "El Poblenou",
-      distrito: "Sant Martí",
-      score_global: 77,
-      probabilidad_supervivencia_3a: 0.79,
-      alquiler_estimado: 1650,
-      m2_disponibles: 80,
-      color: "verde",
-      lat: 41.4015,
-      lng: 2.1978,
-      resumen_ia: "Zona emergente con perfil joven y menor saturación directa.",
-    },
-  ],
+  total_zonas_analizadas: 2847,
+  zonas: [...FEATURED_ZONES, ...EXTRA_ZONES],
 };
 
 function dim(
@@ -395,22 +562,52 @@ const DETAIL_OVERRIDES: Record<string, Partial<LocalDetalleResponse["zona"]>> = 
 
 export function getMockDetalle(zona_id: string): LocalDetalleResponse {
   const override = DETAIL_OVERRIDES[zona_id];
-  if (!override) return BASE_DETAIL;
+  if (override) {
+    return {
+      zona: {
+        ...BASE_DETAIL.zona,
+        ...override,
+        competidores_cercanos: override.competidores_cercanos ?? BASE_DETAIL.zona.competidores_cercanos,
+        alertas: override.alertas ?? BASE_DETAIL.zona.alertas,
+        explicaciones_dimensiones: override.explicaciones_dimensiones ?? BASE_DETAIL.zona.explicaciones_dimensiones,
+        impacto_modelo_por_dimension: override.impacto_modelo_por_dimension ?? BASE_DETAIL.zona.impacto_modelo_por_dimension,
+        analisis_ia: override.analisis_ia
+          ? {
+              ...BASE_DETAIL.zona.analisis_ia!,
+              ...override.analisis_ia,
+            }
+          : BASE_DETAIL.zona.analisis_ia,
+      },
+    };
+  }
+
+  // Zona generada: adaptamos BASE_DETAIL con datos del array mock para que
+  // nombre, barrio, distrito, coords, score y alquiler coincidan con el pin.
+  const zonaMock = MOCK_BUSCAR.zonas?.find((z) => z.zona_id === zona_id);
+  if (!zonaMock) return BASE_DETAIL;
+
+  const dims = { ...BASE_DETAIL.zona.scores_dimensiones! };
+  const scoreDelta = (zonaMock.score_global ?? 60) - 60;
+  (Object.keys(dims) as Array<keyof typeof dims>).forEach((k) => {
+    dims[k] = Math.max(0, Math.min(100, Math.round((dims[k] ?? 60) + scoreDelta * 0.6)));
+  });
 
   return {
     zona: {
       ...BASE_DETAIL.zona,
-      ...override,
-      competidores_cercanos: override.competidores_cercanos ?? BASE_DETAIL.zona.competidores_cercanos,
-      alertas: override.alertas ?? BASE_DETAIL.zona.alertas,
-      explicaciones_dimensiones: override.explicaciones_dimensiones ?? BASE_DETAIL.zona.explicaciones_dimensiones,
-      impacto_modelo_por_dimension: override.impacto_modelo_por_dimension ?? BASE_DETAIL.zona.impacto_modelo_por_dimension,
-      analisis_ia: override.analisis_ia
-        ? {
-            ...BASE_DETAIL.zona.analisis_ia!,
-            ...override.analisis_ia,
-          }
-        : BASE_DETAIL.zona.analisis_ia,
+      zona_id: zonaMock.zona_id,
+      nombre: zonaMock.nombre,
+      barrio: zonaMock.barrio,
+      distrito: zonaMock.distrito,
+      lat: zonaMock.lat,
+      lng: zonaMock.lng,
+      direccion: zonaMock.nombre,
+      m2: zonaMock.m2_disponibles,
+      alquiler_mensual: zonaMock.alquiler_estimado,
+      score_global: zonaMock.score_global ?? 60,
+      probabilidad_supervivencia: zonaMock.probabilidad_supervivencia_3a ?? 0.6,
+      scores_dimensiones: dims,
+      resumen_global_llm: zonaMock.resumen_ia ?? BASE_DETAIL.zona.resumen_global_llm,
     },
   };
 }

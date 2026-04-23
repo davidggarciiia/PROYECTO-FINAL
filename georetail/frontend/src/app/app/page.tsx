@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import Onboarding from "@/components/Onboarding";
+import SearchBox from "@/components/SearchBox";
 import Statusbar from "@/components/map/Statusbar";
 import MapCanvas, { type BasemapId } from "@/components/map/MapCanvas";
 import HudCoord from "@/components/map/HudCoord";
@@ -32,6 +33,7 @@ export default function AppPage() {
 
   const [basemap, setBasemap]             = useState<BasemapId>("dark");
   const [coords, setCoords]               = useState(BCN_CENTER);
+  const [openTestTick, setOpenTestTick]   = useState(0);
 
   const activeZone = useMemo(
     () => zonas.find((z) => z.zona_id === activeId) ?? null,
@@ -96,6 +98,12 @@ export default function AppPage() {
     [fetchZonas],
   );
 
+  // Onboarding -> "Cuestionario guiado": entra al mapa y abre SearchBox en pestaña test
+  const handleOnboardingQuestionnaire = useCallback(() => {
+    setStarted(true);
+    setOpenTestTick((t: number) => t + 1);
+  }, []);
+
   const handleRestart = useCallback(() => {
     setStarted(false);
     setSearchQuery("");
@@ -147,7 +155,12 @@ export default function AppPage() {
 
   // Onboarding stage
   if (!started) {
-    return <Onboarding onSubmit={handleOnboardingSubmit} />;
+    return (
+      <Onboarding
+        onSubmit={handleOnboardingSubmit}
+        onStartQuestionnaire={handleOnboardingQuestionnaire}
+      />
+    );
   }
 
   return (
@@ -190,6 +203,21 @@ export default function AppPage() {
         />
 
         <HudLegend />
+
+        <SearchBox
+          sessionId={sessionId}
+          hasResults={zonas.length > 0}
+          openTestTick={openTestTick}
+          onResults={(nuevasZonas, sid) => {
+            setZonas(nuevasZonas);
+            if (sid) setSessionId(sid);
+            if (nuevasZonas.length > 0) {
+              setActiveId(nuevasZonas[0].zona_id);
+              setSearchQuery("");
+            }
+            setErrorMsg(null);
+          }}
+        />
 
         {errorMsg && (
           <div className={styles.errorToast} role="alert">

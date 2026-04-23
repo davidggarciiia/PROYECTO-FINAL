@@ -28,7 +28,10 @@ import styles from "./Onboarding.module.css";
 
 interface Props {
   onSubmit: (query: string) => void;
+  onStartQuestionnaire?: () => void;
 }
+
+type Mode = "select" | "texto";
 
 const SUGGESTIONS = [
   { id: "01", text: "Cafetería de especialidad · público joven · 80 m²" },
@@ -37,15 +40,22 @@ const SUGGESTIONS = [
   { id: "04", text: "Tienda de ropa vintage · barrio con carácter" },
 ];
 
-export default function Onboarding({ onSubmit }: Props) {
+export default function Onboarding({ onSubmit, onStartQuestionnaire }: Props) {
   const [q, setQ] = useState("");
   const [leaving, setLeaving] = useState(false);
+  const [mode, setMode] = useState<Mode>("select");
 
   const submit = (text?: string) => {
     const value = (text ?? q).trim();
     if (value.length < 10) return;
     setLeaving(true);
     setTimeout(() => onSubmit(value), 320);
+  };
+
+  const goToQuestionnaire = () => {
+    if (!onStartQuestionnaire) return;
+    setLeaving(true);
+    setTimeout(() => onStartQuestionnaire(), 320);
   };
 
   const handleFormSubmit = (e: FormEvent) => {
@@ -91,7 +101,55 @@ export default function Onboarding({ onSubmit }: Props) {
             viabilidad real, con modelo financiero y trámites ya trazados.
           </p>
 
-          <form className={styles.form} onSubmit={handleFormSubmit}>
+          {mode === "select" ? (
+            <div className={styles.modeChoice}>
+              <div className={styles.modeChoiceTitle}>
+                ¿Cómo quieres empezar?
+              </div>
+              <div className={styles.modeChoiceGrid}>
+                <button
+                  type="button"
+                  className={styles.modeTile}
+                  onClick={() => setMode("texto")}
+                >
+                  <div className={styles.modeTileIco} aria-hidden="true">✍️</div>
+                  <div className={styles.modeTileTitle}>Texto libre</div>
+                  <div className={styles.modeTileDesc}>
+                    Describe tu idea en lenguaje natural. El motor interpreta sector,
+                    tamaño y público.
+                  </div>
+                  <div className={styles.modeTileCta}>Escribir idea →</div>
+                </button>
+                <button
+                  type="button"
+                  className={styles.modeTile}
+                  onClick={goToQuestionnaire}
+                  disabled={!onStartQuestionnaire}
+                >
+                  <div className={styles.modeTileIco} aria-hidden="true">📋</div>
+                  <div className={styles.modeTileTitle}>Cuestionario guiado</div>
+                  <div className={styles.modeTileDesc}>
+                    Formulario por pasos: sector, subsector, público, presupuesto.
+                    Ideal si ya tienes claros los parámetros.
+                  </div>
+                  <div className={styles.modeTileCta}>Empezar cuestionario →</div>
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <form
+            className={styles.form}
+            onSubmit={handleFormSubmit}
+            style={mode === "select" ? { display: "none" } : undefined}
+          >
+            <button
+              type="button"
+              onClick={() => setMode("select")}
+              className={styles.modeBack}
+            >
+              ← Volver a elegir modo
+            </button>
             <div className={styles.promptShell}>
               <textarea
                 autoFocus

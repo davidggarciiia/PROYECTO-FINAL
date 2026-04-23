@@ -341,3 +341,92 @@
   z-index: 1;
 }
 .signal { color: var(--accent-light); }
+
+/* ── Mode chooser ─────────────────────────────────────────────── */
+.modeChoice {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 4px;
+  animation: kp-fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.modeChoiceTitle {
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.modeChoiceGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 720px) {
+  .modeChoiceGrid { grid-template-columns: 1fr; }
+}
+
+.modeTile {
+  position: relative;
+  text-align: left;
+  padding: 20px 22px 22px;
+  background: linear-gradient(180deg, rgba(124, 58, 237, 0.06), rgba(124, 58, 237, 0.015));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 180px;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+.modeTile:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(124, 58, 237, 0.14), rgba(124, 58, 237, 0.04));
+  box-shadow: 0 10px 24px -12px rgba(124, 58, 237, 0.45);
+}
+.modeTile:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modeTileIco {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.modeTileTitle {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.modeTileDesc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  flex: 1;
+}
+
+.modeTileCta {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-light);
+  letter-spacing: 0.04em;
+}
+
+.modeBack {
+  align-self: flex-start;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  padding: 4px 0;
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+.modeBack:hover { color: var(--accent-light); }
