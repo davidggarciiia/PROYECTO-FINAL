@@ -112,7 +112,7 @@ async def _get_zonas_con_negocios() -> list[dict]:
                 ST_X(ST_Centroid(z.geometria)::geometry) AS lng
             FROM zonas z
             JOIN negocios_activos na ON na.zona_id = z.id
-            WHERE na.activo = TRUE
+            WHERE na.es_activo = TRUE
             ORDER BY z.nombre
             LIMIT 50
             """
@@ -121,9 +121,9 @@ async def _get_zonas_con_negocios() -> list[dict]:
 
 
 async def _get_sectores_activos() -> list[str]:
-    """Devuelve los códigos de sector activos en la BD."""
+    """Devuelve los códigos de sector definidos en la BD."""
     async with get_db() as conn:
-        rows = await conn.fetch("SELECT codigo FROM sectores WHERE activo = TRUE ORDER BY codigo")
+        rows = await conn.fetch("SELECT codigo FROM sectores ORDER BY codigo")
     return [r["codigo"] for r in rows]
 
 
@@ -240,7 +240,7 @@ async def _actualizar_negocios_gosom(entries: list, zona_id: str) -> int:
                         subsector_codigo = COALESCE($7, subsector_codigo)
                     WHERE zona_id = $4
                       AND LOWER(nombre) ILIKE LOWER($5)
-                      AND activo = TRUE
+                      AND es_activo = TRUE
                     """,
                     entry.review_count,
                     entry.review_rating,
@@ -269,7 +269,7 @@ async def _actualizar_negocios_gosom(entries: list, zona_id: str) -> int:
                             ST_SetSRID(ST_MakePoint($4, $5), 4326)::geography,
                             30
                         )
-                        AND activo = TRUE
+                        AND es_activo = TRUE
                         """,
                         entry.review_count,
                         entry.review_rating,
@@ -321,7 +321,7 @@ async def _actualizar_popular_times_score() -> None:
             """
             SELECT zona_id, popular_times
             FROM negocios_activos
-            WHERE activo = TRUE
+            WHERE es_activo = TRUE
               AND popular_times IS NOT NULL
             """
         )
@@ -402,7 +402,7 @@ async def _actualizar_review_count_medio() -> None:
                 AVG(na.review_count)::float AS avg_reviews
             FROM negocios_activos na
             WHERE na.review_count > 0
-              AND na.activo = TRUE
+              AND na.es_activo = TRUE
             GROUP BY na.zona_id
             """
         )

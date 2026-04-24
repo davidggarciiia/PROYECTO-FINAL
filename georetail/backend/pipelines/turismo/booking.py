@@ -434,7 +434,7 @@ async def _actualizar_variables() -> int:
             FROM zonas z
             LEFT JOIN alojamientos_turisticos a
                 ON ST_DWithin(z.geometria::geography, a.geometria::geography, {_RADIO_M})
-                AND a.activo = TRUE
+                AND a.es_activo = TRUE
             GROUP BY z.id
             """
         )

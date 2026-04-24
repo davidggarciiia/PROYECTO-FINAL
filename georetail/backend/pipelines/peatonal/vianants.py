@@ -10,7 +10,7 @@ Fonts:
                          Longitud, Latitud (o Geometria WKT/GeoJSON)
 
   2. CSV locals si estan disponibles a /data/csv/vianants/
-     Nom de fitxer esperat: <any>_aforament_vianants_trams.csv
+     Nom de fitxer esperat: <any>_aforament_trams_peatonales.csv
 
 Diferència respecte aforaments.py:
   - aforaments.py usa sensors de TRÀNSIT (vehicles + bicis) — incorrecte per a ús comercial
@@ -90,7 +90,7 @@ async def ejecutar() -> dict:
       3. Assigna a zones via ST_DWithin (radi 150m)
       4. Calcula flujo_peatonal_* per zona
       5. UPSERT a variables_zona (sobreescriu aforaments.py si hi ha dades)
-      6. Guarda els trams crus a vianants_trams
+      6. Guarda els trams crus a trams_peatonales
     """
     eid = await _init("vianants")
     try:
@@ -121,7 +121,7 @@ async def ejecutar() -> dict:
         # 4. Persistir trams crus
         fecha_ref = date.today()
         trams_inserits = await _insertar_trams(trams, fecha_ref)
-        logger.info("Trams inserits a vianants_trams: %d", trams_inserits)
+        logger.info("Trams inserits a trams_peatonales: %d", trams_inserits)
 
         # 5. Assignar flux a zones (ST_DWithin 150m)
         zonas_act = await _asignar_zonas(trams, fecha_ref)
@@ -316,7 +316,7 @@ async def _descargar_datos(resource_id: str) -> list[dict]:
 def _leer_csv_local() -> list[dict]:
     """
     Llegeix els trams de vianants des de CSV locals a /data/csv/vianants/.
-    Accepta fitxers amb format: <any>_aforament_vianants_trams.csv
+    Accepta fitxers amb format: <any>_aforament_trams_peatonales.csv
     Si n'hi ha múltiples, agafa el més recent (major any en el nom).
     """
     if not _CSV_VIANANTS.exists():
@@ -465,14 +465,14 @@ def _parsear_csv_raw(text: str) -> list[dict]:
 
 async def _crear_taula_si_no_existeix() -> None:
     """
-    Crea la taula vianants_trams si no existeix (idempotent).
+    Crea la taula trams_peatonales si no existeix (idempotent).
     Veure migració 007_vianants.sql per al DDL complet.
     """
     async with get_db() as conn:
         # Crear taula amb CREATE TABLE IF NOT EXISTS de manera segura
         await conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS vianants_trams (
+            CREATE TABLE IF NOT EXISTS trams_peatonales (
                 id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 id_tram     VARCHAR(50),
                 nom_tram    VARCHAR(300),
@@ -490,17 +490,17 @@ async def _crear_taula_si_no_existeix() -> None:
         )
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_vianants_any_mes "
-            "ON vianants_trams(any, mes)"
+            "ON trams_peatonales(anyo, mes)"
         )
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_vianants_zona "
-            "ON vianants_trams(zona_id)"
+            "ON trams_peatonales(zona_id)"
         )
         # Index espacial (requereix PostGIS)
         try:
             await conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_vianants_geom "
-                "ON vianants_trams USING GIST(geometria)"
+                "ON trams_peatonales USING GIST(geometria)"
             )
         except Exception as exc:
             logger.debug("Index GIST no creat (potser PostGIS no disponible): %s", exc)
@@ -508,7 +508,7 @@ async def _crear_taula_si_no_existeix() -> None:
 
 async def _insertar_trams(trams: list[dict], fecha_ref: date) -> int:
     """
-    Inserta els trams de vianants a la taula vianants_trams.
+    Inserta els trams de vianants a la taula trams_peatonales.
     Només insereix els que tenen coordenades (lat/lng).
     Retorna el nombre de trams inserits.
     """
@@ -517,15 +517,15 @@ async def _insertar_trams(trams: list[dict], fecha_ref: date) -> int:
     trams_sense_coords = len(trams) - len(trams_amb_coords)
 
     if trams_sense_coords:
-        logger.debug("%d trams sense coordenades — no s'inseriran a vianants_trams", trams_sense_coords)
+        logger.debug("%d trams sense coordenades — no s'inseriran a trams_peatonales", trams_sense_coords)
 
     async with get_db() as conn:
         for tram in trams_amb_coords:
             try:
                 await conn.execute(
                     """
-                    INSERT INTO vianants_trams
-                        (id_tram, nom_tram, any, mes, intensitat, lat, lng, geometria, fuente)
+                    INSERT INTO trams_peatonales
+                        (id_tram, nom_tram, anyo, mes, intensitat, lat, lng, geometria, fuente)
                     VALUES ($1, $2, $3, $4, $5, $6, $7,
                             ST_SetSRID(ST_MakePoint($7, $6), 4326),
                             'bcn_vianants')
@@ -643,11 +643,11 @@ async def _asignar_zonas(trams: list[dict], fecha: date) -> int:
                     )
                     n_zonas_actualitzades.add(str(zona["zona_id"]))
 
-                    # Actualitzar referència de zona a vianants_trams
+                    # Actualitzar referència de zona a trams_peatonales
                     try:
                         await conn.execute(
                             """
-                            UPDATE vianants_trams
+                            UPDATE trams_peatonales
                             SET zona_id = $1
                             WHERE id_tram = $2 AND zona_id IS NULL
                             """,

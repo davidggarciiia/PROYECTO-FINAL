@@ -10,7 +10,7 @@ async def obtener_modelo_version(version: str) -> dict | None:
     async with get_db() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, version, sector, metricas, demografia_feature_names, activo
+            SELECT id, version, sector, metricas, demografia_feature_names, es_activo
             FROM modelos_versiones
             WHERE version = $1
             """,
@@ -23,9 +23,9 @@ async def obtener_modelo_activo(sector: Optional[str] = None) -> dict | None:
     async with get_db() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, version, sector, metricas, demografia_feature_names, activo
+            SELECT id, version, sector, metricas, demografia_feature_names, es_activo
             FROM modelos_versiones
-            WHERE activo = TRUE
+            WHERE es_activo = TRUE
               AND ($1::text IS NULL OR sector = $1)
             ORDER BY created_at DESC
             LIMIT 1

@@ -155,7 +155,7 @@ async def _cargar_paradas() -> int:
             await conn.execute(
                 """
                 INSERT INTO paradas_transporte
-                    (id, nombre, lat, lng, geometria, accesible_pmr, fuente)
+                    (id, nombre, lat, lng, geometria, es_accesible_pmr, fuente)
                 VALUES ($1, $2, $3, $4,
                         ST_SetSRID(ST_MakePoint($4, $3), 4326),
                         FALSE, 'tmb')
@@ -188,7 +188,7 @@ async def _cargar_paradas() -> int:
             await conn.execute(
                 """
                 INSERT INTO paradas_transporte
-                    (id, nombre, lat, lng, geometria, accesible_pmr, fuente)
+                    (id, nombre, lat, lng, geometria, es_accesible_pmr, fuente)
                 VALUES ($1, $2, $3, $4,
                         ST_SetSRID(ST_MakePoint($4, $3), 4326),
                         FALSE, 'tmb')
@@ -275,7 +275,7 @@ async def _cargar_paradas_por_linea() -> None:
                             await conn.execute(
                                 """
                                 INSERT INTO paradas_transporte
-                                    (id, nombre, lat, lng, geometria, accesible_pmr, fuente)
+                                    (id, nombre, lat, lng, geometria, es_accesible_pmr, fuente)
                                 VALUES (
                                     $1, $2, $3, $4,
                                     ST_SetSRID(ST_MakePoint($4, $3), 4326),

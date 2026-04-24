@@ -72,8 +72,8 @@ async def _reset_month(fecha_ref: date) -> None:
         )
         await conn.execute(
             """
-            DELETE FROM vianants_trams
-            WHERE any = $1
+            DELETE FROM trams_peatonales
+            WHERE anyo = $1
               AND mes = $2
               AND fuente = 'bcn_vianants'
             """,

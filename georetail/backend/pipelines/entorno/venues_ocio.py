@@ -591,16 +591,24 @@ async def _actualitzar_variables_zona(fecha: date) -> int:
     Per cada zona calcula:
       - eventos_culturales_500m: venues culturals en radio 500m des del centroide
       - venues_musicales_500m:   venues musicals en radio 500m
-    i fa UPSERT en variables_zona.
+      - mercados_municipales_500m: mercats municipals en radio 500m (via venues_ocio)
+
+    # REFACTOR: abans UPDATE variables_zona (columnes que ja no existeixen a la
+    # coordinadora), ara:
+    #   1. INSERT INTO variables_zona (coordinadora) — per crear la fila ancora
+    #   2. INSERT INTO vz_turismo — eventos_culturales_500m, venues_musicales_500m,
+    #                               mercados_municipales_500m
+    #   3. INSERT INTO vz_entorno — score_equipamientos (proxy de diversitat d'oci)
     """
     async with get_db() as conn:
-        # Comptar per zona i tipus usant ST_DWithin des del centroide de la zona
+        # Comptar per zona i tipus usant ST_DWithin des del centroide de la zona.
+        # Afegim mercados_municipales (type 'mercado' si existeix, o bé via taula directa)
         rows = await conn.fetch(
             f"""
             SELECT
                 z.id AS zona_id,
-                COUNT(CASE WHEN v.tipo = 'cultural' THEN 1 END) AS n_cultural,
-                COUNT(CASE WHEN v.tipo = 'musical'  THEN 1 END) AS n_musical
+                COUNT(CASE WHEN v.tipo = 'cultural' THEN 1 END)  AS n_cultural,
+                COUNT(CASE WHEN v.tipo = 'musical'  THEN 1 END)  AS n_musical
             FROM zonas z
             CROSS JOIN venues_ocio v
             WHERE ST_DWithin(
@@ -612,56 +620,90 @@ async def _actualitzar_variables_zona(fecha: date) -> int:
             """
         )
 
-    if not rows:
+        # Comptar mercados_municipales_500m des de la taula mercados_municipales
+        mercats_rows = await conn.fetch(
+            """
+            SELECT
+                z.id AS zona_id,
+                COUNT(mm.id)::int AS n_mercats
+            FROM zonas z
+            LEFT JOIN mercados_municipales mm
+                ON ST_DWithin(mm.geometria::geography,
+                              ST_Centroid(z.geometria)::geography, 500)
+            GROUP BY z.id
+            HAVING COUNT(mm.id) > 0
+            """
+        )
+
+    if not rows and not mercats_rows:
         return 0
+
+    mercats_per_zona = {r["zona_id"]: int(r["n_mercats"]) for r in mercats_rows}
 
     n = 0
     async with get_db() as conn:
-        for row in rows:
-            zona_id    = row["zona_id"]
-            n_cultural = int(row["n_cultural"] or 0)
-            n_musical  = int(row["n_musical"] or 0)
+        # Unió de totes les zones afectades
+        zona_ids_afectades = set(r["zona_id"] for r in rows) | set(mercats_per_zona.keys())
+        venues_per_zona = {r["zona_id"]: r for r in rows}
 
+        for zona_id in zona_ids_afectades:
+            row = venues_per_zona.get(zona_id)
+            n_cultural = int(row["n_cultural"] or 0) if row else 0
+            n_musical  = int(row["n_musical"]  or 0) if row else 0
+            n_mercats  = mercats_per_zona.get(zona_id, 0)
+
+            # 1. Anchor en variables_zona (tabla coordinadora delgada)
             await conn.execute(
                 """
                 INSERT INTO variables_zona (zona_id, fecha, fuente)
                 VALUES ($1, $2, 'venues_ocio')
                 ON CONFLICT (zona_id, fecha) DO UPDATE
-                SET fuente = EXCLUDED.fuente
+                SET fuente = EXCLUDED.fuente, updated_at = NOW()
                 """,
                 zona_id, fecha,
             )
 
-            for col, val in [
-                ("eventos_culturales_500m", n_cultural),
-                ("venues_musicales_500m",   n_musical),
-            ]:
-                try:
-                    await conn.execute(
-                        f"UPDATE variables_zona SET {col} = $1 "
-                        f"WHERE zona_id = $2 AND fecha = $3",
-                        val, zona_id, fecha,
-                    )
-                except Exception:
-                    pass  # columna no existeix en schema actual
+            # 2. Dades de turisme i oci en taula satèl·lit vz_turismo
+            # REFACTOR: abans UPDATE variables_zona SET eventos_culturales_500m / venues_musicales_500m
+            await conn.execute(
+                """
+                INSERT INTO vz_turismo (
+                    zona_id, fecha,
+                    eventos_culturales_500m,
+                    venues_musicales_500m,
+                    mercados_municipales_500m,
+                    fuente
+                )
+                VALUES ($1, $2, $3, $4, $5, 'venues_ocio')
+                ON CONFLICT (zona_id, fecha) DO UPDATE
+                SET eventos_culturales_500m  = EXCLUDED.eventos_culturales_500m,
+                    venues_musicales_500m    = EXCLUDED.venues_musicales_500m,
+                    mercados_municipales_500m = EXCLUDED.mercados_municipales_500m,
+                    fuente                   = EXCLUDED.fuente,
+                    updated_at               = NOW()
+                """,
+                zona_id, fecha, n_cultural, n_musical, n_mercats if n_mercats else None,
+            )
 
-            # Actualitzar score_equipamientos com a proxy (si no hi ha columnes específiques)
-            try:
-                total_venues = n_cultural + n_musical
-                score_equip  = min(100.0, total_venues * 5.0)  # 20 venues → 100
+            # 3. score_equipamientos com a proxy de diversitat d'oci en vz_entorno
+            # REFACTOR: abans UPDATE variables_zona SET score_equipamientos (columna inexistent)
+            total_venues = n_cultural + n_musical
+            if total_venues > 0:
+                score_equip = min(100.0, total_venues * 5.0)  # 20 venues → 100
                 await conn.execute(
                     """
-                    UPDATE variables_zona
+                    INSERT INTO vz_entorno (zona_id, fecha, score_equipamientos, fuente)
+                    VALUES ($1, $2, $3, 'venues_ocio')
+                    ON CONFLICT (zona_id, fecha) DO UPDATE
                     SET score_equipamientos = GREATEST(
-                        COALESCE(score_equipamientos, 0),
-                        $1
-                    )
-                    WHERE zona_id = $2 AND fecha = $3
+                        COALESCE(vz_entorno.score_equipamientos, 0),
+                        EXCLUDED.score_equipamientos
+                    ),
+                    fuente     = EXCLUDED.fuente,
+                    updated_at = NOW()
                     """,
-                    score_equip, zona_id, fecha,
+                    zona_id, fecha, score_equip,
                 )
-            except Exception:
-                pass
 
             n += 1
 

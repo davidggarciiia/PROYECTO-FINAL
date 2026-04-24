@@ -51,8 +51,8 @@ async def _get_cache(norm: str) -> Optional[tuple[float, float, str]]:
     try:
         async with get_db() as conn:
             row = await conn.fetchrow(
-                "SELECT lat, lng, precision FROM cache_geocoding WHERE direccion_normalizada=$1", norm)
-        return (row["lat"], row["lng"], row["precision"]) if row else None
+                "SELECT lat, lng, nivel_precision FROM cache_geocoding WHERE direccion_normalizada=$1", norm)
+        return (row["lat"], row["lng"], row["nivel_precision"]) if row else None
     except Exception:
         return None
 
@@ -62,7 +62,7 @@ async def _guardar_cache(norm: str, lat: float, lng: float,
     try:
         async with get_db() as conn:
             await conn.execute(
-                "INSERT INTO cache_geocoding(direccion_normalizada,lat,lng,precision,fuente)"
+                "INSERT INTO cache_geocoding(direccion_normalizada,lat,lng,nivel_precision,fuente)"
                 " VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
                 norm, lat, lng, precision, fuente)
     except Exception:

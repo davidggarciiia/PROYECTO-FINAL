@@ -59,7 +59,7 @@ _SEASONAL_LIFT_FEATURES = {
 
 _FALLBACK_CANDIDATES: tuple[dict[str, Any], ...] = (
     {
-        "source_id": "bcn_vianants_trams",
+        "source_id": "bcn_trams_peatonales",
         "provider": "barcelona_open_data",
         "scope": "seasonal",
         "fit_score": 0.94,
@@ -273,24 +273,24 @@ async def _load_temporal_snapshot_frame(
 async def _load_vianants_monthly_frame(zona_ids: Sequence[str]) -> pd.DataFrame:
     zones = sorted({str(zona_id) for zona_id in zona_ids if zona_id})
     if not zones:
-        return pd.DataFrame(columns=["zona_id", "any", "mes", "bucket_date", "intensidad"])
+        return pd.DataFrame(columns=["zona_id", "anyo", "mes", "bucket_date", "intensidad"])
 
     query = """
         SELECT
             zona_id,
-            any,
+            anyo,
             mes,
-            make_date(any, mes, 1) AS bucket_date,
+            make_date(anyo, mes, 1) AS bucket_date,
             AVG(intensitat)::float AS intensidad
-        FROM vianants_trams
+        FROM trams_peatonales
         WHERE zona_id = ANY($1)
-          AND any IS NOT NULL
+          AND anyo IS NOT NULL
           AND mes IS NOT NULL
           AND mes BETWEEN 1 AND 12
           AND intensitat IS NOT NULL
           AND intensitat > 0
-        GROUP BY zona_id, any, mes
-        ORDER BY zona_id, any, mes
+        GROUP BY zona_id, anyo, mes
+        ORDER BY zona_id, anyo, mes
     """
     async with get_db() as conn:
         rows = await conn.fetch(query, zones)
@@ -314,7 +314,7 @@ async def _load_weekly_source_stats(zona_ids: Sequence[str]) -> dict[str, Any]:
                     """
                     SELECT COUNT(DISTINCT zona_id)
                     FROM negocios_activos
-                    WHERE activo = TRUE
+                    WHERE es_activo = TRUE
                       AND zona_id = ANY($1)
                       AND popular_times IS NOT NULL
                     """,
@@ -416,7 +416,7 @@ def _evaluate_seasonal_gate(
             f"cobertura estacional histórica insuficiente ({snapshot_coverage:.2%} < {min_snapshot_coverage:.0%})"
         )
     if zone_bucket_ratio_12 < min_snapshot_coverage and zone_bucket_ratio_6 < min_snapshot_coverage:
-        reasons.append("vianants_trams no aporta suficiente profundidad mensual por zona")
+        reasons.append("trams_peatonales no aporta suficiente profundidad mensual por zona")
     if not plausibility["ok"]:
         reasons.append("hay valores estacionales fuera de rangos plausibles")
 
@@ -475,8 +475,8 @@ async def ejecutar_readiness(
     try:
         monthly_frame = await _load_vianants_monthly_frame(meta["zona_id"].astype(str).tolist())
     except Exception as exc:
-        logger.warning("No se pudo auditar vianants_trams: %s", exc)
-        monthly_frame = pd.DataFrame(columns=["zona_id", "any", "mes", "bucket_date", "intensidad"])
+        logger.warning("No se pudo auditar trams_peatonales: %s", exc)
+        monthly_frame = pd.DataFrame(columns=["zona_id", "anyo", "mes", "bucket_date", "intensidad"])
         warnings.append(f"vianants_monthly_audit_failed: {exc}")
 
     try:
@@ -552,7 +552,7 @@ async def ejecutar_readiness(
                 },
             },
             "seasonal": {
-                "vianants_trams_monthly_rows": int(len(monthly_frame)),
+                "trams_peatonales_monthly_rows": int(len(monthly_frame)),
                 "dataset_zone_ratio_12_months": seasonal_gate["zone_bucket_ratio_12"],
                 "dataset_zone_ratio_6_months": seasonal_gate["zone_bucket_ratio_6"],
             },

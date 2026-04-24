@@ -300,7 +300,7 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
         direccion=zona.get("direccion"),
         m2=zona.get("m2"),
         alquiler_mensual=zona.get("alquiler_mensual"),
-        disponible=zona.get("disponible", True),
+        disponible=zona.get("esta_disponible", zona.get("disponible", True)),
 
         # Scoring
         score_global=round(score_global, 1),

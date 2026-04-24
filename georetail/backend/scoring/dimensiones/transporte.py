@@ -140,7 +140,7 @@ SELECT EXISTS(
 
 _SQL_PMR = """
 SELECT
-    COUNT(CASE WHEN pt.accesible_pmr = TRUE THEN 1 END)::int AS accesibles,
+    COUNT(CASE WHEN pt.es_accesible_pmr = TRUE THEN 1 END)::int AS accesibles,
     COUNT(*)::int AS total
 FROM paradas_transporte pt
 JOIN paradas_lineas pl ON pl.parada_id = pt.id

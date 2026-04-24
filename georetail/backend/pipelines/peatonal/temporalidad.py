@@ -453,7 +453,7 @@ async def _popular_times_metrics() -> dict[str, dict[str, float]]:
             """
             SELECT zona_id, popular_times
             FROM negocios_activos
-            WHERE activo = TRUE
+            WHERE es_activo = TRUE
               AND popular_times IS NOT NULL
             """
         )
@@ -521,18 +521,18 @@ async def _available_seasonality_snapshot_dates(
     start_year: int | None = None,
     end_year: int | None = None,
 ) -> list[date]:
-    conditions = ["any IS NOT NULL", "mes IS NOT NULL", "mes BETWEEN 1 AND 12"]
+    conditions = ["anyo IS NOT NULL", "mes IS NOT NULL", "mes BETWEEN 1 AND 12"]
     params: list[int] = []
     if start_year is not None:
         params.append(start_year)
-        conditions.append(f"any >= ${len(params)}")
+        conditions.append(f"anyo >= ${len(params)}")
     if end_year is not None:
         params.append(end_year)
-        conditions.append(f"any <= ${len(params)}")
+        conditions.append(f"anyo <= ${len(params)}")
 
     query = f"""
-        SELECT DISTINCT make_date(any, mes, 1) AS snapshot_date
-        FROM vianants_trams
+        SELECT DISTINCT make_date(anyo, mes, 1) AS snapshot_date
+        FROM trams_peatonales
         WHERE {' AND '.join(conditions)}
         ORDER BY snapshot_date
     """
@@ -549,24 +549,24 @@ async def _seasonality_metrics(
     filter_sql = ""
     if as_of_date is not None:
         params.append(as_of_date)
-        filter_sql = "AND make_date(any, mes, 1) < $1"
+        filter_sql = "AND make_date(anyo, mes, 1) < $1"
 
     query = f"""
-        SELECT zona_id, any, mes, AVG(intensitat)::float AS intensidad
-        FROM vianants_trams
+        SELECT zona_id, anyo, mes, AVG(intensitat)::float AS intensidad
+        FROM trams_peatonales
         WHERE zona_id IS NOT NULL
           AND intensitat IS NOT NULL
           AND intensitat > 0
           {filter_sql}
-        GROUP BY zona_id, any, mes
-        ORDER BY zona_id, any, mes
+        GROUP BY zona_id, anyo, mes
+        ORDER BY zona_id, anyo, mes
     """
     async with get_db() as conn:
         rows = await conn.fetch(query, *params)
 
     by_zone: dict[str, list[tuple[int, int, float]]] = defaultdict(list)
     for row in rows:
-        by_zone[str(row["zona_id"])].append((int(row["any"]), int(row["mes"]), float(row["intensidad"])))
+        by_zone[str(row["zona_id"])].append((int(row["anyo"]), int(row["mes"]), float(row["intensidad"])))
 
     result: dict[str, dict[str, float]] = {}
     for zona_id, series in by_zone.items():

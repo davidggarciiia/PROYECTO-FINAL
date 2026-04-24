@@ -176,7 +176,7 @@ async def get_locales(
     if disponible is not None:
         zonas_filtradas = [
             z for z in zonas_filtradas
-            if z.get("disponible") == disponible
+            if z.get("esta_disponible", z.get("disponible")) == disponible
         ]
 
     # ── Ordenar ───────────────────────────────────────────────────────────────
@@ -213,7 +213,7 @@ async def get_locales(
             color=score_to_color(z["score_global"]),
             alquiler_mensual=z.get("alquiler_mensual"),
             m2=z.get("m2"),
-            disponible=z.get("disponible"),
+            disponible=z.get("esta_disponible", z.get("disponible")),
             probabilidad_supervivencia_3a=round(z.get("probabilidad_supervivencia_3a", 0.5), 2),
             resumen_ia=z.get("resumen_ia", ""),
         )

@@ -170,11 +170,36 @@ backend/
 
 ```
 backend/
-├── db/migraciones/
-│   ├── 001_schema_inicial.sql         ← esquema completo de BD (32 tablas)
-│   ├── 004_inmuebles_portales.sql     ← tabla multi-portal + vista v_mercado_zona
-│   ├── 006..025_*.sql                 ← migraciones incrementales (ver carpeta)
-│   └── 026_dinamismo_zonal.sql        ← tabla dinamismo_zonal + vista v_dinamismo_zona
+├── db/
+│   ├── migraciones/                   ← 10 archivos consolidados + 2 seeds (orden alfabético)
+│   │   ├── 01_extensiones.sql         ← postgis, vector, pg_trgm, fn_set_updated_at()
+│   │   ├── 02_geografia.sql           ← distritos, barrios, zonas
+│   │   ├── 03_inmuebles.sql           ← locales, locales_historico_precios, inmuebles_portales,
+│   │   │                                 precios_alquiler_zona, cache_geocoding, v_mercado_zona
+│   │   ├── 04_variables_zona.sql      ← variables_zona (coordinadora) + vz_flujo / vz_turismo /
+│   │   │                                 vz_demografia / vz_comercial / vz_entorno + v_variables_zona
+│   │   ├── 05_sectores_scoring.sql    ← sectores, subsectores, scores_zona, modelos_versiones,
+│   │   │                                 negocios_historico, dim_calendario_bcn
+│   │   ├── 06_competencia.sql         ← negocios_activos, competencia_por_local,
+│   │   │                                 competencia_detalle_zona, v_competencia_zona
+│   │   ├── 07_transporte.sql          ← lineas_transporte, paradas_transporte, paradas_lineas,
+│   │   │                                 frecuencias_transporte, estaciones_bicing, carriles_bici
+│   │   ├── 08_entorno_turismo.sql     ← venues_ocio, alojamientos_turisticos, licencias_actividad,
+│   │   │                                 trams_peatonales, parques_amb, comisarias,
+│   │   │                                 mercados_municipales, landmarks_turisticos,
+│   │   │                                 intensitat_turismo_oficial, dinamismo_zonal, v_dinamismo_zona
+│   │   ├── 09_usuario_financiero.sql  ← sesiones, busquedas, mensajes_cuestionario,
+│   │   │                                 benchmarks_sector, parametros_financieros_zona,
+│   │   │                                 analisis_financieros, requisitos_legales_sector,
+│   │   │                                 restricciones_geograficas_sector, exportaciones,
+│   │   │                                 v_parametros_financieros_actuales
+│   │   ├── 10_ia_pipelines.sql        ← resenas (IVFFLAT), alertas_zona,
+│   │   │                                 perfiles_zona_embedding (IVFFLAT),
+│   │   │                                 pipeline_ejecuciones, pipeline_errores, llm_logs
+│   │   ├── 98_seed_demo.sql           ← datos de demostración (usa nuevos nombres de columna)
+│   │   └── 99_seed_variables_zona.sql ← seeds de variables escriben a vz_* (no a tabla fat)
+│   └── legacy_migraciones/            ← 37 migraciones legacy 001-036 + 2 seeds históricos
+│                                         (NO se ejecutan; solo referencia histórica)
 ├── models/
 │   └── xgboost_synthetic_v3.json      ← modelo pre-entrenado con datos sintéticos
 ├── requirements.txt
@@ -356,29 +381,44 @@ EXPORTS_DIR=/data/exports
 - Scoring: `scorer.py` intenta XGBoost primero, fallback a pesos manuales.
 - Pipelines: siempre registran ejecución en `pipeline_ejecuciones` (inicio + fin + estado).
 
+### Convenciones SQL
+
+- **Nombres:** snake_case universal, todo en castellano (`licencias_actividad`, `trams_peatonales`).
+- **Booleanos:** prefijo `es_` (estado permanente: `es_activo`, `es_escaparate`), `esta_` (estado transitorio: `esta_disponible`, `esta_activa`), `fue_` (acción pasada: `fue_descargado`), `sobrevivio_` (evento histórico: `sobrevivio_3a`).
+- **Constraints nombrados:** prefijo `pk_` (primary key), `fk_` (foreign key), `uq_` (unique), `ck_` (check). Nunca dejar constraints sin nombre.
+- **Tipos canónicos:**
+  - Coordenadas: `DOUBLE PRECISION` (lat, lng, área en m²)
+  - Dinero: `NUMERIC(12,2)` (precio, alquiler)
+  - Rating 0-5: `NUMERIC(3,2)`
+  - Embeddings: `VECTOR(768)` (paraphrase-multilingual-mpnet-base-v2)
+  - Score 0-100: `NUMERIC(5,2)`
+  - Probabilidad 0-1: `NUMERIC(4,3)`
+- **Vistas de compatibilidad:** `v_variables_zona` agrega las 5 tablas satélite; no romper el orden de columnas sin actualizar `scoring/features.py`.
+
 ---
 
 ## Levantar en local
 
 ```bash
-# 1. Infraestructura
-docker-compose up -d postgres redis
+# 1. Infraestructura + BD completa (los archivos 01_...10_... y 98_/99_ se aplican
+#    automáticamente vía docker-entrypoint-initdb.d en orden alfabético)
+docker compose down -v && docker compose up --build
 
-# 2. Migrar BD
-cd backend && psql $DATABASE_URL < db/migraciones/001_schema_inicial.sql
-cd backend && psql $DATABASE_URL < db/migraciones/004_inmuebles_portales.sql
-
-# 3. Backend
+# 2. Backend (solo si se quiere correr fuera de Docker)
 cd backend && uvicorn main:app --reload --port 8000
 
-# 4. Celery worker
+# 3. Celery worker
 cd backend && celery -A workers.celery_app worker --loglevel=info
 
-# 5. Frontend
+# 4. Frontend
 cd frontend && npm run dev
 
 # Docs API interactiva: http://localhost:8000/docs
 ```
+
+> **Nota:** `docker compose down -v` destruye el volumen de datos y recrea el esquema desde cero
+> aplicando los 10 archivos de migraciones + 2 seeds en orden. Las migraciones legacy (001-036)
+> están en `backend/db/legacy_migraciones/` y **no se ejecutan**; sirven solo de referencia histórica.
 
 ---
 

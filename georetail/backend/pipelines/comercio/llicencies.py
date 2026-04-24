@@ -9,7 +9,7 @@ Qué hace:
   2. Geocodifica las direcciones usando PostGIS (tabla geocoding_cache)
      o Nominatim como fallback
   3. Asigna zona_id via ST_Within
-  4. Inserta en tabla llicencies_activitat
+  4. Inserta en tabla licencias_actividad
   5. Calcula por zona:
      - licencias_nuevas_1a: atorgades en últimos 12 meses
      - licencias_bajas_1a: retirades/caducades en últimos 12 meses
@@ -84,7 +84,7 @@ async def ejecutar() -> dict:
             len(totes),
         )
 
-        # 3. Insertar en tabla llicencies_activitat
+        # 3. Insertar en tabla licencias_actividad
         insertades = await _insertar_llicencies(totes)
         logger.info("Llicències insertades: %d", insertades)
 
@@ -370,12 +370,12 @@ async def _nominatim_geocode(llicencies: list[dict]) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 3. Inserció en llicencies_activitat
+# 3. Inserció en licencias_actividad
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def _insertar_llicencies(llicencies: list[dict]) -> int:
     """
-    Inserta en la tabla llicencies_activitat (creada si no existe).
+    Inserta en la tabla licencias_actividad (creada si no existe).
     Hace UPSERT por ckan_id para ser idempotente.
     """
     amb_zona = [l for l in llicencies if l.get("zona_id")]
@@ -385,7 +385,7 @@ async def _insertar_llicencies(llicencies: list[dict]) -> int:
     async with get_db() as conn:
         # Crear tabla si no existe
         await conn.execute("""
-            CREATE TABLE IF NOT EXISTS llicencies_activitat (
+            CREATE TABLE IF NOT EXISTS licencias_actividad (
                 id          SERIAL PRIMARY KEY,
                 ckan_id     VARCHAR(50),
                 zona_id     VARCHAR(20) REFERENCES zonas(id),
@@ -403,14 +403,14 @@ async def _insertar_llicencies(llicencies: list[dict]) -> int:
         """)
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_llicencies_zona_data "
-            "ON llicencies_activitat(zona_id, data_lic DESC)"
+            "ON licencias_actividad(zona_id, data_lic DESC)"
         )
 
         # Afegir columna updated_at ABANS del loop d'inserts perquè
         # l'ON CONFLICT ... SET updated_at=NOW() la necessita des del primer run.
         try:
             await conn.execute(
-                "ALTER TABLE llicencies_activitat ADD COLUMN IF NOT EXISTS "
+                "ALTER TABLE licencias_actividad ADD COLUMN IF NOT EXISTS "
                 "updated_at TIMESTAMPTZ DEFAULT NOW()"
             )
         except Exception:
@@ -421,7 +421,7 @@ async def _insertar_llicencies(llicencies: list[dict]) -> int:
             try:
                 await conn.execute(
                     """
-                    INSERT INTO llicencies_activitat
+                    INSERT INTO licencias_actividad
                         (ckan_id, zona_id, adreca, nom_act, tipus,
                          data_lic, districte, barri, lat, lng)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -466,7 +466,7 @@ async def _actualizar_variables_zona(fecha: date) -> int:
         rows_noves = await conn.fetch(
             """
             SELECT zona_id, COUNT(*) AS cnt
-            FROM llicencies_activitat
+            FROM licencias_actividad
             WHERE tipus = 'atorgada' AND data_lic >= $1
             GROUP BY zona_id
             """,
@@ -475,7 +475,7 @@ async def _actualizar_variables_zona(fecha: date) -> int:
         rows_baixes = await conn.fetch(
             """
             SELECT zona_id, COUNT(*) AS cnt
-            FROM llicencies_activitat
+            FROM licencias_actividad
             WHERE tipus = 'retirada' AND data_lic >= $1
             GROUP BY zona_id
             """,

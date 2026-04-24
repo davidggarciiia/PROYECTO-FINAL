@@ -19,7 +19,7 @@ async def get_alertas_zona(zona_id: str) -> list[dict]:
         async with get_db() as conn:
             rows = await conn.fetch(
                 "SELECT tipo, texto, fuente FROM alertas_zona "
-                "WHERE zona_id=$1 AND activa=TRUE "
+                "WHERE zona_id=$1 AND esta_activa=TRUE "
                 "ORDER BY fecha DESC LIMIT 10",
                 zona_id,
             )

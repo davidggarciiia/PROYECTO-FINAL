@@ -291,7 +291,7 @@ async def _get_vz(zona_id):
     async with get_db() as conn:
         r = await conn.fetchrow("""
             SELECT vz.*, paz.precio_m2
-            FROM variables_zona vz
+            FROM v_variables_zona vz
             LEFT JOIN LATERAL (
                 SELECT precio_m2 FROM precios_alquiler_zona WHERE zona_id=$1 ORDER BY fecha DESC LIMIT 1
             ) paz ON TRUE
@@ -304,11 +304,11 @@ async def _get_local(zona_id, perfil):
     async with get_db() as conn:
         if m2:
             r = await conn.fetchrow(
-                "SELECT id,m2,alquiler_mensual FROM locales WHERE zona_id=$1 AND disponible=TRUE AND planta='PB' ORDER BY ABS(m2-$2) LIMIT 1",
+                "SELECT id,m2,alquiler_mensual FROM locales WHERE zona_id=$1 AND esta_disponible=TRUE AND planta='PB' ORDER BY ABS(m2-$2) LIMIT 1",
                 zona_id, float(m2))
         else:
             r = await conn.fetchrow(
-                "SELECT id,m2,alquiler_mensual FROM locales WHERE zona_id=$1 AND disponible=TRUE AND planta='PB' ORDER BY alquiler_mensual ASC NULLS LAST LIMIT 1",
+                "SELECT id,m2,alquiler_mensual FROM locales WHERE zona_id=$1 AND esta_disponible=TRUE AND planta='PB' ORDER BY alquiler_mensual ASC NULLS LAST LIMIT 1",
                 zona_id)
     return dict(r) if r else {}
 
@@ -324,7 +324,7 @@ async def _get_precio_nivel(zona_id, sector):
         r = await conn.fetchrow("""
             SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY precio_nivel) AS med,
                    COUNT(*) FILTER (WHERE precio_nivel IS NOT NULL) AS n
-            FROM negocios_activos WHERE zona_id=$1 AND sector_codigo=$2 AND activo=TRUE
+            FROM negocios_activos WHERE zona_id=$1 AND sector_codigo=$2 AND es_activo=TRUE
         """, zona_id, sector)
     if r and (r["n"] or 0) >= 3:
         return r["med"]
@@ -340,7 +340,7 @@ async def _get_dias_apertura(zona_id, sector):
                    (horario->>'vie' IS NOT NULL)::int+(horario->>'sab' IS NOT NULL)::int+
                    (horario->>'dom' IS NOT NULL)::int) AS dias_sem
                 FROM negocios_activos
-                WHERE zona_id=$1 AND sector_codigo=$2 AND activo=TRUE AND horario IS NOT NULL AND horario!='{}')
+                WHERE zona_id=$1 AND sector_codigo=$2 AND es_activo=TRUE AND horario IS NOT NULL AND horario!='{}')
             SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY dias_sem)*4.33 AS dias_mes, COUNT(*) AS n FROM d
         """, zona_id, sector)
     if r and (r["n"] or 0) >= 3:

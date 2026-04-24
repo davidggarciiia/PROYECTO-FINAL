@@ -194,17 +194,17 @@ async def _upsert_negocios(negocios: list[dict], zona_id: str) -> None:
             await conn.execute("""
                 INSERT INTO negocios_activos
                     (id, nombre, sector_codigo, subsector_codigo, lat, lng,
-                     geometria, zona_id, rating, num_resenas,
-                     precio_nivel, horario, activo, fuente, updated_at)
+                     geometria, zona_id, rating, total_resenas,
+                     precio_nivel, horario, es_activo, fuente, updated_at)
                 VALUES ($1,$2,$3,$4,$5,$6,
                         ST_SetSRID(ST_MakePoint($6,$5),4326),
                         $7,$8,$9,$10,$11,TRUE,$12,NOW())
                 ON CONFLICT (id) DO UPDATE SET
                     subsector_codigo = COALESCE(EXCLUDED.subsector_codigo, negocios_activos.subsector_codigo),
-                    rating       = COALESCE(EXCLUDED.rating, negocios_activos.rating),
-                    num_resenas  = COALESCE(EXCLUDED.num_resenas, negocios_activos.num_resenas),
-                    precio_nivel = COALESCE(EXCLUDED.precio_nivel, negocios_activos.precio_nivel),
-                    updated_at   = NOW()
+                    rating           = COALESCE(EXCLUDED.rating, negocios_activos.rating),
+                    total_resenas    = COALESCE(EXCLUDED.total_resenas, negocios_activos.total_resenas),
+                    precio_nivel     = COALESCE(EXCLUDED.precio_nivel, negocios_activos.precio_nivel),
+                    updated_at       = NOW()
             """,
             n["id"], n["nombre"], sc, sub,
             n["lat"], n["lng"], zona_id,
@@ -244,7 +244,7 @@ async def _get_negocios_radio(zona_id: str, radio_m: int) -> list[dict]:
             SELECT
                 na.sector_codigo,
                 na.rating,
-                na.num_resenas,
+                na.total_resenas AS num_resenas,
                 na.precio_nivel,
                 ST_Distance(
                     na.geometria::geography,
@@ -257,7 +257,7 @@ async def _get_negocios_radio(zona_id: str, radio_m: int) -> list[dict]:
                 ST_Centroid(z.geometria)::geography,
                 $2
             )
-              AND na.activo = TRUE
+              AND na.es_activo = TRUE
               AND na.sector_codigo IS NOT NULL
             ORDER BY distancia_m ASC
         """, zona_id, float(radio_m))

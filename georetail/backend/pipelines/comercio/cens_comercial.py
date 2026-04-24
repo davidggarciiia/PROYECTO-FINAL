@@ -211,7 +211,7 @@ def _cargar_negocios_2016(ids_supervivientes: set[str]) -> list[dict]:
                 "lat":             lat,
                 "lng":             lng,
                 "fecha_apertura":  fecha_apertura,
-                "activo_3_anos":   bool(bid) and bid in ids_supervivientes,
+                "sobrevivio_3a":   bool(bid) and bid in ids_supervivientes,
                 "zona_id":         None,  # se rellena en paso 3
             })
 
@@ -326,7 +326,7 @@ async def _insertar_atomico(negocios: list[dict]) -> tuple[int, int]:
     _SQL = """
         INSERT INTO negocios_historico
             (nombre, sector_codigo, zona_id, fecha_apertura,
-             activo_3_anos, fuente)
+             sobrevivio_3a, fuente)
         VALUES ($1, $2, $3, $4, $5, 'cens_comercial_bcn')
     """
 
@@ -346,7 +346,7 @@ async def _insertar_atomico(negocios: list[dict]) -> tuple[int, int]:
                         r["sector"],
                         r["zona_id"],
                         r["fecha_apertura"],
-                        r["activo_3_anos"],
+                        r["sobrevivio_3a"],
                     )
                     for r in registros_con_zona
                 ],

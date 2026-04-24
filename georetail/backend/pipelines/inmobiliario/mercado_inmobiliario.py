@@ -316,7 +316,7 @@ async def _upsert_inmueble(inm: InmueblePortal) -> None:
                 titulo, direccion, barrio, distrito, codigo_postal,
                 lat, lon,
                 anyo_construccion, estado_conservacion, certificado_energia,
-                escaparate, esquina, sotano, altura_libre_m, potencia_kw,
+                es_escaparate, es_esquina, es_sotano, altura_libre_m, potencia_kw,
                 dias_publicado, es_particular, agente_nombre,
                 num_fotos, etiquetas,
                 fecha_scraping

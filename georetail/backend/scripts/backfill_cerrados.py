@@ -43,7 +43,7 @@ async def backfill(apply: bool) -> dict:
                    na.fecha_cierre_detectada AS fecha_cierre
             FROM negocios_activos na
             WHERE na.fecha_cierre_detectada IS NOT NULL
-              AND na.activo = FALSE
+              AND na.es_activo = FALSE
               AND NOT EXISTS (
                   SELECT 1 FROM negocios_historico nh WHERE nh.id = na.id
               )

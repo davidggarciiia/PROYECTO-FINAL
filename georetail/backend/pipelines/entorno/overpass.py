@@ -315,7 +315,7 @@ async def _procesar_e_insertar(elementos: list[dict]) -> int:
                     """
                     INSERT INTO negocios_activos
                         (id, nombre, sector_codigo, lat, lng, geometria,
-                         zona_id, activo, fuente, updated_at)
+                         zona_id, es_activo, fuente, updated_at)
                     VALUES (
                         $1, $2, $3, $4, $5,
                         ST_SetSRID(ST_MakePoint($5, $4), 4326),

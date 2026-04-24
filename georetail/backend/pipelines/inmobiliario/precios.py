@@ -189,7 +189,7 @@ async def _upsert_locales(items: list[dict], fuente: str) -> int:
             await conn.execute("""
                 INSERT INTO locales (
                     id, zona_id, direccion, lat, lng,
-                    geometria, m2, alquiler_mensual, disponible, planta, fuente
+                    geometria, m2, alquiler_mensual, esta_disponible, planta, fuente
                 )
                 VALUES (
                     $1, $2, $3, $4, $5,
@@ -197,9 +197,9 @@ async def _upsert_locales(items: list[dict], fuente: str) -> int:
                     $6, $7, TRUE, 'PB', $8
                 )
                 ON CONFLICT (id) DO UPDATE SET
-                    alquiler_mensual = EXCLUDED.alquiler_mensual,
-                    disponible = TRUE,
-                    updated_at = NOW()
+                    alquiler_mensual  = EXCLUDED.alquiler_mensual,
+                    esta_disponible   = TRUE,
+                    updated_at        = NOW()
             """, prop_id, zona_id, direccion, float(lat), float(lng),
                 float(m2) if m2 else None,
                 float(precio) if precio else None,

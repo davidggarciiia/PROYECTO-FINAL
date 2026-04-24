@@ -50,11 +50,11 @@ async def filtrar_zonas_candidatas(filtros: dict) -> list[dict]:
                 l.m2,
                 l.alquiler_mensual,
                 l.escaparate_ml,
-                l.disponible
+                l.esta_disponible
             FROM zonas z
             JOIN barrios b      ON b.id = z.barrio_id
             JOIN distritos d    ON d.id = b.distrito_id
-            LEFT JOIN locales l ON l.zona_id = z.id AND l.disponible=TRUE AND l.planta='PB'
+            LEFT JOIN locales l ON l.zona_id = z.id AND l.esta_disponible=TRUE AND l.planta='PB'
             WHERE {where}
             ORDER BY z.id, l.alquiler_mensual ASC NULLS LAST
             LIMIT 100
@@ -79,7 +79,7 @@ async def get_zona_preview(zona_id: str, sector: Optional[str]) -> Optional[dict
             LEFT JOIN LATERAL (
                 SELECT direccion, m2, alquiler_mensual
                 FROM locales WHERE zona_id=z.id AND planta='PB'
-                ORDER BY disponible DESC, alquiler_mensual ASC NULLS LAST LIMIT 1
+                ORDER BY esta_disponible DESC, alquiler_mensual ASC NULLS LAST LIMIT 1
             ) l ON TRUE
             LEFT JOIN LATERAL (
                 SELECT sz2.score_global
@@ -104,7 +104,7 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
                     ST_X(ST_Centroid(z.geometria)) AS lng,
                     ST_Y(ST_Centroid(z.geometria)) AS lat,
                     l.id AS local_id, l.direccion, l.m2, l.planta,
-                    l.escaparate_ml, l.alquiler_mensual, l.disponible,
+                    l.escaparate_ml, l.alquiler_mensual, l.esta_disponible,
                     vz.flujo_peatonal_manana, vz.flujo_peatonal_tarde,
                     vz.flujo_peatonal_noche, vz.flujo_peatonal_total,
                     vz.flujo_popular_times_score,
@@ -152,7 +152,7 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
                 JOIN distritos d    ON d.id = b.distrito_id
                 LEFT JOIN LATERAL (
                     SELECT * FROM locales
-                    WHERE zona_id=z.id AND disponible=TRUE AND planta='PB'
+                    WHERE zona_id=z.id AND esta_disponible=TRUE AND planta='PB'
                     ORDER BY alquiler_mensual ASC NULLS LAST LIMIT 1
                 ) l ON TRUE
                 LEFT JOIN LATERAL (
@@ -198,12 +198,12 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
             competidores = await conn.fetch("""
                 SELECT na.nombre, na.sector_codigo AS sector,
                        round(ST_Distance(na.geometria::geography, z.geometria::geography)::numeric, 0) AS distancia_m,
-                       na.rating, na.num_resenas, na.precio_nivel,
+                       na.rating, na.total_resenas AS num_resenas, na.precio_nivel,
                        (na.sector_codigo = $2) AS es_competencia_directa
                 FROM negocios_activos na
                 JOIN zonas z ON z.id=$1
                 WHERE ST_DWithin(na.geometria::geography, z.geometria::geography, 500)
-                  AND na.activo=TRUE
+                  AND na.es_activo=TRUE
                 ORDER BY distancia_m ASC LIMIT 20
             """, zona_id, sector)
             result["competidores_cercanos"] = [dict(c) for c in competidores]
@@ -309,7 +309,7 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
 
             # Alertas NLP activas
             alertas = await conn.fetch(
-                "SELECT tipo, texto, fuente FROM alertas_zona WHERE zona_id=$1 AND activa=TRUE ORDER BY fecha DESC LIMIT 10",
+                "SELECT tipo, texto, fuente FROM alertas_zona WHERE zona_id=$1 AND esta_activa=TRUE ORDER BY fecha DESC LIMIT 10",
                 zona_id)
             result["alertas"] = [dict(a) for a in alertas]
 
@@ -374,7 +374,7 @@ async def get_zonas_lista(filtros: dict, sector: str,
                 b.nombre AS barrio, d.nombre AS distrito,
                 ST_X(ST_Centroid(z.geometria)) AS lng,
                 ST_Y(ST_Centroid(z.geometria)) AS lat,
-                l.m2, l.alquiler_mensual, l.disponible,
+                l.m2, l.alquiler_mensual, l.esta_disponible,
                 sz.score_global, sz.probabilidad_supervivencia
             FROM zonas z
             JOIN barrios b ON b.id=z.barrio_id
@@ -463,7 +463,7 @@ async def get_competencia_zona(zona_id: str, sector: str, radio_m: int = 500,
                 na.lat,
                 na.lng,
                 na.rating,
-                na.num_resenas,
+                na.total_resenas AS num_resenas,
                 na.precio_nivel,
                 round(ST_Distance(
                     na.geometria::geography,
@@ -476,7 +476,7 @@ async def get_competencia_zona(zona_id: str, sector: str, radio_m: int = 500,
                 ST_Centroid(z.geometria)::geography,
                 $2
             )
-              AND na.activo = TRUE
+              AND na.es_activo = TRUE
               AND na.sector_codigo IS NOT NULL
             ORDER BY distancia_m ASC
         """, zona_id, float(radio_m))

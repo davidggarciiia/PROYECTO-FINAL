@@ -2,7 +2,7 @@
 pipelines/comercio/dinamismo.py — Snapshot mensual de dinamismo comercial por zona.
 
 Agrega datos de varias fuentes en la tabla dinamismo_zonal:
-  - llicencies_activitat  → apertura/cierre de licencias
+  - licencias_actividad   → apertura/cierre de licencias
   - negocios_historico    → supervivencia histórica
   - variables_zona        → tendencia demográfica (si hay snapshots múltiples)
   - v_mercado_zona        → variación de precios de alquiler
@@ -94,7 +94,7 @@ async def _licencias_zona(conn, zona_id: int) -> dict[str, Any]:
             COUNT(*) FILTER (WHERE NOT activa AND fecha_baja >= NOW() - INTERVAL '1 year') AS cerradas_1a,
             COUNT(*) FILTER (WHERE activa AND fecha_alta >= NOW() - INTERVAL '3 years') AS abiertas_3a,
             COUNT(*) FILTER (WHERE NOT activa AND fecha_baja >= NOW() - INTERVAL '3 years') AS cerradas_3a
-        FROM llicencies_activitat
+        FROM licencias_actividad
         WHERE zona_id = $1
         """,
         zona_id,
@@ -121,7 +121,7 @@ async def _supervivencia_zona(conn, zona_id: int) -> dict[str, Any]:
         """
         SELECT
             COUNT(*)            AS total,
-            AVG(activo_3_anos::int) AS tasa
+            AVG(sobrevivio_3a::int) AS tasa
         FROM negocios_historico
         WHERE zona_id = $1
         """,

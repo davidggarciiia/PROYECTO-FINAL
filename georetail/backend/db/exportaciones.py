@@ -54,7 +54,7 @@ async def get_exportacion(pdf_id: str) -> Optional[dict]:
         row = await conn.fetchrow(
             """
             SELECT id, session_id, zona_ids, estado, ruta_disco,
-                   created_at, expires_at, descargado
+                   created_at, expires_at, fue_descargado
             FROM exportaciones
             WHERE id = $1
             """,
@@ -102,7 +102,7 @@ async def marcar_descargado(pdf_id: str) -> None:
     """Marca que el PDF ya fue descargado (para analytics)."""
     async with get_db() as conn:
         await conn.execute(
-            "UPDATE exportaciones SET descargado = TRUE WHERE id = $1",
+            "UPDATE exportaciones SET fue_descargado = TRUE WHERE id = $1",
             pdf_id,
         )
 

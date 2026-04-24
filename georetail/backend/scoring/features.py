@@ -721,7 +721,7 @@ async def _turismo(zona_id: str) -> dict:
             SELECT AVG(na.review_count)::float
             FROM negocios_activos na
             JOIN zonas z ON z.id = $1
-            WHERE na.activo = TRUE
+            WHERE na.es_activo = TRUE
               AND ST_DWithin(na.geometria::geography, z.geometria::geography, 300)
               AND na.review_count > 0
             """,
@@ -764,7 +764,7 @@ async def _turismo_batch(zona_ids: list[str]) -> dict:
                 AVG(na.review_count)::float AS avg_reviews
             FROM zonas z
             JOIN negocios_activos na
-                ON na.activo = TRUE
+                ON na.es_activo = TRUE
                AND ST_DWithin(na.geometria::geography, z.geometria::geography, 300)
                AND na.review_count > 0
             WHERE z.id = ANY($1)

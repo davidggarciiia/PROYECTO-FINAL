@@ -134,14 +134,14 @@ async def _upsert_negocios(negocios: list[dict], zona_id: str) -> None:
             await conn.execute("""
                 INSERT INTO negocios_activos
                     (id, nombre, sector_codigo, subsector_codigo, lat, lng,
-                     geometria, zona_id, rating, num_resenas,
-                     precio_nivel, horario, activo, fuente, updated_at)
+                     geometria, zona_id, rating, total_resenas,
+                     precio_nivel, horario, es_activo, fuente, updated_at)
                 VALUES ($1,$2,$3,$4,$5,$6,
                         ST_SetSRID(ST_MakePoint($6,$5),4326),$7,$8,$9,$10,$11,TRUE,$12,NOW())
                 ON CONFLICT (id) DO UPDATE SET
                     subsector_codigo=COALESCE(EXCLUDED.subsector_codigo, negocios_activos.subsector_codigo),
                     rating=EXCLUDED.rating,
-                    num_resenas=EXCLUDED.num_resenas,
+                    total_resenas=EXCLUDED.total_resenas,
                     precio_nivel=COALESCE(EXCLUDED.precio_nivel, negocios_activos.precio_nivel),
                     horario=COALESCE(EXCLUDED.horario, negocios_activos.horario),
                     updated_at=NOW()
@@ -159,8 +159,8 @@ async def _negocios_a_actualizar(limite: int) -> list[dict]:
             SELECT na.id, na.nombre, na.zona_id, na.fuente,
                    na.lat, na.lng, na.sector_codigo
             FROM negocios_activos na
-            WHERE na.activo=TRUE
-              AND na.num_resenas > 0
+            WHERE na.es_activo=TRUE
+              AND na.total_resenas > 0
               AND (NOT EXISTS (
                 SELECT 1 FROM resenas r WHERE r.negocio_id=na.id
                 AND r.fecha >= CURRENT_DATE - INTERVAL '7 days'

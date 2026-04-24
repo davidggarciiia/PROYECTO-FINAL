@@ -535,7 +535,7 @@ async def _cargar_datos_afinidad_zonas(zona_ids: list[str]) -> dict[str, dict]:
                    vz.ratio_locales_comerciales,
                    vz.m2_zonas_verdes_cercanas,
                    vz.incidencias_por_1000hab
-            FROM variables_zona vz
+            FROM v_variables_zona vz
             WHERE vz.zona_id = ANY($1)
             ORDER BY vz.zona_id, vz.fecha DESC
             """,

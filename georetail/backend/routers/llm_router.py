@@ -162,7 +162,7 @@ async def _log(session_id: Optional[str], proveedor: str, ti: int, to: int,
         async with get_db() as conn:
             await conn.execute(
                 "INSERT INTO llm_logs(session_id,proveedor,modelo,tokens_input,tokens_output,"
-                "coste_usd,latencia_ms,endpoint) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+                "coste_usd,latencia_ms,endpoint_nombre) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
                 session_id, proveedor, _MODELS.get(proveedor, "?"), ti, to,
                 round(coste, 6), lat, endpoint)
     except Exception:

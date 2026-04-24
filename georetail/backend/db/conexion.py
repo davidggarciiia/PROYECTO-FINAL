@@ -44,6 +44,16 @@ async def _init_connection(conn: Connection) -> None:
         schema="pg_catalog",
         format="text",
     )
+    # NUMERIC → float: el schema usa NUMERIC(p,s) para precios (03_inmuebles.sql),
+    # scores (05_sectores_scoring.sql) y métricas financieras (09_usuario_financiero.sql).
+    # El código Python calcula con float, así que convertimos en el borde.
+    await conn.set_type_codec(
+        "numeric",
+        encoder=str,
+        decoder=float,
+        schema="pg_catalog",
+        format="text",
+    )
 
 
 async def close_db_pool() -> None:

@@ -124,7 +124,7 @@ async def _procesar_empresa(emp: dict) -> int:
         await conn.execute("""
             INSERT INTO negocios_historico
                 (nombre, sector_codigo, zona_id, fecha_apertura, fecha_cierre,
-                 activo_3_anos, features_snapshot)
+                 sobrevivio_3a, features_snapshot)
             VALUES ($1,$2,$3,$4,$5,$6,$7)
             ON CONFLICT DO NOTHING
         """, emp.get("nombre_empresa",""), sector, zona_id,

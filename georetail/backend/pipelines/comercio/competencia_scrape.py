@@ -169,7 +169,7 @@ async def _upsert_negocio(conn, n: dict) -> None:
     await conn.execute("""
         INSERT INTO negocios_activos
             (id, nombre, sector_codigo, subsector_codigo, lat, lng, geometria, zona_id,
-             rating, num_resenas, precio_nivel, horario, activo, fuente,
+             rating, total_resenas, precio_nivel, horario, es_activo, fuente,
              created_at, updated_at, fecha_cierre_detectada)
         SELECT $1, $2, $3, $4, $5, $6,
                ST_SetSRID(ST_MakePoint($6, $5), 4326),
@@ -180,11 +180,11 @@ async def _upsert_negocio(conn, n: dict) -> None:
                NOW(), NOW(), $13
         ON CONFLICT (id) DO UPDATE SET
             subsector_codigo = COALESCE(EXCLUDED.subsector_codigo, negocios_activos.subsector_codigo),
-            rating       = EXCLUDED.rating,
-            num_resenas  = EXCLUDED.num_resenas,
-            precio_nivel = COALESCE(EXCLUDED.precio_nivel, negocios_activos.precio_nivel),
-            horario      = COALESCE(EXCLUDED.horario, negocios_activos.horario),
-            activo       = EXCLUDED.activo,
+            rating           = EXCLUDED.rating,
+            total_resenas    = EXCLUDED.total_resenas,
+            precio_nivel     = COALESCE(EXCLUDED.precio_nivel, negocios_activos.precio_nivel),
+            horario          = COALESCE(EXCLUDED.horario, negocios_activos.horario),
+            es_activo        = EXCLUDED.es_activo,
             fecha_cierre_detectada = COALESCE(negocios_activos.fecha_cierre_detectada,
                                                EXCLUDED.fecha_cierre_detectada),
             updated_at   = NOW()
@@ -249,7 +249,7 @@ async def _recalcular_competencia(sectores: list[str]) -> dict[str, int]:
                     FROM zonas z
                     WHERE NOT EXISTS (
                         SELECT 1 FROM negocios_activos na
-                        WHERE na.sector_codigo = $1 AND na.activo = TRUE
+                        WHERE na.sector_codigo = $1 AND na.es_activo = TRUE
                           AND ST_DWithin(na.geometria::geography, z.geometria::geography, $2)
                     )
                     ON CONFLICT (zona_id, sector_codigo, subsector_codigo, radio_m, fecha_calculo)
@@ -288,7 +288,7 @@ async def _insert_agregado(conn, *, sector: str, radio: int, hoy: date,
             FROM zonas z
             JOIN negocios_activos na
               ON na.sector_codigo = $1
-             AND na.activo = TRUE
+             AND na.es_activo = TRUE
              {where_sub}
              AND ST_DWithin(na.geometria::geography, z.geometria::geography, $2)
         ),
@@ -312,7 +312,7 @@ async def _insert_agregado(conn, *, sector: str, radio: int, hoy: date,
             FROM zonas z
             JOIN negocios_activos na
               ON na.sector_codigo = $1
-             AND na.activo = FALSE
+             AND na.es_activo = FALSE
              AND na.fecha_cierre_detectada >= (CURRENT_DATE - INTERVAL '365 days')
              AND ST_DWithin(na.geometria::geography, z.geometria::geography, $2)
             GROUP BY z.id
@@ -333,8 +333,8 @@ async def _insert_agregado(conn, *, sector: str, radio: int, hoy: date,
                    LEAST(100.0, COUNT(*) * 5.0)                           AS saturacion,
                    SUM(
                        CASE
-                           WHEN rating IS NOT NULL AND num_resenas IS NOT NULL
-                                THEN LEAST(1.0, (rating * num_resenas) / 100.0)
+                           WHEN rating IS NOT NULL AND total_resenas IS NOT NULL
+                                THEN LEAST(1.0, (rating * total_resenas) / 100.0)
                            ELSE 0.5
                        END
                    )::float                                               AS num_efectivos,

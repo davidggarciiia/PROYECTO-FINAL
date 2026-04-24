@@ -141,7 +141,7 @@ async def detalle_turismo(
                    )::numeric, 0)::int AS distancia_m
             FROM alojamientos_turisticos a
             JOIN zonas z ON z.id = $1
-            WHERE a.activo = TRUE
+            WHERE a.es_activo = TRUE
               AND ST_DWithin(
                   ST_Centroid(z.geometria)::geography,
                   a.geometria::geography,

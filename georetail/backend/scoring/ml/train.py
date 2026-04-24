@@ -361,7 +361,7 @@ async def _promover_si_mejor(
                 """
                 SELECT version, metricas->>'auc_cv' AS auc_cv
                 FROM modelos_versiones
-                WHERE activo = TRUE AND ($1::text IS NULL OR sector = $1)
+                WHERE es_activo = TRUE AND ($1::text IS NULL OR sector = $1)
                 ORDER BY created_at DESC LIMIT 1
                 FOR UPDATE
                 """,
@@ -379,12 +379,12 @@ async def _promover_si_mejor(
 
             # Desactivar el modelo anterior
             await conn.execute(
-                "UPDATE modelos_versiones SET activo=FALSE WHERE activo=TRUE AND ($1::text IS NULL OR sector=$1)",
+                "UPDATE modelos_versiones SET es_activo=FALSE WHERE es_activo=TRUE AND ($1::text IS NULL OR sector=$1)",
                 sector,
             )
             # Promover el nuevo
             await conn.execute(
-                "UPDATE modelos_versiones SET activo=TRUE WHERE version=$1",
+                "UPDATE modelos_versiones SET es_activo=TRUE WHERE version=$1",
                 version,
             )
 
