@@ -565,7 +565,7 @@ def _generar_riesgos(
     inversion: float,
     capital: float,
     correcciones: list[dict],
-    validation_flags: list[str] = None,
+    validation_flags: Optional[list[str]] = None,
     ocupacion_efectiva: float = 0.0,
     cf_mes: float = 0.0,
     ing_estable: float = 0.0,

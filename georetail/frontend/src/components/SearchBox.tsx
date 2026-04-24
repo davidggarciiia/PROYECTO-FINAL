@@ -164,6 +164,7 @@ export default function SearchBox({
         setInput("");
       }
     } catch (e) {
+      console.error("responderCuestionario error:", e);
       setError("Error procesando la respuesta. Intenta de nuevo.");
     } finally {
       setLoading(false);

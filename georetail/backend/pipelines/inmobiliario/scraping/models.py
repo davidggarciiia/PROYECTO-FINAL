@@ -13,7 +13,7 @@ extrae el scraper enriquecido de Idealista — para el resto son None.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -31,7 +31,7 @@ class InmueblePortal(BaseModel):
     url:            str
     tipo_operacion: str  = "alquiler-locales"    # "alquiler-locales" | "venta-locales" | "alquiler-viviendas"
     tipo_inmueble:  str  = "local"               # "local" | "oficina" | "nave" | "vivienda" | "desconocido"
-    fecha_scraping: datetime = Field(default_factory=datetime.utcnow)
+    fecha_scraping: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # ── Precio ────────────────────────────────────────────────────────────────
     precio:          Optional[float] = None

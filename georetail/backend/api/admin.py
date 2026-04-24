@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import secrets
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -26,7 +27,7 @@ from db.conexion import get_db
 
 
 async def _require_admin(x_admin_key: str = Header(..., alias="X-Admin-Key")) -> None:
-    if not settings.ADMIN_API_KEY or x_admin_key != settings.ADMIN_API_KEY:
+    if not settings.ADMIN_API_KEY or not secrets.compare_digest(x_admin_key, settings.ADMIN_API_KEY):
         raise HTTPException(status_code=403, detail="Admin key required")
 
 logger = logging.getLogger(__name__)

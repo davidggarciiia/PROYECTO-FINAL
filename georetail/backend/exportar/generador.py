@@ -9,11 +9,11 @@ El PDF incluye para cada zona:
   5. Mapa estático de Mapbox (imagen PNG)
 """
 from __future__ import annotations
-import base64, logging, os, io
+import base64, logging, os
 from datetime import datetime
 
 import httpx
-from jinja2 import Environment, BaseLoader
+from jinja2 import Environment, BaseLoader, select_autoescape
 
 from config import get_settings
 from db.conexion import get_db
@@ -289,7 +289,7 @@ def _renderizar_html(empresa, sector, zonas_data, mapa_b64,
 </html>
 """.strip()
 
-    env = Environment(loader=BaseLoader())
+    env = Environment(loader=BaseLoader(), autoescape=select_autoescape(["html"]))
     tmpl = env.from_string(template_str)
     return tmpl.render(
         empresa=empresa, sector=sector, fecha=fecha,

@@ -62,7 +62,7 @@ _RENDA_2022_URL = (
 _RENDA_DATASET_ID = "78db0c75-fa56-4604-9510-8b92834a7fd2"
 
 # IERMB API token (público, extraído del catálogo AMB)
-_IERMB_TOKEN = "AGEF894MGIE0220GOLLEOF"
+_IERMB_TOKEN = os.environ.get("IERMB_TOKEN", "AGEF894MGIE0220GOLLEOF")
 _IERMB_BASE  = "https://iermbdb.uab.cat/datasets2/index.php"
 
 # id_ind IERMB relevantes

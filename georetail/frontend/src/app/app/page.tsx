@@ -215,8 +215,6 @@ export default function AppPage() {
 
   const dimsActive = detalle?.zona.zona_id === activeId ? detalle?.zona.scores_dimensiones ?? null : null;
 
-  void dimsActive;  // se pasa a ActiveDock para las barras del dock
-
   // Onboarding stage
   if (view === "onboarding") {
     return (
@@ -273,7 +271,6 @@ export default function AppPage() {
           loading={loading}
           onExpand={() => setDossierOpen(true)}
           onNav={handleNav}
-          sessionId={sessionId}
         />
 
         <HudLegend />

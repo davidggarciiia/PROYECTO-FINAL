@@ -15,6 +15,7 @@ Proceso:
 """
 from __future__ import annotations
 import logging
+import os
 from datetime import date, timedelta
 import httpx
 from db.conexion import get_db
@@ -202,7 +203,7 @@ async def _obtener_resenas_negocio(negocio: dict) -> int:
 
 async def _resenas_google(place_id: str) -> list[dict]:
     """Obtiene las últimas reseñas de un place de Google (máx 5)."""
-    key = __import__("os").environ.get("GOOGLE_MAPS_API_KEY","")
+    key = os.environ.get("GOOGLE_MAPS_API_KEY", "")
     if not key: return []
     async with httpx.AsyncClient(timeout=_TIMEOUT) as c:
         r = await c.post(
@@ -226,7 +227,7 @@ async def _resenas_google(place_id: str) -> list[dict]:
 
 async def _resenas_foursquare(fsq_id: str) -> list[dict]:
     """Obtiene los tips de un lugar en Foursquare (máx 50)."""
-    key = __import__("os").environ.get("FOURSQUARE_API_KEY","")
+    key = os.environ.get("FOURSQUARE_API_KEY", "")
     if not key: return []
     async with httpx.AsyncClient(timeout=_TIMEOUT) as c:
         r = await c.get(

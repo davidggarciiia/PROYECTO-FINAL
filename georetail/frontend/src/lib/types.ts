@@ -411,9 +411,6 @@ export interface ParametroResponse {
   rango_max: number;
 }
 
-// Alias legacy usado por paneles antiguos
-export type ParametroFinanciero = ParametroResponse;
-
 // ── Bloques v2 del panel financiero ────────────────────────────────────────
 export interface DecisionBlock {
   recomendacion: "si" | "riesgo" | "no";
@@ -463,6 +460,8 @@ export interface MetricasClave {
   margen_bruto_pct: number;
   payback_meses: number;
   mes_caja_positiva: number;
+  roi_stress?: number;
+  payback_stress?: number;
 }
 
 export interface SensitividadItem {
@@ -659,21 +658,3 @@ export interface TransporteDetalleZona {
   lineas: LineaCercana[];
 }
 
-export interface DevData {
-  flujo_fuentes?: Record<string, unknown>;
-  transporte?: Record<string, unknown>;
-  competencia_raw?: {
-    competidores?: CompetidorDetalle[];
-    [key: string]: unknown;
-  };
-  demografia?: Record<string, unknown>;
-  seguridad?: Record<string, unknown>;
-  entorno?: Record<string, unknown>;
-  turismo?: Record<string, unknown>;
-  ml?: {
-    modelo_version?: string;
-    probabilidad_supervivencia?: number;
-    shap_values?: Record<string, number>;
-    [key: string]: unknown;
-  };
-}

@@ -55,7 +55,7 @@ _ACCIDENTS_TIPUS_DATASET_ID = "accidents-tipus-gu-bcn"
 _COMISSARIES_DATASET_ID = "comissaries-policia"
 
 # IERMB (misma config que en demografia.py — se mantiene aquí para independencia)
-_IERMB_TOKEN = "AGEF894MGIE0220GOLLEOF"
+_IERMB_TOKEN = os.environ.get("IERMB_TOKEN", "AGEF894MGIE0220GOLLEOF")
 _IERMB_BASE = "https://iermbdb.uab.cat/datasets2/index.php"
 _IERMB_SEGURETAT_ID = "1892"
 

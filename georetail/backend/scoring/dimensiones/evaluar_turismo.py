@@ -30,7 +30,6 @@ from scoring.dimensiones.turismo import calcular_turismo
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_DB_URL = "postgresql://postgres:password@localhost:5432/georetail"
 _OUT_CSV = Path(os.environ.get("TMP", "/tmp")) / "turismo_validacion.csv"
 
 
@@ -127,7 +126,9 @@ def _interpretar(rho: float) -> str:
 
 
 async def main() -> None:
-    db_url = os.environ.get("DATABASE_URL", _DEFAULT_DB_URL)
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        raise SystemExit("DATABASE_URL environment variable is required")
     conn = await asyncpg.connect(db_url)
 
     try:

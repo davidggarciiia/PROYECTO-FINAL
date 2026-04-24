@@ -476,7 +476,7 @@ async def _crear_taula_si_no_existeix() -> None:
                 id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 id_tram     VARCHAR(50),
                 nom_tram    VARCHAR(300),
-                any         INTEGER,
+                anyo        INTEGER,
                 mes         INTEGER,
                 intensitat  FLOAT,
                 lat         DOUBLE PRECISION,

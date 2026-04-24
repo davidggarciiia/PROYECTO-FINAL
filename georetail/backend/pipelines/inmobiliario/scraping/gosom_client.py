@@ -44,7 +44,7 @@ import os
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
@@ -224,7 +224,7 @@ class GosomClient:
 
         # El campo "name" es obligatorio en el modo -web (Validate() lo exige)
         if not job_name:
-            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             job_name = f"georetail_{ts}"
 
         # API web: keywords es array, lat/lon son strings separados

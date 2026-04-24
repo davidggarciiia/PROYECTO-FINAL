@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, TYPE_CHECKING
+from typing import AsyncGenerator
 
 try:
     import asyncpg

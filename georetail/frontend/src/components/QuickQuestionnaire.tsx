@@ -10,7 +10,7 @@
  * Output: PerfilEstructurado parcial (solo `sector` es obligatorio; el
  * backend acepta el resto como undefined — ver georetail/backend/api/buscar.py).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./QuickQuestionnaire.module.css";
 import { api } from "@/lib/api";
 import type {
@@ -28,21 +28,35 @@ type Tile = { codigo: string; label: string; desc?: string };
 
 // ── Paso 1 — Sectores principales ──────────────────────────────────────────
 const SECTORES_PRIMARIOS: Tile[] = [
-  { codigo: "restauracion", label: "Restauración",        desc: "Bar, cafetería, restaurante, brunch…" },
-  { codigo: "moda",         label: "Moda y tiendas",      desc: "Boutique, vintage, streetwear, zapatillas…" },
-  { codigo: "estetica",     label: "Estética y belleza",  desc: "Peluquería, barbería, uñas, spa…" },
-  { codigo: "salud",        label: "Salud y bienestar",   desc: "Dental, fisio, óptica, farmacia…" },
-  { codigo: "otro",         label: "Otro",                desc: "Servicios, deporte, educación, alimentación…" },
+  { codigo: "restauracion", label: "Restauración",          desc: "Bar, cafetería, restaurante, brunch, sushi…" },
+  { codigo: "moda",         label: "Moda y tiendas",        desc: "Boutique, vintage, streetwear, zapatillas…" },
+  { codigo: "estetica",     label: "Estética y belleza",    desc: "Peluquería, barbería, uñas, spa, masajes…" },
+  { codigo: "salud",        label: "Salud y bienestar",     desc: "Dental, fisio, óptica, nutricionista…" },
+  { codigo: "deporte",      label: "Deporte y fitness",     desc: "Gym boutique, yoga, pilates, pádel…" },
+  { codigo: "alimentacion", label: "Alimentación",          desc: "Super barrio, panadería, tienda ecológica…" },
+  { codigo: "hogar",        label: "Hogar y decoración",    desc: "Muebles, textil, interiorismo, iluminación…" },
+  { codigo: "mascotas",     label: "Mascotas",              desc: "Tienda, veterinaria, guardería, peluquería…" },
+  { codigo: "cultura",      label: "Cultura y ocio",        desc: "Librería, galería de arte, discos, juguetes…" },
+  { codigo: "educacion",    label: "Educación y formación", desc: "Idiomas, academia, música, cocina, talleres…" },
+  { codigo: "servicios",    label: "Servicios de barrio",   desc: "Coworking, tintorería, copistería, viajes…" },
+  { codigo: "otro",         label: "Otro",                  desc: "Tatuajes, shisha, cualquier otro concepto…" },
 ];
 
 // ── Paso 2 — Subsectores curados (subset de BASE_VARIANTS_BY_SECTOR) ───────
 // Los labels finales se sustituyen por el que devuelve /api/cuestionario/opciones
 // cuando está disponible, para garantizar consistencia con la taxonomía.
 const SUBSECTORES_CURADOS: Record<string, string[]> = {
-  restauracion: ["neighborhood_cafe", "specialty_coffee", "street_food_counter", "fine_dining", "cocktail_bar"],
-  moda:         ["premium_boutique", "vintage_store", "streetwear_store", "sneaker_shop", "concept_store"],
-  estetica:     ["hair_salon", "barber_shop", "nail_studio", "day_spa", "beauty_clinic"],
-  salud:        ["dental_clinic", "physio_clinic", "psychology_center", "optician", "pharmacy"],
+  restauracion: ["neighborhood_cafe", "specialty_coffee", "vermut_bar", "tapas_bar", "brunch_house", "street_food_counter", "sushi_counter", "smoothie_bar", "fine_dining", "cocktail_bar", "vegan_bistro"],
+  moda:         ["premium_boutique", "vintage_store", "streetwear_store", "sneaker_shop", "concept_store", "kids_fashion", "sportswear_store", "accessories_store", "jewelry_store"],
+  estetica:     ["hair_salon", "barber_shop", "nail_studio", "day_spa", "beauty_clinic", "brow_lash_bar", "massage_center", "skin_clinic"],
+  salud:        ["dental_clinic", "physio_clinic", "psychology_center", "nutritionist", "osteopathy", "optician", "pharmacy", "aesthetic_medicine", "veterinary_clinic"],
+  deporte:      ["boutique_gym", "yoga_studio", "pilates_reformer", "padel_club", "cycling_studio", "crossfit_box", "dance_fitness", "martial_arts", "swimming_club"],
+  alimentacion: ["neighborhood_cafe", "bakery_takeaway", "greengrocer", "organic_market", "delicatessen", "cheese_shop", "coffee_roaster", "asian_grocery", "wine_shop", "butcher_shop"],
+  hogar:        ["furniture_store", "home_textiles", "interior_design", "lighting_store", "kitchen_store", "second_hand_furniture"],
+  mascotas:     ["pet_shop", "vet_clinic", "pet_grooming_salon", "pet_daycare", "aquarium_shop"],
+  cultura:      ["bookstore", "art_gallery", "record_shop", "toy_store", "craft_shop", "cultural_space"],
+  educacion:    ["language_academy", "tutoring_center", "music_school", "art_school", "cooking_school", "creative_workshop", "coding_academy", "driving_school"],
+  servicios:    ["coworking_office", "laundromat", "dry_cleaning", "photo_studio", "pet_grooming", "mobile_repair", "florist", "travel_agency"],
 };
 
 // ── Paso 3 — Cliente ideal (mapea a publico_objetivo.estilo_vida) ──────────
@@ -95,7 +109,7 @@ export default function QuickQuestionnaire({ onComplete, onBack }: Props) {
     return () => { cancelled = true; };
   }, []);
 
-  // Sector "otro" no tiene paso de subsector curado — lo saltamos.
+  // "otro" no tiene lista curada de subsectores — lo saltamos.
   const hasSubsectorStep = sector !== "" && sector !== "otro" && SUBSECTORES_CURADOS[sector];
 
   // Total de pasos (4 si sector=otro, 5 si no).
@@ -152,8 +166,11 @@ export default function QuickQuestionnaire({ onComplete, onBack }: Props) {
     if (presTile?.max) pe.presupuesto_max = presTile.max;
 
     setLeaving(true);
-    setTimeout(() => onComplete(pe), 260);
+    exitTimerRef.current = window.setTimeout(() => onComplete(pe), 260);
   };
+
+  const exitTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => () => { if (exitTimerRef.current) clearTimeout(exitTimerRef.current); }, []);
 
   // ── Subsector tiles con labels del backend si están disponibles ─────────
   const subsectorTiles: Tile[] = (() => {
@@ -230,7 +247,7 @@ export default function QuickQuestionnaire({ onComplete, onBack }: Props) {
         <div className={styles.body}>
           {step === 1 && renderTiles(SECTORES_PRIMARIOS, sector, (c) => {
             setSector(c);
-            if (c !== "otro" && SUBSECTORES_CURADOS[c]) setSubsector("");
+            setSubsector("");
           })}
 
           {step === 2 && hasSubsectorStep && renderTiles(subsectorTiles, subsector, setSubsector)}

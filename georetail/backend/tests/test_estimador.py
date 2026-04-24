@@ -18,7 +18,6 @@ Cubre:
   - _otros_ini: licencias + costes apertura
   - PE dataclass: validación de campos
 """
-import math
 import pytest
 
 from financiero.estimador import (

@@ -9,7 +9,6 @@ Sentimiento: 'positivo' | 'negativo' | 'neutro'
 """
 from __future__ import annotations
 import json, logging
-from typing import Optional
 from routers.llm_router import completar
 from nlp.embeddings import encode
 
@@ -138,17 +137,10 @@ async def generar_alertas_zona(zona_id: str) -> list[dict]:
         "inseguridad, robos frecuentes en la zona",
         "ha cerrado mucha gente, muchos locales vacíos",
     ]
-    _PATRONES_POSITIVOS = [
-        "zona en auge, mucha gente nueva y negocios abriendo",
-        "barrio muy animado, lleno de gente por las tardes",
-        "zona muy segura y bien comunicada",
-    ]
-
     alertas_nuevas = []
 
     try:
         emb_neg = encode(_PATRONES_NEGATIVOS)
-        emb_pos = encode(_PATRONES_POSITIVOS)
 
         async with get_db() as conn:
             # Buscar reseñas similares a patrones negativos usando pgvector

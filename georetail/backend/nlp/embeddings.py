@@ -7,7 +7,6 @@ Soporta español, catalán, inglés y otros idiomas europeos.
 """
 from __future__ import annotations
 import logging
-from typing import Optional
 import numpy as np
 
 logger = logging.getLogger(__name__)

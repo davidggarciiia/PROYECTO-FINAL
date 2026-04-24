@@ -40,9 +40,6 @@ _CAPAS = [
     ("oci",         2016, "2016_turisme_oci.gpkg"),
 ]
 
-_DEFAULT_DB_URL = "postgresql://postgres:password@localhost:5432/georetail"
-
-
 def cargar_capa(capa: str, anio: int, fname: str, engine) -> int:
     """Lee 1 GPKG, reproyecta a 4326, escribe a la tabla. Devuelve filas insertadas."""
     path = _GPKG_DIR / fname
@@ -81,7 +78,9 @@ def cargar_capa(capa: str, anio: int, fname: str, engine) -> int:
 
 def main() -> dict:
     """Carga las 3 capas. Devuelve resumen {capa: rows_inserted}."""
-    db_url = os.environ.get("DATABASE_URL", _DEFAULT_DB_URL)
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        raise SystemExit("DATABASE_URL environment variable is required")
     # geopandas/SQLAlchemy: psycopg2 driver (síncrono)
     engine = create_engine(db_url.replace("postgresql://", "postgresql+psycopg2://"))
 

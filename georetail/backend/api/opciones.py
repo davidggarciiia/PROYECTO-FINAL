@@ -38,6 +38,9 @@ _SECTOR_LABELS: dict[str, str] = {
     "educacion":     "Educación y formación",
     "alimentacion":  "Alimentación de proximidad",
     "servicios":     "Servicios de barrio",
+    "hogar":         "Hogar, muebles y decoración",
+    "mascotas":      "Mascotas y animales",
+    "cultura":       "Cultura, arte y ocio",
     "otro":          "Otro / genérico",
 }
 
@@ -165,8 +168,20 @@ _FLAGS_POR_SECTOR: dict[str, list[FlagLegalOpcion]] = {
     "salud":       [],
     "deporte":     [],
     "educacion":   [],
-    "alimentacion":[],
+    "alimentacion":[
+        FlagLegalOpcion(codigo="venta_alcohol", label="Venta de bebidas alcohólicas",
+                        descripcion="Requiere llicència de venda de begudes alcohòliques."),
+    ],
     "servicios":   [],
+    "hogar":       [],
+    "mascotas":    [
+        FlagLegalOpcion(codigo="clinica_veterinaria", label="Clínica o consulta veterinaria",
+                        descripcion="Requiere autorización sanitaria Generalitat (DAAM)."),
+    ],
+    "cultura":     [
+        FlagLegalOpcion(codigo="espai_espectacles", label="Espacio con espectáculos o actuaciones",
+                        descripcion="Llicència d'espectacles si hay aforo > 50 personas."),
+    ],
     "otro":        [],
 }
 
@@ -275,6 +290,58 @@ _SLUG_SUBSECTOR_ES: dict[str, str] = {
     "pet_grooming":         "Peluquería canina",
     "copy_shop":            "Copistería",
     "coworking_office":     "Coworking",
+    "dry_cleaning":         "Tintorería",
+    "photo_studio":         "Estudio fotográfico",
+    "travel_agency":        "Agencia de viajes",
+    # restauracion (nuevos)
+    "vermut_bar":           "Bar de vermut",
+    "tapas_bar":            "Bar de tapas",
+    "sushi_counter":        "Sushi / cocina japonesa",
+    "smoothie_bar":         "Smoothie bar / acai",
+    # moda (nuevos)
+    "kids_fashion":         "Moda infantil",
+    "sportswear_store":     "Ropa deportiva",
+    "accessories_store":    "Complementos y accesorios",
+    # estetica (nuevos)
+    "tanning_studio":       "Centro de bronceado",
+    "massage_center":       "Centro de masajes",
+    # salud (nuevos)
+    "nutritionist":         "Nutricionista / dietista",
+    "osteopathy":           "Osteopatía y terapia manual",
+    "veterinary_clinic":    "Clínica veterinaria",
+    # deporte (nuevos)
+    "padel_club":           "Club de pádel",
+    "cycling_studio":       "Ciclismo indoor (spinning)",
+    "swimming_club":        "Club de natación",
+    # educacion (nuevos)
+    "cooking_school":       "Escuela de cocina",
+    "driving_school":       "Autoescuela",
+    "creative_workshop":    "Taller creativo / cerámica",
+    # alimentacion (nuevos)
+    "organic_market":       "Tienda ecológica / bio",
+    "asian_grocery":        "Alimentación asiática",
+    "cheese_shop":          "Quesería artesanal",
+    "coffee_roaster":       "Tostador de café",
+    # hogar
+    "furniture_store":      "Tienda de muebles",
+    "home_textiles":        "Textil hogar",
+    "interior_design":      "Estudio de interiorismo",
+    "lighting_store":       "Iluminación y lámparas",
+    "second_hand_furniture":"Muebles segunda mano / vintage",
+    "kitchen_store":        "Utensilios de cocina",
+    # mascotas
+    "pet_shop":             "Tienda de mascotas",
+    "vet_clinic":           "Clínica veterinaria",
+    "pet_daycare":          "Guardería / hotel mascotas",
+    "pet_grooming_salon":   "Peluquería canina",
+    "aquarium_shop":        "Acuarios y animales exóticos",
+    # cultura
+    "bookstore":            "Librería independiente",
+    "art_gallery":          "Galería de arte",
+    "record_shop":          "Tienda de discos / vinilo",
+    "toy_store":            "Juguetería creativa",
+    "craft_shop":           "Manualidades / papelería creativa",
+    "cultural_space":       "Espacio cultural polivalente",
     # otro (genéricos)
     "generic_retail":        "Comercio minorista",
     "generic_destination":   "Local de destino",

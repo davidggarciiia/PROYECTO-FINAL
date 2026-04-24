@@ -8,8 +8,6 @@ import type {
   LocalDetalleResponse,
 } from "./types";
 
-export const delay = (ms = 700) => new Promise<void>((res) => setTimeout(res, ms));
-
 export const MOCK_SESSION_ID = "mock-session-001";
 
 type MockZona = NonNullable<BuscarResponse["zonas"]>[number];

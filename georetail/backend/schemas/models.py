@@ -103,7 +103,7 @@ class CompetidorCercano(BaseModel):
 class PrecioSegmento(BaseModel):
     nivel_dominante:    Optional[int]   = None   # 1=€ 2=€€ 3=€€€ 4=€€€€
     etiqueta:           str             = "Sin datos"
-    distribucion:       dict            = {}     # {1: count, 2: count, ...}
+    distribucion:       dict            = Field(default_factory=dict)  # {1: count, 2: count, ...}
     tiene_gap:          bool            = False
     gap_nivel:          Optional[int]   = None
     gap_etiqueta:       Optional[str]   = None
@@ -402,7 +402,7 @@ class LocalDetalle(BaseModel):
     alertas: list[AlertaNLP] = []
 
     # Flujo peatonal
-    flujo_peatonal_dia: FlujoPeatonalDia = FlujoPeatonalDia()
+    flujo_peatonal_dia: FlujoPeatonalDia = Field(default_factory=FlujoPeatonalDia)
 
     # Transporte
     tiempo_transporte_centro_min: Optional[int] = None

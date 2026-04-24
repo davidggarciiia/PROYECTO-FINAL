@@ -11,7 +11,6 @@ interface Props {
   loading?: boolean;
   onExpand: () => void;
   onNav: (dir: -1 | 1) => void;
-  sessionId?: string;
 }
 
 function band(score?: number | null): "hi" | "mid" | "lo" {
@@ -28,9 +27,7 @@ export default function ActiveDock({
   loading,
   onExpand,
   onNav,
-  sessionId,
 }: Props) {
-  void sessionId;
   if (!zone) return null;
   const b = band(zone.score_global);
   const idx = zones.findIndex((z) => z.zona_id === zone.zona_id);

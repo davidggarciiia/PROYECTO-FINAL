@@ -235,7 +235,7 @@ async def exportar_download(pdf_id: UUID) -> FileResponse:
     # dentro del directorio de exports autorizado.
     try:
         ruta_resuelta = Path(ruta_pdf).resolve()
-        if not str(ruta_resuelta).startswith(str(_EXPORTS_DIR)):
+        if not ruta_resuelta.is_relative_to(_EXPORTS_DIR):
             raise ValueError("Ruta fuera del directorio autorizado")
     except Exception:
         raise HTTPException(status_code=400, detail="Ruta de archivo inválida.")
@@ -245,7 +245,7 @@ async def exportar_download(pdf_id: UUID) -> FileResponse:
 
     pdf_id_str = str(pdf_id)
     return FileResponse(
-        path=ruta_pdf,
+        path=str(ruta_resuelta),
         media_type="application/pdf",
         filename=f"georetail-informe-{pdf_id_str[:8]}.pdf",
         headers={
