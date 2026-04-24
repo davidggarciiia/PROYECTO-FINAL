@@ -1,14 +1,25 @@
 -- ============================================================
 -- Archivo  : 98_seed_demo.sql
 -- Proyecto : GeoRetail
--- Propósito: Seeds demo: 10 distritos, 28 barrios, ~100 zonas BCN
---            + 1 local por zona + scores_zona (zonas × sectores).
+-- Propósito: Fixture geográfica de Barcelona + inventario de locales
+--            de demostración. Único dato "demo" hardcodeado son los locales;
+--            distritos, barrios y zonas son el lienzo geográfico fijo sobre
+--            el que operan los pipelines.
+--
+--            Lo que NO está aquí lo pueblan los pipelines:
+--              · scores_zona                → scoring/scorer.py
+--              · variables_zona y vz_*      → pipelines/{peatonal, demografia,
+--                                              turismo, comercio, entorno}
+--              · negocios_activos           → pipelines/entorno/google_maps.py
+--                                              + overpass.py
+--              · competencia_*              → pipelines/comercio/competencia.py
+--              · resenas y embeddings       → pipelines/entorno/resenas.py
+--              · parametros_financieros_zona → pipelines/parametros_financieros.py
+--              · inmuebles_portales y precios → pipelines/inmobiliario/*
+--              · transporte / bicing        → pipelines/transporte/*
+--              · licencias y dinamismo      → pipelines/comercio/*
+--              · turismo y seguridad        → pipelines/{turismo,entorno}/*
 -- Orden    : Ejecutar después de 01..10_*.sql.
---            Depende de: distritos, barrios, zonas, locales, sectores,
---            scores_zona (tablas de 02_geografia.sql y 05_sectores_scoring.sql).
--- Cambios vs legacy seed_demo.sql:
---   · INSERT INTO locales: columna "disponible" → "esta_disponible"
---     (renombrada en 03_inmuebles.sql).
 -- ============================================================
 
 -- ── Distritos ──────────────────────────────────────────────────────────────────
@@ -222,81 +233,7 @@ FROM zonas z
 WHERE NOT EXISTS (SELECT 1 FROM locales l WHERE l.id = 'loc_' || z.id)
 ON CONFLICT (id) DO NOTHING;
 
--- ── Scores para todos los sectores ────────────────────────────────────────────
-INSERT INTO scores_zona
-    (zona_id, sector_id, modelo_version, score_global,
-     score_flujo_peatonal, score_demografia, score_competencia,
-     score_precio_alquiler, score_transporte, score_turismo,
-     score_entorno_comercial, probabilidad_supervivencia)
-SELECT
-    z.id,
-    s.id,
-    'seed_v1',
-    GREATEST(20, LEAST(98,
-        CASE
-            -- Top tier (85-98)
-            WHEN z.id IN ('bcn_born_01','bcn_dreix_01','bcn_dreix_05')                     THEN 88 + (s.id % 5)
-            WHEN z.id IN ('bcn_gotic_01','bcn_born_02','bcn_dreix_02')                     THEN 85 + (s.id % 4)
-            WHEN z.id IN ('bcn_gracia_01','bcn_esqeix_03','bcn_dreix_03')                  THEN 83 + (s.id % 4)
-            -- High tier (70-84)
-            WHEN z.id IN ('bcn_born_03','bcn_born_04','bcn_esqeix_01','bcn_gracia_02')     THEN 80 + (s.id % 5)
-            WHEN z.id IN ('bcn_dreix_04','bcn_dreix_06','bcn_campgracia_02')               THEN 77 + (s.id % 5)
-            WHEN z.id IN ('bcn_gotic_02','bcn_gotic_04','bcn_esqeix_02','bcn_poblenou_01') THEN 75 + (s.id % 4)
-            WHEN z.id IN ('bcn_gracia_04','bcn_gracia_03','bcn_campgracia_01')             THEN 73 + (s.id % 4)
-            WHEN z.id IN ('bcn_vilaolim_01','bcn_born_05','bcn_barceloneta_01')            THEN 71 + (s.id % 4)
-            -- Mid tier (50-69)
-            WHEN z.id IN ('bcn_esqeix_04','bcn_esqeix_05','bcn_dreix_07','bcn_dreix_08')   THEN 68 + (s.id % 4)
-            WHEN z.id IN ('bcn_sagfam_01','bcn_sgervasi_01','bcn_gracia_05')               THEN 66 + (s.id % 4)
-            WHEN z.id IN ('bcn_poblenou_02','bcn_poblenou_03','bcn_salut_01')              THEN 64 + (s.id % 4)
-            WHEN z.id IN ('bcn_campgracia_03','bcn_sgervasi_02','bcn_corts_01')            THEN 62 + (s.id % 3)
-            WHEN z.id IN ('bcn_gotic_03','bcn_gotic_05','bcn_barceloneta_02')              THEN 60 + (s.id % 3)
-            WHEN z.id IN ('bcn_sagfam_02','bcn_sagfam_03','bcn_esqeix_06')                 THEN 58 + (s.id % 3)
-            WHEN z.id IN ('bcn_vilaolim_02','bcn_vilaolim_03','bcn_fortpienc_01')          THEN 56 + (s.id % 3)
-            WHEN z.id IN ('bcn_raval_04','bcn_sants_04','bcn_hostafrancs_02')              THEN 55 + (s.id % 3)
-            WHEN z.id IN ('bcn_clot_01','bcn_clot_02','bcn_poblenou_04')                   THEN 53 + (s.id % 3)
-            -- Lower tier (30-49)
-            WHEN z.id IN ('bcn_raval_01','bcn_raval_02','bcn_sants_01')                    THEN 48 + (s.id % 3)
-            WHEN z.id IN ('bcn_sgervasi_03','bcn_sarria_01','bcn_corts_02')                THEN 45 + (s.id % 3)
-            WHEN z.id IN ('bcn_esqeix_07','bcn_esqeix_08','bcn_sagfam_04')                 THEN 43 + (s.id % 3)
-            WHEN z.id IN ('bcn_raval_03','bcn_raval_05','bcn_sants_02')                    THEN 40 + (s.id % 3)
-            WHEN z.id IN ('bcn_guinardo_01','bcn_guinardo_02','bcn_standreu_01')            THEN 38 + (s.id % 3)
-            WHEN z.id IN ('bcn_clot_03','bcn_poblenou_05','bcn_fortpienc_02')              THEN 36 + (s.id % 2)
-            WHEN z.id IN ('bcn_salut_02','bcn_sarria_02','bcn_corts_03')                   THEN 35 + (s.id % 2)
-            WHEN z.id IN ('bcn_standreu_02','bcn_standreu_03','bcn_sagrera_01')            THEN 33 + (s.id % 2)
-            WHEN z.id IN ('bcn_barceloneta_03','bcn_raval_06','bcn_sants_03')              THEN 31 + (s.id % 2)
-            WHEN z.id IN ('bcn_sagrera_02','bcn_noubarris_01','bcn_prosperitat_01')        THEN 28 + (s.id % 2)
-            WHEN z.id IN ('bcn_noubarris_02','bcn_hostafrancs_01')                         THEN 25 + (s.id % 2)
-            ELSE 40 + (s.id % 10)
-        END
-    )),
-    -- scores por dimensión (variados pero coherentes con el global)
-    GREATEST(10, LEAST(100, 60 + (hashtext(z.id || 'flujo')  % 40))),
-    GREATEST(10, LEAST(100, 55 + (hashtext(z.id || 'demo')   % 45))),
-    GREATEST(10, LEAST(100, 50 + (hashtext(z.id || 'comp')   % 50))),
-    GREATEST(10, LEAST(100, 45 + (hashtext(z.id || 'precio') % 55))),
-    GREATEST(10, LEAST(100, 60 + (hashtext(z.id || 'trans')  % 40))),
-    GREATEST(10, LEAST(100, 40 + (hashtext(z.id || 'tur')    % 60))),
-    GREATEST(10, LEAST(100, 50 + (hashtext(z.id || 'entorn') % 50))),
-    -- probabilidad de supervivencia (correlacionada con score)
-    ROUND(CAST(GREATEST(0.15, LEAST(0.95,
-        CASE
-            WHEN z.id IN ('bcn_born_01','bcn_dreix_01','bcn_dreix_05') THEN 0.83
-            WHEN z.id IN ('bcn_gotic_01','bcn_born_02','bcn_dreix_02') THEN 0.79
-            WHEN z.id IN ('bcn_gracia_01','bcn_esqeix_03')              THEN 0.76
-            WHEN z.id LIKE '%born%'                                      THEN 0.74
-            WHEN z.id LIKE '%dreix%'                                     THEN 0.72
-            WHEN z.id LIKE '%gracia%'                                    THEN 0.69
-            WHEN z.id LIKE '%esqeix%'                                    THEN 0.67
-            WHEN z.id LIKE '%gotic%'                                     THEN 0.65
-            WHEN z.id LIKE '%poblenou%'                                  THEN 0.62
-            WHEN z.id LIKE '%sagfam%'                                    THEN 0.60
-            WHEN z.id LIKE '%sants%'                                     THEN 0.55
-            WHEN z.id LIKE '%clot%'                                      THEN 0.52
-            WHEN z.id LIKE '%raval%'                                     THEN 0.50
-            WHEN z.id LIKE '%standreu%'                                  THEN 0.45
-            WHEN z.id LIKE '%noubarris%'                                 THEN 0.35
-            ELSE 0.55
-        END
-    )) AS NUMERIC), 2)
-FROM zonas z, sectores s
-ON CONFLICT (zona_id, sector_id, modelo_version) DO NOTHING;
+-- Los scores_zona NO se siembran: los genera scoring/scorer.py a partir de las
+-- features reales (vz_*, negocios_activos, competencia_*, etc.) que pueblan
+-- los pipelines. Para bootstrap: `python -m scoring.motor recalcular_todo`
+-- o el scheduler semanal (scores.py).

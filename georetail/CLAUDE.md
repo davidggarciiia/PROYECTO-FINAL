@@ -196,8 +196,9 @@ backend/
 │   │   ├── 10_ia_pipelines.sql        ← resenas (IVFFLAT), alertas_zona,
 │   │   │                                 perfiles_zona_embedding (IVFFLAT),
 │   │   │                                 pipeline_ejecuciones, pipeline_errores, llm_logs
-│   │   ├── 98_seed_demo.sql           ← datos de demostración (usa nuevos nombres de columna)
-│   │   └── 99_seed_variables_zona.sql ← seeds de variables escriben a vz_* (no a tabla fat)
+│   │   └── 98_seed_demo.sql           ← fixture BCN: distritos + barrios + zonas + LOCALES.
+│   │                                     Único hardcoded: locales. Resto (scores, vz_*, competencia,
+│   │                                     resenas, precios, transporte) lo pueblan los pipelines.
 │   └── legacy_migraciones/            ← 37 migraciones legacy 001-036 + 2 seeds históricos
 │                                         (NO se ejecutan; solo referencia histórica)
 ├── models/
