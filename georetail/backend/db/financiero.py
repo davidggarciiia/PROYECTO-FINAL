@@ -67,11 +67,7 @@ async def guardar_analisis_financiero(session_id: str, zona_id: str,
                     payback_meses_optimista=EXCLUDED.payback_meses_optimista,
                     proyeccion_json=EXCLUDED.proyeccion_json
             """,
-            # `params` y `proyeccion_json` son JSONB: pasamos dict/list directos
-            # (el codec de db/conexion.py hace json.dumps una sola vez — si
-            # pasáramos strings, el codec los re-encodaría y la columna guardaría
-            # un string escapado en lugar de un objeto/array JSON).
-            session_id, zona_id, params,
+            session_id, zona_id, json.dumps(params),
             resultado.get("inversion_total",0),
             resultado.get("ingresos_anuales_conservador",0),
             resultado.get("ingresos_anuales_optimista",0),
@@ -81,7 +77,7 @@ async def guardar_analisis_financiero(session_id: str, zona_id: str,
             resultado.get("roi_3a_optimista",0),
             resultado.get("payback_meses_conservador",999),
             resultado.get("payback_meses_optimista",999),
-            resultado.get("proyeccion",[]))
+            json.dumps(resultado.get("proyeccion",[])))
     except Exception as e:
         logger.warning("guardar_analisis_financiero fail: %s", e)
 

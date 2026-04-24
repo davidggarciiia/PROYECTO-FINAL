@@ -6,12 +6,13 @@ import type {
   ZonaPreview,
   LocalDetalleResponse,
   CompetenciaDetalle,
+  FinancieroResponse,
 } from "@/lib/types";
 import { api } from "@/lib/api";
 import DossierTabScore from "./DossierTabScore";
 import DossierTabPerfil from "./DossierTabPerfil";
-import DossierTabStub from "./DossierTabStubs";
 import LegalPanel from "../LegalPanel";
+import FinancialPanel from "../FinancialPanel";
 import ProfileChipBar from "./ProfileChipBar";
 import styles from "./Dossier.module.css";
 
@@ -49,15 +50,19 @@ export default function Dossier({ zone, detalle, loading, onClose, sessionId }: 
   const [competencia, setCompetencia] = useState<CompetenciaDetalle | null>(null);
   const [loadingComp, setLoadingComp] = useState(false);
   const [competenciaError, setCompetenciaError] = useState<string | null>(null);
+  const [financiero, setFinanciero] = useState<FinancieroResponse | null>(null);
+  const [loadingFin, setLoadingFin] = useState(false);
   // Ref para detectar cambios de zona mientras una petición está en vuelo
   const activeZoneRef = useRef(zone.zona_id);
 
-  // Reset del estado de competencia cuando cambia la zona.
+  // Reset del estado cuando cambia la zona.
   useEffect(() => {
     activeZoneRef.current = zone.zona_id;
     setCompetencia(null);
     setCompetenciaError(null);
-    setLoadingComp(false);  // cancela visualmente cualquier carga en vuelo de la zona anterior
+    setLoadingComp(false);
+    setFinanciero(null);
+    setLoadingFin(false);
   }, [zone.zona_id]);
 
   const loadCompetencia = useCallback(async () => {
@@ -82,9 +87,27 @@ export default function Dossier({ zone, detalle, loading, onClose, sessionId }: 
     }
   }, [competencia, loadingComp, sessionId, zone.zona_id]);
 
+  const loadFinanciero = useCallback(async () => {
+    if (financiero || loadingFin || !sessionId) return;
+    const zonaIdSnapshot = zone.zona_id;
+    setLoadingFin(true);
+    try {
+      const data = await api.financiero(zonaIdSnapshot, sessionId);
+      if (activeZoneRef.current !== zonaIdSnapshot) return;
+      setFinanciero(data);
+    } catch (error) {
+      console.error("Error financiero:", error);
+    } finally {
+      if (activeZoneRef.current === zonaIdSnapshot) {
+        setLoadingFin(false);
+      }
+    }
+  }, [financiero, loadingFin, sessionId, zone.zona_id]);
+
   useEffect(() => {
     if (tab === "competencia") void loadCompetencia();
-  }, [tab, loadCompetencia]);
+    if (tab === "financiero") void loadFinanciero();
+  }, [tab, loadCompetencia, loadFinanciero]);
 
   const score = zone.score_global ?? 0;
   const band = score >= 75 ? "hi" : score >= 55 ? "mid" : "lo";
@@ -187,7 +210,15 @@ export default function Dossier({ zone, detalle, loading, onClose, sessionId }: 
           {tab === "perfil" && (
             <DossierTabPerfil zona={detalle?.zona ?? null} />
           )}
-          {tab === "financiero" && <DossierTabStub variant="financiero" />}
+          {tab === "financiero" && (
+            <FinancialPanel
+              financiero={financiero}
+              loading={loadingFin}
+              zonaId={zone.zona_id}
+              sessionId={sessionId}
+              onUpdate={setFinanciero}
+            />
+          )}
           {tab === "legal" && <LegalPanel zona={zone} sessionId={sessionId} />}
         </div>
       </aside>

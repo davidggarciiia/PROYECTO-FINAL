@@ -528,6 +528,10 @@ class ProyeccionMes(BaseModel):
     # Bandas de volatilidad ±15% para escenario base (v3)
     ingresos_base_low:     int = 0
     ingresos_base_high:    int = 0
+    # Escenario de estrés v4 — ingresos ×0.40 con costes fijos intactos
+    ingresos_stress:       float = 0.0
+    ebitda_stress:         float = 0.0
+    acumulado_stress:      float = 0.0
 
 
 # ── Bloques v2 del panel financiero ───────────────────────────────────────────
@@ -580,6 +584,13 @@ class MetricasClave(BaseModel):
     margen_bruto_pct:  float
     payback_meses:     int
     mes_caja_positiva: int
+
+
+class SensitividadItem(BaseModel):
+    """Impacto en EBITDA año 1 si la variable sube un 10%."""
+    variable:       str    # clave interna
+    label:          str    # texto legible para el usuario
+    impacto_ebitda: float  # positivo = mejora, negativo = empeora
 
 
 class Riesgo(BaseModel):
@@ -685,6 +696,11 @@ class FinancieroResponse(BaseModel):
     validation_flags:       list[str]                        = Field(default_factory=list)
     ocupacion_efectiva:     float                            = 0.0
     validacion_financiera:  Optional[ValidacionFinanciera]   = None
+    # Análisis v4: stress + sensibilidad
+    ebitda_anual_stress:   float                            = 0.0
+    roi_3a_stress:         float                            = -1.0
+    payback_meses_stress:  int                              = 999
+    sensibilidad:          list[SensitividadItem]           = Field(default_factory=list)
 
 
 # ── Locales lista ─────────────────────────────────────────────────────────────

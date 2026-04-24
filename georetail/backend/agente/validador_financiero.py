@@ -16,19 +16,20 @@ from routers.llm_router import completar
 logger = logging.getLogger(__name__)
 
 # Respuesta de seguridad — se devuelve si el LLM falla o el JSON está malformado.
-# "media"+"fiable" para no bloquear el flujo pero sin dar un verde falso.
+# "no_verificado" indica explícitamente que la validación no se completó.
+# El frontend debe tratar esto como "sin verificación", no como "verificado positivo".
 _FALLBACK: dict = {
-    "coherencia_global": "media",
-    "veredicto": "fiable",
+    "coherencia_global": "no_verificada",
+    "veredicto": "no_verificado",
     "problemas_detectados": [],
     "ajustes_recomendados": [],
-    "supuestos_peligrosos": [],
+    "supuestos_peligrosos": ["La validación automática no pudo completarse. Interpreta los resultados con cautela."],
     "checks_detallados": {
-        "capacidad": "ok",
-        "costes": "ok",
-        "margenes": "ok",
-        "roi": "ok",
-        "payback": "ok",
+        "capacidad": "no_verificado",
+        "costes": "no_verificado",
+        "margenes": "no_verificado",
+        "roi": "no_verificado",
+        "payback": "no_verificado",
     },
 }
 

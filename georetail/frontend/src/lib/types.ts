@@ -395,6 +395,10 @@ export interface ProyeccionMes {
   ramp_factor: number;
   ingresos_base_low?: number;
   ingresos_base_high?: number;
+  // Escenario de estrés v4
+  ingresos_stress?: number;
+  ebitda_stress?: number;
+  acumulado_stress?: number;
 }
 
 export interface ParametroResponse {
@@ -459,6 +463,12 @@ export interface MetricasClave {
   margen_bruto_pct: number;
   payback_meses: number;
   mes_caja_positiva: number;
+}
+
+export interface SensitividadItem {
+  variable: string;
+  label: string;
+  impacto_ebitda: number;
 }
 
 export interface Riesgo {
@@ -569,6 +579,11 @@ export interface FinancieroResponse {
   validation_flags?: string[];
   ocupacion_efectiva?: number;
   validacion_financiera?: ValidacionFinanciera;
+  // Análisis v4: stress + sensibilidad
+  ebitda_anual_stress?: number;
+  roi_3a_stress?: number;
+  payback_meses_stress?: number;
+  sensibilidad?: SensitividadItem[];
 }
 
 export interface LocalDetalleResponse {

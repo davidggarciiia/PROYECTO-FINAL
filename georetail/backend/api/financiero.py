@@ -27,6 +27,7 @@ from schemas.models import (
     Riesgo, Insight, ModeloDemanda,
     CorreccionAplicada, CapacityModelInfo,
     ValidacionFinanciera, ProblemaDetectado, AjusteRecomendado, ChecksDetallados,
+    SensitividadItem,
 )
 from agente.validador_financiero import validar_financiero
 from financiero.estimador import estimar_parametros, ParametrosEstimados, PE
@@ -41,9 +42,21 @@ from db.financiero import (
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["financiero"])
 
-_UMBRAL_ALQUILER_VENTAS = 0.15
-_MAX_CAPTURE_RATE       = 0.15
+_UMBRAL_ALQUILER_VENTAS   = 0.10   # 10% s/ingresos conservadores para decisión "sí"
+_UMBRAL_ALQUILER_DISPLAY  = 0.15   # umbral visual de alerta (sobre ingresos base)
 _CAPITAL_ESTIMADO_DEFAULT = 50_000.0
+
+# Tasa de captación máxima realista por sector
+# Para negocios de paso: footfall × tasa = clientes potenciales
+# Para negocios de cita (appointment_based): no aplica (capacidad física limita)
+_CAPTURE_RATE_POR_SECTOR: dict[str, float] = {
+    "restauracion":  0.08,  # aforo físico limita; 8% del flujo es ya muy alto para un local
+    "moda":          0.10,  # retail moda — compra impulsiva moderada
+    "supermercado":  0.15,  # alta frecuencia y necesidad, mayor conversión
+    "farmacia":      0.12,  # necesidad, mayor conversión que moda
+    "shisha_lounge": 0.05,  # destino, no de paso — baja conversión espontánea
+    "_default":      0.10,
+}
 
 
 # ─── Request ──────────────────────────────────────────────────────────────────
@@ -114,12 +127,15 @@ class FinancieroResponse(BaseModel):
     ebitda_anual_conservador:     float
     ebitda_anual_base:            float
     ebitda_anual_optimista:       float
+    ebitda_anual_stress:          float = 0.0
     roi_3a_conservador:        float
     roi_3a_base:               float
     roi_3a_optimista:          float
+    roi_3a_stress:             float = -1.0
     payback_meses_conservador: int
     payback_meses_base:        int
     payback_meses_optimista:   int
+    payback_meses_stress:      int = 999
     breakeven_clientes_dia:    int
     proyeccion:                list[ProyeccionMes]
     margen_sector_tipico:      float
@@ -143,6 +159,8 @@ class FinancieroResponse(BaseModel):
     ocupacion_efectiva:     float                      = 0.0
     # Validación LLM — capa crítica (None si el LLM falla)
     validacion_financiera:  Optional[ValidacionFinanciera] = None
+    # Análisis v4: sensibilidad + estrés
+    sensibilidad:           list[SensitividadItem]     = []
 
 
 # ─── Endpoint ─────────────────────────────────────────────────────────────────
@@ -160,27 +178,6 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
     sector  = sesion.get("perfil", {}).get("sector", "desconocido")
     perfil  = sesion.get("perfil", {})
 
-    # ── Hints del cuestionario estructurado ──────────────────────────────────
-    # Si el usuario rellenó `overrides_financieros` en el test:
-    #   * m2_objetivo  → inyectamos `m2_aprox` en el perfil (afecta alquiler,
-    #                    reforma, num_empleados por m²).
-    #   * num_empleados → se aplica tras la estimación (pisa salarios_mensual).
-    #   * ticket_medio  → se fusiona como override directo en body.overrides.
-    #   * clientes_dia  → se fusiona como override `clients_per_day`.
-    # El usuario que mueve sliders en el panel (body.overrides) siempre gana.
-    session_overrides = perfil.get("overrides_financieros") or {}
-    if session_overrides.get("m2_objetivo"):
-        perfil = {**perfil, "m2_aprox": float(session_overrides["m2_objetivo"])}
-    session_as_overrides: dict[str, float] = {}
-    if session_overrides.get("ticket_medio") is not None:
-        session_as_overrides["ticket_medio"] = float(session_overrides["ticket_medio"])
-    if session_overrides.get("clientes_dia") is not None:
-        session_as_overrides["clients_per_day"] = float(session_overrides["clientes_dia"])
-    if session_as_overrides:
-        # body.overrides tiene prioridad (sliders del panel sobre test).
-        merged = {**session_as_overrides, **body.overrides}
-        body = body.model_copy(update={"overrides": merged})
-
     bc           = body.business_context
     tipo_negocio = bc.tipo if bc else "nuevo"
     capital      = float(
@@ -194,23 +191,6 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
     estimados = await _get_o_calcular_estimados(
         zona_id=body.zona_id, sector=sector, perfil=perfil,
     )
-
-    # ── Pisar num_empleados desde el cuestionario si se declaró ──────────────
-    # Recalculamos salarios_mensual proporcionalmente: si el usuario declara el
-    # doble de empleados que el auto-estimado, el salario se duplica.
-    if session_overrides.get("num_empleados"):
-        n_decl = max(1, int(session_overrides["num_empleados"]))
-        n_auto = max(1, int(estimados.num_empleados))
-        if n_decl != n_auto:
-            ratio = n_decl / n_auto
-            estimados.salarios_mensual = PE(
-                valor=round(estimados.salarios_mensual.valor * ratio, 0),
-                fuente=f"Declarado usuario ({n_decl} empleados) · " + estimados.salarios_mensual.fuente,
-                confianza="alta",
-                rango_min=round(estimados.salarios_mensual.rango_min * ratio, 0),
-                rango_max=round(estimados.salarios_mensual.rango_max * ratio, 0),
-            )
-            estimados.num_empleados = n_decl
 
     # ── Aplicar overrides (incluyendo clients_per_day) ────────────────────────
     params = _aplicar_overrides(estimados, body.overrides)
@@ -246,6 +226,7 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         flujo_peatonal=flujo_peatonal,
         business_model_type=business_model_type,
         capacidad_operativa=capacidad_operativa,
+        sector=sector,
     )
 
     # ── Modelo de capacidad ───────────────────────────────────────────────────
@@ -258,20 +239,26 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
 
     # ── Proyección 36 meses ───────────────────────────────────────────────────
     try:
-        resultado = await calcular_proyeccion(v, tipo_negocio=tipo_negocio)
+        resultado = await calcular_proyeccion(v, tipo_negocio=tipo_negocio, sector=sector)
     except Exception as exc:
         logger.error("Error calculadora zona=%s: %s", body.zona_id, exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Error calculando la proyección financiera.")
 
     # ── Métricas derivadas (coherentes con MAX_OCCUPANCY del calculador) ─────────
-    cl_base      = resultado["clients_per_day"]
-    ing_estable  = v["ticket_medio"] * cl_base * v["dias_apertura_mes"] * MAX_OCCUPANCY
-    margen_bruto = 1 - v["coste_mercancia_pct"]
-    alquiler_pct = (v["alquiler_mensual"] / ing_estable) if ing_estable > 0 else 1.0
+    cl_base           = resultado["clients_per_day"]
+    cl_conservador    = resultado["scenario_clients"]["conservador"]
+    ing_estable       = v["ticket_medio"] * cl_base * v["dias_apertura_mes"] * MAX_OCCUPANCY
+    ing_conservador   = v["ticket_medio"] * cl_conservador * v["dias_apertura_mes"] * MAX_OCCUPANCY
+    margen_bruto      = 1 - v["coste_mercancia_pct"]
+    # Alquiler sobre ingresos CONSERVADORES (corrección auditoría: usar escenario malo, no base)
+    alquiler_pct      = (v["alquiler_mensual"] / ing_conservador) if ing_conservador > 0 else 1.0
+    alquiler_pct_base = (v["alquiler_mensual"] / ing_estable) if ing_estable > 0 else 1.0
 
     # ── Modelo de demanda (display) ───────────────────────────────────────────
-    max_potential = flujo_peatonal * _MAX_CAPTURE_RATE if flujo_peatonal > 0 else cl_base * 2
-    capture_rate  = min((cl_base / max_potential) if max_potential > 0 else 0.05, _MAX_CAPTURE_RATE)
+    # Tasa de captación máxima según sector (corregida auditoría: no universal 15%)
+    sector_capture_max = _CAPTURE_RATE_POR_SECTOR.get(sector, _CAPTURE_RATE_POR_SECTOR["_default"])
+    max_potential = flujo_peatonal * sector_capture_max if flujo_peatonal > 0 else cl_base * 2
+    capture_rate  = min((cl_base / max_potential) if max_potential > 0 else 0.05, sector_capture_max)
 
     modelo_demanda = ModeloDemanda(
         flujo_peatonal_dia=round(flujo_peatonal),
@@ -299,14 +286,16 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
     validacion_financiera = _parse_validacion(_val_raw)
 
     # ── Bloque 1: Decisión ────────────────────────────────────────────────────
-    roi_b   = resultado["roi_3a_base"]
-    pb_b    = resultado["payback_meses_base"]
-    ben_mes = round(ing_estable * margen_bruto - (
+    roi_b    = resultado["roi_3a_base"]
+    roi_c    = resultado["roi_3a_conservador"]
+    pb_b     = resultado["payback_meses_base"]
+    ben_mes  = round(ing_estable * margen_bruto - (
         v["alquiler_mensual"] + v["salarios_mensual"] + v["otros_fijos_mensual"]
     ))
 
     decision = DecisionBlock(
-        recomendacion=_calcular_recomendacion(roi_b, pb_b, alquiler_pct),
+        # alquiler_pct ya usa ingresos conservadores (corregido auditoría)
+        recomendacion=_calcular_recomendacion(roi_b, pb_b, alquiler_pct, roi_c),
         beneficio_mensual=ben_mes,
         payback=pb_b,
         capital_necesario=resultado["inversion_total"],
@@ -343,8 +332,10 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         roi_conservador=resultado["roi_3a_conservador"],
         roi_base=roi_b,
         roi_optimista=resultado["roi_3a_optimista"],
+        roi_stress=round(resultado.get("roi_3a_stress", -1.0), 3),
         margen_bruto_pct=round(margen_bruto, 3),
         payback_meses=pb_b,
+        payback_stress=resultado.get("payback_meses_stress", 999),
         mes_caja_positiva=pb_b,
     )
 
@@ -411,17 +402,22 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         ebitda_anual_conservador=resultado["ebitda_anual_conservador"],
         ebitda_anual_base=resultado["ebitda_anual_base"],
         ebitda_anual_optimista=resultado["ebitda_anual_optimista"],
+        ebitda_anual_stress=resultado.get("ebitda_anual_stress", 0.0),
         roi_3a_conservador=round(resultado["roi_3a_conservador"], 2),
         roi_3a_base=round(roi_b, 2),
         roi_3a_optimista=round(resultado["roi_3a_optimista"], 2),
+        roi_3a_stress=round(resultado.get("roi_3a_stress", -1.0), 2),
         payback_meses_conservador=resultado["payback_meses_conservador"],
         payback_meses_base=pb_b,
         payback_meses_optimista=resultado["payback_meses_optimista"],
+        payback_meses_stress=resultado.get("payback_meses_stress", 999),
         breakeven_clientes_dia=be_clientes,
         proyeccion=[ProyeccionMes(**m) for m in resultado["proyeccion"]],
         margen_sector_tipico=margen_sector,
-        alquiler_sobre_ventas_pct=round(alquiler_pct, 3),
-        alerta_alquiler=alquiler_pct > _UMBRAL_ALQUILER_VENTAS,
+        # Display: alquiler sobre ingresos BASE (informativo)
+        alquiler_sobre_ventas_pct=round(alquiler_pct_base, 3),
+        # Alerta visual: umbral 15% sobre ingresos base
+        alerta_alquiler=alquiler_pct_base > _UMBRAL_ALQUILER_DISPLAY,
         decision=decision,
         economia_base=economia_base,
         estructura_costes=estructura_costes,
@@ -437,6 +433,7 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         validation_flags=resultado.get("validation_flags", []),
         ocupacion_efectiva=resultado.get("ocupacion_efectiva", 0.0),
         validacion_financiera=validacion_financiera,
+        sensibilidad=[SensitividadItem(**s) for s in resultado.get("sensibilidad", [])],
     )
 
 
@@ -447,33 +444,35 @@ def _aplicar_correcciones_demanda(
     flujo_peatonal: float,
     business_model_type: str,
     capacidad_operativa: Optional[int],
+    sector: str = "_default",
 ) -> list[dict]:
     """
     Aplica límites duros a clients_per_day en v (in-place).
     Devuelve lista de correcciones para mostrar al usuario.
 
     Reglas:
-      1. Retail/restaurant: clients_per_day ≤ flujo_peatonal × 15%
+      1. Retail/restaurant: clients_per_day ≤ flujo_peatonal × tasa_sector (no universal 15%)
       2. Todos: clients_per_day ≤ max_capacity (del modelo)
       3. Todos: clients_per_day ≤ capacidad_operativa (input usuario, si existe)
     """
     correcciones: list[dict] = []
 
-    # Regla 1: cap por capture_rate (sólo negocios de paso)
+    # Regla 1: cap por capture_rate según sector (corregido auditoría: no universal 15%)
+    sector_rate = _CAPTURE_RATE_POR_SECTOR.get(sector, _CAPTURE_RATE_POR_SECTOR["_default"])
     if flujo_peatonal > 0 and business_model_type not in ("appointment_based",):
-        max_realistic = flujo_peatonal * _MAX_CAPTURE_RATE
+        max_realistic = flujo_peatonal * sector_rate
         if v["clients_per_day"] > max_realistic and max_realistic > 0:
             original      = v["clients_per_day"]
-            tasa_original = round(original / max_realistic * 100)
+            tasa_original = round(original / flujo_peatonal * 100, 1)
             v["clients_per_day"] = round(max_realistic, 1)
             correcciones.append({
                 "parametro":       "clientes_dia",
                 "valor_original":  original,
                 "valor_corregido": v["clients_per_day"],
                 "motivo": (
-                    f"Captación estimada ({tasa_original}%) superaba el 15% máximo realista "
-                    f"del flujo peatonal diario. Ajuste aplicado: "
-                    f"{original} → {v['clients_per_day']} clientes/día."
+                    f"Captación estimada ({tasa_original}% del flujo peatonal) superaba el "
+                    f"{round(sector_rate*100)}% máximo realista para el sector '{sector}'. "
+                    f"Ajuste aplicado: {original} → {v['clients_per_day']} clientes/día."
                 ),
             })
 
@@ -538,10 +537,22 @@ def _build_capacity_model(
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-def _calcular_recomendacion(roi_b: float, payback_b: int, alquiler_pct: float) -> str:
-    if roi_b >= 0.25 and payback_b <= 24 and alquiler_pct <= _UMBRAL_ALQUILER_VENTAS:
+def _calcular_recomendacion(
+    roi_b: float, payback_b: int, alquiler_pct: float, roi_c: float = 0.0
+) -> str:
+    """
+    Umbrales corregidos (auditoría v4):
+    - ROI base ≥ 40% (≈ 12% anual, por encima del coste de oportunidad)
+    - Payback ≤ 18 meses (no 24)
+    - Alquiler ≤ 10% de ingresos conservadores (no base)
+    - El escenario conservador no puede tener ROI negativo para dar "sí"
+    """
+    if (roi_b >= 0.40
+            and payback_b <= 18
+            and alquiler_pct <= _UMBRAL_ALQUILER_VENTAS
+            and roi_c >= 0.0):
         return "si"
-    if roi_b >= 0.0 and payback_b <= 36:
+    if roi_b >= 0.0 and payback_b <= 30:
         return "riesgo"
     return "no"
 
@@ -566,11 +577,19 @@ def _generar_riesgos(
     # ── Bloqueos (impiden viabilidad) ──────────────────────────────────────────
     if roi_c < 0:
         riesgos.append(Riesgo(tipo="bloqueo",
-            mensaje="ROI negativo en escenario conservador — la inversión no se recupera en 3 años."))
+            mensaje="ROI negativo en escenario conservador — si los ingresos caen un 40%, "
+                    "la inversión no se recupera en 3 años. Para una decisión 'sí' se requiere "
+                    "que incluso el escenario malo sea positivo."))
 
     if payback_b > 30:
         riesgos.append(Riesgo(tipo="bloqueo",
             mensaje=f"Payback de {payback_b} meses supera el límite recomendado de 30 meses."))
+
+    if roi_b < 0.40 and roi_b >= 0:
+        riesgos.append(Riesgo(tipo="warning",
+            mensaje=f"ROI base del {round(roi_b * 100)}% inferior al 40% mínimo recomendado "
+                    f"(≈12% anual). El negocio sería viable pero con retorno por debajo del "
+                    f"coste de oportunidad de invertir el capital en otras opciones."))
 
     # ── Advertencias críticas ─────────────────────────────────────────────────
     if alquiler_pct > _UMBRAL_ALQUILER_VENTAS:

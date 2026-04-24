@@ -15,6 +15,7 @@ import type {
   FinancieroResponse, DecisionBlock, EstructuraCostes,
   BreakEvenInfo, MetricasClave, Riesgo, Insight,
   CorreccionAplicada, CapacityModelInfo, BusinessContext,
+  SensitividadItem,
 } from "@/lib/types";
 import { api } from "@/lib/api";
 import styles from "./FinancialPanel.module.css";
@@ -158,7 +159,7 @@ function BloqueDecision({ d }: { d: DecisionBlock }) {
             {cfg.label}
           </div>
           <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-            Basado en ROI, payback y ratio alquiler/ventas
+            ROI ≥ 40% · Payback ≤ 18m · Alquiler ≤ 10% (ingresos conservadores)
           </div>
         </div>
       </div>
@@ -527,10 +528,61 @@ function BloqueBreakEven({ be, alquilerPct }: { be: BreakEvenInfo; alquilerPct: 
   );
 }
 
+// ─── BLOQUE: Sensibilidad (tornado chart) ─────────────────────────────────────
+
+function BloqueSensibilidad({ items }: { items: SensitividadItem[] }) {
+  if (!items.length) return null;
+
+  const maxAbs = Math.max(...items.map(i => Math.abs(i.impacto_ebitda)), 1);
+
+  return (
+    <section className={styles.section}>
+      <SectionTitle
+        title="Sensibilidad — impacto si variable sube 10%"
+        badge={
+          <span style={{ fontSize: 10, color: C.muted, background: C.surface2,
+            border: `1px solid ${C.border}`, borderRadius: 100, padding: "2px 8px" }}>
+            EBITDA año 1
+          </span>
+        }
+      />
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {items.map((item) => {
+          const positive = item.impacto_ebitda >= 0;
+          const pct      = Math.abs(item.impacto_ebitda) / maxAbs * 100;
+          const color    = positive ? C.green : C.red;
+          return (
+            <div key={item.variable}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                <span style={{ fontSize: 11, color: C.muted }}>{item.label}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color,
+                  fontVariantNumeric: "tabular-nums" }}>
+                  {positive ? "+" : ""}{fmt(item.impacto_ebitda)} €
+                </span>
+              </div>
+              <div style={{ height: 6, borderRadius: 4, background: "rgba(255,255,255,0.06)" }}>
+                <div style={{
+                  height: "100%", borderRadius: 4, width: `${pct}%`,
+                  background: color, opacity: 0.75,
+                  boxShadow: `0 0 6px ${color}55`,
+                }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <ChartExplanation>
+        Cada barra muestra cuánto cambia el EBITDA del año 1 si esa variable aumenta un 10%.
+        Las barras verdes son palancas de mejora; las rojas, riesgos que hay que negociar o controlar.
+      </ChartExplanation>
+    </section>
+  );
+}
+
 // ─── BLOQUE 5: Escenarios ─── GRÁFICOS 3, 4, 5 ───────────────────────────────
 
 function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
-  const [activeChart, setActiveChart] = useState<"caja" | "mensual" | "comparativa">("caja");
+  const [activeChart, setActiveChart] = useState<"caja" | "mensual" | "comparativa" | "estres">("caja");
 
   const proyeccion = f.proyeccion;
 
@@ -577,10 +629,20 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
     },
   ];
 
+  // Datos estrés (×0.40 ingresos, costes fijos intactos) — cada 3 meses
+  const stressData = proyeccion
+    .filter((_, i) => i % 3 === 2 || i === 0)
+    .map(m => ({
+      mes: `M${m.mes}`,
+      Base:   m.acumulado_base,
+      Estrés: m.acumulado_stress ?? 0,
+    }));
+
   const tabs = [
     { id: "caja" as const, label: "Caja acumulada" },
     { id: "mensual" as const, label: "EBITDA mensual" },
     { id: "comparativa" as const, label: "Comparativa" },
+    { id: "estres" as const, label: "Estrés" },
   ];
 
   return (
@@ -712,6 +774,56 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
           </ChartExplanation>
         </>
       )}
+
+      {/* GRÁFICO 6: Escenario de estrés */}
+      {activeChart === "estres" && (
+        <>
+          <div style={{
+            padding: "8px 12px", borderRadius: 8, marginBottom: 10,
+            background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)",
+            fontSize: 11, color: C.muted, lineHeight: 1.5,
+          }}>
+            <span style={{ color: C.red, fontWeight: 700 }}>Escenario estrés:</span>{" "}
+            ingresos al 40% (apertura en malas condiciones + imprevisto) con{" "}
+            <strong style={{ color: C.text }}>costes fijos intactos</strong>.
+            Muestra si el negocio sobrevive sin caja adicional.
+          </div>
+          <div style={{ height: 180 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={stressData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gStress" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={C.red} stopOpacity={0.2} />
+                    <stop offset="95%" stopColor={C.red} stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="gBaseS" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={C.base} stopOpacity={0.15} />
+                    <stop offset="95%" stopColor={C.base} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                <XAxis dataKey="mes" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
+                <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" strokeDasharray="4 4" />
+                <ReTooltip
+                  contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+                  formatter={(v: number, name: string) => [`${fmt(v)} €`, name]}
+                />
+                <Area type="monotone" dataKey="Base"   name="Base (×1.0)"   stroke={C.base} fill="url(#gBaseS)" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
+                <Area type="monotone" dataKey="Estrés" name="Estrés (×0.40)" stroke={C.red}  fill="url(#gStress)" strokeWidth={2}   dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <LegendRow items={[
+            { color: C.base, label: `Base (payback ${f.payback_meses_base >= 999 ? ">36m" : f.payback_meses_base + "m"})` },
+            { color: C.red,  label: `Estrés (payback ${(f.payback_meses_stress ?? 999) >= 999 ? ">36m" : f.payback_meses_stress + "m"})` },
+          ]} />
+          <ChartExplanation>
+            Si la curva de estrés nunca cruza cero, el negocio necesita reserva de tesorería adicional
+            para sobrevivir un mal inicio. Compara con tu capital disponible para evaluar el riesgo real.
+          </ChartExplanation>
+        </>
+      )}
     </section>
   );
 }
@@ -732,7 +844,10 @@ function LegendRow({ items }: { items: { color: string; label: string }[] }) {
 // ─── BLOQUE 6: Métricas clave ─────────────────────────────────────────────────
 
 function BloqueMetricas({ m }: { m: MetricasClave }) {
-  const colorRoi = (v: number) => v >= 0.3 ? C.green : v >= 0 ? C.yellow : C.red;
+  // ROI: ≥40% verde (≈12% anual > coste oportunidad), ≥0% amarillo, negativo rojo
+  const colorRoi = (v: number) => v >= 0.40 ? C.green : v >= 0 ? C.yellow : C.red;
+  const roiStress = m.roi_stress ?? -1;
+  const pbStress  = m.payback_stress ?? 999;
 
   return (
     <section className={styles.section}>
@@ -745,6 +860,12 @@ function BloqueMetricas({ m }: { m: MetricasClave }) {
           color={colorRoi(m.roi_base)}
         />
         <StatCard
+          label="ROI estrés (×0.40)"
+          value={roiStress <= -1 ? "—" : `${Math.round(roiStress * 100)}%`}
+          sub="ingresos mínimos, costes fijos intactos"
+          color={roiStress >= 0 ? C.green : C.red}
+        />
+        <StatCard
           label="Margen bruto"
           value={`${Math.round(m.margen_bruto_pct * 100)}%`}
           sub="ingresos - coste mercancía"
@@ -753,14 +874,8 @@ function BloqueMetricas({ m }: { m: MetricasClave }) {
         <StatCard
           label="Payback"
           value={m.payback_meses >= 999 ? ">36m" : `${m.payback_meses}m`}
-          sub="recuperación inversión inicial"
+          sub={`Estrés: ${pbStress >= 999 ? ">36m" : pbStress + "m"}`}
           color={m.payback_meses <= 18 ? C.green : m.payback_meses <= 30 ? C.yellow : C.red}
-        />
-        <StatCard
-          label="Mes caja positiva"
-          value={m.mes_caja_positiva >= 999 ? ">36m" : `Mes ${m.mes_caja_positiva}`}
-          sub="primer mes con caja acumulada ≥ 0"
-          color={m.mes_caja_positiva <= 24 ? C.green : C.yellow}
         />
       </div>
     </section>
@@ -1147,6 +1262,11 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
 
       {/* ── BLOQUE 5: Escenarios ── */}
       <BloqueEscenarios f={f} />
+
+      {/* ── Sensibilidad ── */}
+      {f.sensibilidad && f.sensibilidad.length > 0 && (
+        <BloqueSensibilidad items={f.sensibilidad} />
+      )}
 
       {/* ── BLOQUE 6: Métricas clave ── */}
       {f.metricas_clave && <BloqueMetricas m={f.metricas_clave} />}
