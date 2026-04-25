@@ -8,7 +8,7 @@ import {
   LineChart, Line,
   XAxis, YAxis, CartesianGrid,
   Tooltip as ReTooltip,
-  ReferenceLine, Legend,
+  ReferenceLine,
   ResponsiveContainer,
 } from "recharts";
 import type {
@@ -63,7 +63,7 @@ function useDebounce(fn: (...args: unknown[]) => void, delay: number) {
   }, [fn, delay]);
 }
 
-// ─── Tooltip personalizado ────────────────────────────────────────────────────
+// ─── Tooltip de gráficos ──────────────────────────────────────────────────────
 interface TooltipEntry { name: string; value: number; color: string; dataKey: string }
 interface TooltipBaseProps { active?: boolean; payload?: TooltipEntry[]; label?: string | number }
 
@@ -84,7 +84,39 @@ function TooltipBase({ active, payload, label }: TooltipBaseProps) {
   );
 }
 
-// ─── Componentes pequeños ──────────────────────────────────────────────────────
+// ─── Tooltip informativo (conceptos financieros) ──────────────────────────────
+function InfoTooltip({ text }: { text: string }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <span
+      style={{ position: "relative", display: "inline-flex", verticalAlign: "middle" }}
+      onMouseEnter={() => setVisible(true)}
+      onMouseLeave={() => setVisible(false)}
+    >
+      <span style={{
+        width: 14, height: 14, borderRadius: "50%",
+        border: `1px solid ${C.subtle}`, color: C.subtle,
+        fontSize: 9, cursor: "help", display: "inline-flex",
+        alignItems: "center", justifyContent: "center", fontWeight: 700,
+        marginLeft: 4, flexShrink: 0, userSelect: "none",
+      }}>?</span>
+      {visible && (
+        <span style={{
+          position: "absolute", bottom: "calc(100% + 6px)", left: "50%",
+          transform: "translateX(-50%)", zIndex: 200,
+          background: "#0D1220", border: `1px solid ${C.border}`,
+          borderRadius: 8, padding: "8px 10px", width: 200,
+          fontSize: 11, color: C.muted, lineHeight: 1.55,
+          boxShadow: "0 4px 20px rgba(0,0,0,0.7)",
+          pointerEvents: "none", whiteSpace: "normal",
+          display: "block",
+        }}>{text}</span>
+      )}
+    </span>
+  );
+}
+
+// ─── Componentes pequeños ─────────────────────────────────────────────────────
 
 function SectionTitle({ title, badge }: { title: string; badge?: React.ReactNode }) {
   return (
@@ -102,15 +134,14 @@ function ChartExplanation({ children }: { children: React.ReactNode }) {
   return (
     <p style={{
       fontSize: 11, color: C.subtle, lineHeight: 1.55,
-      margin: "8px 0 0", borderTop: `1px solid ${C.border}`,
-      paddingTop: 8,
+      margin: "8px 0 0", borderTop: `1px solid ${C.border}`, paddingTop: 8,
     }}>{children}</p>
   );
 }
 
 function StatCard({
-  label, value, sub, color, icon,
-}: { label: string; value: string; sub?: string; color?: string; icon?: string }) {
+  label, value, sub, color, icon, tooltip,
+}: { label: string; value: string; sub?: string; color?: string; icon?: string; tooltip?: string }) {
   return (
     <div style={{
       background: C.surface, border: `1px solid ${C.border}`,
@@ -124,10 +155,53 @@ function StatCard({
           fontVariantNumeric: "tabular-nums", lineHeight: 1,
         }}>{value}</span>
       </div>
-      <span style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</span>
+      <span style={{
+        fontSize: 10, color: C.muted, textTransform: "uppercase",
+        letterSpacing: "0.05em", display: "flex", alignItems: "center",
+      }}>
+        {label}
+        {tooltip && <InfoTooltip text={tooltip} />}
+      </span>
       {sub && <span style={{ fontSize: 10, color: C.subtle }}>{sub}</span>}
     </div>
   );
+}
+
+// ─── Score de viabilidad global ──────────────────────────────────────────────
+
+function computeViabilityScore(f: FinancieroResponse): number {
+  const m = f.metricas_clave;
+  const d = f.decision;
+  if (!m || !d) return 50;
+
+  let score = 0;
+
+  // ROI base (0–25 pts)
+  const roi = m.roi_base;
+  score += roi >= 0.6 ? 25 : roi >= 0.4 ? 18 : roi >= 0.2 ? 10 : roi >= 0 ? 4 : 0;
+
+  // Payback (0–20 pts)
+  const pb = m.payback_meses;
+  score += pb <= 12 ? 20 : pb <= 18 ? 16 : pb <= 24 ? 10 : pb <= 30 ? 5 : pb < 999 ? 1 : 0;
+
+  // Beneficio mensual (0–20 pts)
+  const bm = d.beneficio_mensual;
+  score += bm > 4000 ? 20 : bm > 2000 ? 15 : bm > 500 ? 10 : bm > 0 ? 5 : 0;
+
+  // Margen bruto (0–15 pts)
+  const mb = m.margen_bruto_pct;
+  score += mb >= 0.5 ? 15 : mb >= 0.35 ? 10 : mb >= 0.2 ? 5 : 0;
+
+  // Gap de capital (0–10 pts)
+  score += d.gap_capital <= 0 ? 10 : d.gap_capital < 10000 ? 5 : 0;
+
+  // Recomendación directa (0–10 pts)
+  score += d.recomendacion === "si" ? 10 : d.recomendacion === "riesgo" ? 5 : 0;
+
+  // Penalizaciones
+  if (f.alerta_alquiler) score = Math.max(0, score - 5);
+
+  return Math.min(100, score);
 }
 
 // ─── BLOQUE 1: Decisión rápida ────────────────────────────────────────────────
@@ -138,11 +212,25 @@ const DECISION_CONFIG = {
   no:     { label: "NO ABRIR", bg: "rgba(239,68,68,0.12)",  border: "rgba(239,68,68,0.3)",  color: C.red,   emoji: "✕" },
 };
 
-function BloqueDecision({ d }: { d: DecisionBlock }) {
-  const cfg = DECISION_CONFIG[d.recomendacion];
+function BloqueDecision({ d, viabilityScore }: { d: DecisionBlock; viabilityScore?: number }) {
+  const cfg   = DECISION_CONFIG[d.recomendacion];
+  const score = viabilityScore ?? null;
+  const scoreColor = score == null ? C.muted : score >= 70 ? C.green : score >= 45 ? C.yellow : C.red;
   return (
     <section className={styles.section}>
-      <SectionTitle title="Decisión rápida" />
+      <SectionTitle
+        title="Decisión rápida"
+        badge={score != null ? (
+          <span style={{
+            fontSize: 11, fontWeight: 700, color: scoreColor,
+            background: `${scoreColor}18`, border: `1px solid ${scoreColor}40`,
+            borderRadius: 100, padding: "2px 10px",
+            display: "flex", alignItems: "center", gap: 5,
+          }}>
+            Viabilidad: <span style={{ fontSize: 14 }}>{score}</span> / 100
+          </span>
+        ) : undefined}
+      />
       <div style={{
         background: cfg.bg, border: `1px solid ${cfg.border}`,
         borderRadius: 12, padding: "14px 16px", marginBottom: 14,
@@ -169,23 +257,27 @@ function BloqueDecision({ d }: { d: DecisionBlock }) {
           value={`${d.beneficio_mensual >= 0 ? "+" : ""}${fmt(d.beneficio_mensual)} €`}
           sub="en régimen estable (escenario base)"
           color={d.beneficio_mensual >= 0 ? C.green : C.red}
+          tooltip="Beneficio neto mensual en régimen estable (mes 12, ocupación al 80%). Ingresos menos todos los costes operativos."
         />
         <StatCard
           label="Payback"
           value={d.payback >= 999 ? "+36m" : `${d.payback} meses`}
           sub="recuperación de inversión"
           color={d.payback <= 18 ? C.green : d.payback <= 30 ? C.yellow : C.red}
+          tooltip="Payback: meses necesarios para recuperar toda la inversión inicial con los beneficios acumulados. Menos de 18 meses es ideal."
         />
         <StatCard
           label="Capital necesario"
           value={`${fmt(d.capital_necesario)} €`}
           sub="inversión inicial total"
+          tooltip="Suma de reforma, equipamiento, depósito de fianza y otros gastos previos a la apertura."
         />
         <StatCard
           label="Gap de capital"
           value={d.gap_capital > 0 ? `${fmt(d.gap_capital)} €` : "Cubierto"}
           sub={d.gap_capital > 0 ? "financiación necesaria" : "capital suficiente"}
           color={d.gap_capital > 0 ? C.yellow : C.green}
+          tooltip="Diferencia entre el capital necesario y el capital disponible. Si es positivo, necesitas financiación externa o socios."
         />
       </div>
     </section>
@@ -255,7 +347,7 @@ function BloqueCorrecciones({ correcciones }: { correcciones: CorreccionAplicada
   );
 }
 
-// ─── BLOQUE: Modelo de capacidad (negocios de cita) ──────────────────────────
+// ─── BLOQUE: Modelo de capacidad ─────────────────────────────────────────────
 
 function BloqueCapacidad({ cm }: { cm: CapacityModelInfo }) {
   return (
@@ -267,11 +359,243 @@ function BloqueCapacidad({ cm }: { cm: CapacityModelInfo }) {
         Modelo de capacidad
       </div>
       <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
-        {cm.descripcion}
-        {" — "}
+        {cm.descripcion}{" — "}
         <strong style={{ color: C.text }}>máx. {Math.round(cm.max_clients_day)} clientes/día</strong>
       </div>
     </div>
+  );
+}
+
+// ─── BLOQUE: Configuración editable (sliders + empleados) ────────────────────
+
+type ParamRecord = Record<string, unknown>;
+
+function BloqueConfigEditable({
+  f, overrides, onOverride, recalculating,
+}: {
+  f: FinancieroResponse;
+  overrides: Record<string, number>;
+  onOverride: (key: string, value: number) => void;
+  recalculating: boolean;
+}) {
+  const params = (f.parametros ?? {}) as ParamRecord;
+
+  const numEmpParam     = params.num_empleados as { valor_usado?: number } | undefined;
+  const numEmpSugerido  = numEmpParam?.valor_usado ?? null;
+  const salariosParam   = params.salarios_mensual as { valor_usado?: number } | undefined;
+  const salariosTotales = salariosParam?.valor_usado ?? 0;
+  const salariosPorEmp  = numEmpSugerido && numEmpSugerido > 0
+    ? salariosTotales / numEmpSugerido
+    : null;
+
+  const currentSalarios  = overrides.salarios_mensual ?? salariosTotales;
+  const currentEmpleados = salariosPorEmp && salariosPorEmp > 0
+    ? Math.max(1, Math.round(currentSalarios / salariosPorEmp))
+    : (numEmpSugerido ? Math.round(numEmpSugerido) : null);
+
+  // Impacto del cambio de salario (respecto al modelo)
+  const salaryDelta    = currentSalarios - salariosTotales;
+  const benefitImpact  = -salaryDelta;
+  const showImpact     = salariosTotales > 0 && Math.abs(benefitImpact) > 50;
+
+  // Validación: clientes > capacidad
+  const eb = f.economia_base;
+  const capModel       = (f as unknown as { capacity_model?: { max_clients_day?: number } }).capacity_model;
+  const ocupEfectiva   = eb?.ocupacion_efectiva
+    ?? (f as unknown as { ocupacion_efectiva?: number }).ocupacion_efectiva ?? 0.8;
+  const maxCapacity    = capModel?.max_clients_day
+    ?? (eb ? Math.round(eb.clientes_dia / Math.max(0.1, ocupEfectiva)) : null);
+  const clientsParam   = params.clients_per_day as { valor_usado?: number } | undefined;
+  const currentClients = overrides.clients_per_day ?? clientsParam?.valor_usado ?? null;
+  const exceedsCapacity = maxCapacity != null && currentClients != null && currentClients > maxCapacity;
+
+  const handleEmpleados = (n: number) => {
+    if (salariosPorEmp == null) return;
+    onOverride("salarios_mensual", Math.round(n * salariosPorEmp));
+  };
+
+  const btnStyle: React.CSSProperties = {
+    all: "unset", cursor: "pointer",
+    width: 26, height: 26, borderRadius: 6,
+    background: C.surface2, border: `1px solid ${C.border}`,
+    color: C.text, fontSize: 16, display: "flex",
+    alignItems: "center", justifyContent: "center",
+    fontWeight: 700, flexShrink: 0,
+  };
+
+  return (
+    <section className={styles.section} style={{ borderTop: "2px solid rgba(99,102,241,0.2)" }}>
+      <SectionTitle
+        title="Configuración editable"
+        badge={
+          recalculating ? (
+            <span style={{
+              fontSize: 10, color: C.indigo, display: "flex", alignItems: "center", gap: 5,
+              background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.3)",
+              borderRadius: 100, padding: "2px 8px",
+            }}>
+              <span style={{
+                width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                border: `2px solid ${C.indigo}`,
+                borderTopColor: "transparent",
+                display: "inline-block",
+                animation: "spin 0.7s linear infinite",
+              }} />
+              Recalculando...
+            </span>
+          ) : (
+            <span style={{
+              fontSize: 10, fontWeight: 700, color: C.yellow,
+              background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)",
+              borderRadius: 100, padding: "2px 8px",
+            }}>ajusta y recalcula</span>
+          )
+        }
+      />
+
+      {/* Input empleados */}
+      {currentEmpleados != null && (
+        <div style={{
+          background: C.surface, border: `1px solid rgba(99,102,241,0.25)`,
+          borderRadius: 10, padding: "12px 14px", marginBottom: 12,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 12, color: C.muted, fontWeight: 500, display: "flex", alignItems: "center" }}>
+                Número de empleados
+                <InfoTooltip text="Al modificarlo se recalculan automáticamente los costes de personal, beneficio neto y ROI. Cada empleado adicional reduce el beneficio en su coste mensual." />
+              </div>
+              {numEmpSugerido != null && (
+                <div style={{ fontSize: 10, color: C.subtle, marginTop: 3 }}>
+                  Sugerido por el modelo:{" "}
+                  <strong style={{ color: C.muted }}>
+                    {Math.round(numEmpSugerido)} empleado{Math.round(numEmpSugerido) !== 1 ? "s" : ""}
+                  </strong>
+                </div>
+              )}
+              {showImpact && (
+                <div style={{
+                  marginTop: 5, fontSize: 11, fontWeight: 700,
+                  color: benefitImpact > 0 ? C.green : C.red,
+                  display: "flex", alignItems: "center", gap: 4,
+                }}>
+                  {benefitImpact > 0 ? "+" : "−"}{fmt(Math.abs(benefitImpact))} €
+                  <span style={{ fontSize: 10, color: C.subtle, fontWeight: 400 }}>vs modelo · beneficio mensual</span>
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button style={btnStyle} onClick={() => handleEmpleados(Math.max(1, currentEmpleados - 1))}>−</button>
+              <span style={{
+                fontSize: 22, fontWeight: 800, color: C.text,
+                fontVariantNumeric: "tabular-nums", minWidth: 30, textAlign: "center",
+              }}>{currentEmpleados}</span>
+              <button style={btnStyle} onClick={() => handleEmpleados(currentEmpleados + 1)}>+</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Validación: clientes > capacidad */}
+      {exceedsCapacity && (
+        <div style={{
+          display: "flex", alignItems: "flex-start", gap: 8,
+          padding: "8px 12px", borderRadius: 8, marginBottom: 8,
+          background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)",
+          fontSize: 11, color: C.muted, lineHeight: 1.55,
+        }}>
+          <span style={{ color: C.red, fontWeight: 700, flexShrink: 0 }}>!</span>
+          <span>
+            <strong style={{ color: C.red }}>{Math.round(currentClients!)} clientes/día</strong>{" "}
+            supera la capacidad estimada del local{" "}
+            (<strong style={{ color: C.text }}>{Math.round(maxCapacity!)} máx.</strong>).{" "}
+            Considera reducir el aforo o aumentar turnos.
+          </span>
+        </div>
+      )}
+
+      {/* Sliders */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <ParamGroup color={C.green} icon="↑" label="Ingresos">
+          {params.ticket_medio && (
+            <SliderParam color={C.green} label="Ticket medio" unit="€"
+              value={overrides.ticket_medio ?? (params.ticket_medio as { valor_usado: number }).valor_usado}
+              min={(params.ticket_medio as { rango_min: number }).rango_min}
+              max={(params.ticket_medio as { rango_max: number }).rango_max}
+              fuente={(params.ticket_medio as { fuente: string }).fuente}
+              onChange={v => onOverride("ticket_medio", v)} />
+          )}
+          {params.clients_per_day && (
+            <SliderParam color={C.green} label="Clientes / día (base)" unit=""
+              value={overrides.clients_per_day ?? (params.clients_per_day as { valor_usado: number }).valor_usado}
+              min={(params.clients_per_day as { rango_min: number }).rango_min}
+              max={Math.max(
+                (params.clients_per_day as { rango_max: number }).rango_max,
+                (f.parametros as { max_capacity?: number }).max_capacity ?? (params.clients_per_day as { rango_max: number }).rango_max,
+              )}
+              fuente={(params.clients_per_day as { fuente: string }).fuente}
+              onChange={v => onOverride("clients_per_day", v)} />
+          )}
+          {params.dias_apertura_mes && (
+            <SliderParam color={C.green} label="Días apertura / mes" unit=" días"
+              value={overrides.dias_apertura_mes ?? (params.dias_apertura_mes as { valor_usado: number }).valor_usado}
+              min={(params.dias_apertura_mes as { rango_min: number }).rango_min}
+              max={(params.dias_apertura_mes as { rango_max: number }).rango_max}
+              fuente={(params.dias_apertura_mes as { fuente: string }).fuente}
+              onChange={v => onOverride("dias_apertura_mes", v)} />
+          )}
+        </ParamGroup>
+
+        <ParamGroup color={C.yellow} icon="≡" label="Costes fijos">
+          {params.alquiler_mensual && (
+            <SliderParam color={C.yellow} label="Alquiler mensual" unit="€"
+              value={overrides.alquiler_mensual ?? (params.alquiler_mensual as { valor_usado: number }).valor_usado}
+              min={(params.alquiler_mensual as { rango_min: number }).rango_min}
+              max={(params.alquiler_mensual as { rango_max: number }).rango_max}
+              fuente={(params.alquiler_mensual as { fuente: string }).fuente}
+              onChange={v => onOverride("alquiler_mensual", v)} />
+          )}
+          {params.salarios_mensual && (
+            <SliderParam color={C.yellow} label="Salarios mensuales" unit="€"
+              value={overrides.salarios_mensual ?? (params.salarios_mensual as { valor_usado: number }).valor_usado}
+              min={(params.salarios_mensual as { rango_min: number }).rango_min}
+              max={(params.salarios_mensual as { rango_max: number }).rango_max}
+              fuente={(params.salarios_mensual as { fuente: string }).fuente}
+              onChange={v => onOverride("salarios_mensual", v)} />
+          )}
+          {params.otros_fijos_mensual && (
+            <SliderParam color={C.yellow} label="Otros costes fijos" unit="€"
+              value={overrides.otros_fijos_mensual ?? (params.otros_fijos_mensual as { valor_usado: number }).valor_usado}
+              min={(params.otros_fijos_mensual as { rango_min: number }).rango_min}
+              max={(params.otros_fijos_mensual as { rango_max: number }).rango_max}
+              fuente={(params.otros_fijos_mensual as { fuente: string }).fuente}
+              onChange={v => onOverride("otros_fijos_mensual", v)} />
+          )}
+        </ParamGroup>
+
+        <ParamGroup color={C.indigo} icon="%" label="Margen">
+          {params.coste_mercancia_pct && (
+            <SliderParam color={C.indigo} label="Coste mercancía" unit="%"
+              value={Math.round((overrides.coste_mercancia_pct ?? (params.coste_mercancia_pct as { valor_usado: number }).valor_usado) * 100)}
+              min={Math.round((params.coste_mercancia_pct as { rango_min: number }).rango_min * 100)}
+              max={Math.round((params.coste_mercancia_pct as { rango_max: number }).rango_max * 100)}
+              fuente={(params.coste_mercancia_pct as { fuente: string }).fuente}
+              onChange={v => onOverride("coste_mercancia_pct", v / 100)} />
+          )}
+        </ParamGroup>
+
+        <ParamGroup color="#A78BFA" icon="⬡" label="Inversión inicial">
+          {params.reforma_local && (
+            <SliderParam color="#A78BFA" label="Reforma" unit=" €"
+              value={overrides.reforma_local ?? (params.reforma_local as { valor_usado: number }).valor_usado}
+              min={(params.reforma_local as { rango_min: number }).rango_min}
+              max={(params.reforma_local as { rango_max: number }).rango_max}
+              fuente={(params.reforma_local as { fuente: string }).fuente}
+              onChange={v => onOverride("reforma_local", v)} />
+          )}
+        </ParamGroup>
+      </div>
+    </section>
   );
 }
 
@@ -282,12 +606,12 @@ function BloqueEconomia({ f }: { f: FinancieroResponse }) {
   const md = f.modelo_demanda;
   if (!eb) return null;
 
-  const conversionPct    = Math.round(eb.conversion_pct * 100);
-  const modelType        = f.business_model_type ?? "retail_walkin";
-  const modelLabel       = BUSINESS_MODEL_LABELS[modelType] ?? BUSINESS_MODEL_LABELS.retail_walkin;
-  const isAppointment    = modelType === "appointment_based";
-  const ocupacionPct     = Math.round((eb.ocupacion_efectiva ?? f.ocupacion_efectiva ?? 0) * 100);
-  const ocupacionColor   = ocupacionPct > 85 ? C.red : ocupacionPct > 65 ? C.yellow : C.green;
+  const conversionPct  = Math.round(eb.conversion_pct * 100);
+  const modelType      = f.business_model_type ?? "retail_walkin";
+  const modelLabel     = BUSINESS_MODEL_LABELS[modelType] ?? BUSINESS_MODEL_LABELS.retail_walkin;
+  const isAppointment  = modelType === "appointment_based";
+  const ocupacionPct   = Math.round((eb.ocupacion_efectiva ?? (f as unknown as { ocupacion_efectiva?: number }).ocupacion_efectiva ?? 0) * 100);
+  const ocupacionColor = ocupacionPct > 85 ? C.red : ocupacionPct > 65 ? C.yellow : C.green;
 
   return (
     <section className={styles.section}>
@@ -323,10 +647,8 @@ function BloqueEconomia({ f }: { f: FinancieroResponse }) {
         )}
       </div>
 
-      {/* Modelo de capacidad (cita) */}
       {f.capacity_model && <BloqueCapacidad cm={f.capacity_model} />}
 
-      {/* Modelo de demanda (paso) */}
       {md && !isAppointment && (
         <div style={{
           marginTop: 12, padding: "10px 12px", borderRadius: 8,
@@ -346,7 +668,7 @@ function BloqueEconomia({ f }: { f: FinancieroResponse }) {
   );
 }
 
-// ─── BLOQUE 3: Estructura de costes ─── GRÁFICO 1 ────────────────────────────
+// ─── BLOQUE 3: Estructura de costes ──────────────────────────────────────────
 
 const LABELS_COSTES: Record<string, string> = {
   alquiler: "Alquiler",
@@ -360,12 +682,10 @@ const LABELS_COSTES: Record<string, string> = {
 function BloqueCostes({ ec }: { ec: EstructuraCostes }) {
   const hayBeneficio = ec.beneficio > 0;
   const hayPerdida   = ec.perdida > 0;
-
   const barData = [
     { name: "Mes estable", alquiler: ec.alquiler, personal: ec.personal, variable: ec.variable, otros: ec.otros,
       ...(hayBeneficio ? { beneficio: ec.beneficio } : { perdida: ec.perdida }) },
   ];
-
   const total = ec.alquiler + ec.personal + ec.variable + ec.otros;
   const pctBeneficio = ec.ingresos_totales > 0
     ? Math.round((ec.beneficio / ec.ingresos_totales) * 100)
@@ -387,8 +707,6 @@ function BloqueCostes({ ec }: { ec: EstructuraCostes }) {
           </span>
         }
       />
-
-      {/* Leyenda rápida */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 12px", marginBottom: 12 }}>
         {(["alquiler","personal","variable","otros"] as const).map(k => (
           <div key={k} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11 }}>
@@ -405,17 +723,12 @@ function BloqueCostes({ ec }: { ec: EstructuraCostes }) {
           </div>
         )}
       </div>
-
-      {/* Gráfico stacked bar horizontal */}
       <div style={{ height: 80 }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={barData} layout="vertical" margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
             <XAxis type="number" hide tick={false} axisLine={false} />
             <YAxis type="category" dataKey="name" hide />
-            <ReTooltip
-              content={<TooltipBase />}
-              cursor={{ fill: "rgba(255,255,255,0.03)" }}
-            />
+            <ReTooltip content={<TooltipBase />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
             <Bar dataKey="alquiler" name="Alquiler"  stackId="a" fill={C.alquiler} radius={[0,0,0,0]} />
             <Bar dataKey="personal" name="Personal"  stackId="a" fill={C.personal} />
             <Bar dataKey="variable" name="Variable"  stackId="a" fill={C.variable} />
@@ -425,7 +738,6 @@ function BloqueCostes({ ec }: { ec: EstructuraCostes }) {
           </BarChart>
         </ResponsiveContainer>
       </div>
-
       <ChartExplanation>
         Total costes fijos: <strong>{fmt(total)} €/mes</strong>.{" "}
         Ingresos base: <strong>{fmt(ec.ingresos_totales)} €/mes</strong>.{" "}
@@ -437,10 +749,10 @@ function BloqueCostes({ ec }: { ec: EstructuraCostes }) {
   );
 }
 
-// ─── BLOQUE 4: Break-even ─── GRÁFICO 2 ──────────────────────────────────────
+// ─── BLOQUE 4: Break-even ─────────────────────────────────────────────────────
 
 function BloqueBreakEven({ be, alquilerPct }: { be: BreakEvenInfo; alquilerPct: number }) {
-  const margen = be.margen_sobre_be_pct;
+  const margen     = be.margen_sobre_be_pct;
   const suficiente = be.clientes_base >= be.clientes_be;
 
   return (
@@ -459,15 +771,12 @@ function BloqueBreakEven({ be, alquilerPct }: { be: BreakEvenInfo; alquilerPct: 
           </span>
         }
       />
-
       <div style={{ display: "flex", gap: 16, marginBottom: 14, alignItems: "stretch" }}>
         <div style={{
           flex: 1, background: C.surface, border: `1px solid ${C.border}`,
           borderRadius: 10, padding: "12px 14px", textAlign: "center",
         }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: C.yellow, lineHeight: 1 }}>
-            {be.clientes_be}
-          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: C.yellow, lineHeight: 1 }}>{be.clientes_be}</div>
           <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 4 }}>
             clientes/día mínimos
           </div>
@@ -484,8 +793,6 @@ function BloqueBreakEven({ be, alquilerPct }: { be: BreakEvenInfo; alquilerPct: 
           </div>
         </div>
       </div>
-
-      {/* Curva break-even */}
       <div style={{ height: 150 }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={be.chart} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
@@ -495,25 +802,21 @@ function BloqueBreakEven({ be, alquilerPct }: { be: BreakEvenInfo; alquilerPct: 
               tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false}
               label={{ value: "clientes/día", position: "insideBottomRight", offset: -4, fill: C.subtle, fontSize: 10 }}
             />
-            <YAxis
-              tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false}
-              tickFormatter={fmtK} width={34}
-            />
+            <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
             <ReTooltip content={<TooltipBase />} />
             <ReferenceLine
-              x={be.clientes_be} stroke={C.yellow}
-              strokeDasharray="5 3" label={{ value: `BE: ${be.clientes_be}`, fill: C.yellow, fontSize: 10, position: "top" }}
+              x={be.clientes_be} stroke={C.yellow} strokeDasharray="5 3"
+              label={{ value: `BE: ${be.clientes_be}`, fill: C.yellow, fontSize: 10, position: "top" }}
             />
             <ReferenceLine
-              x={be.clientes_base} stroke={C.base}
-              strokeDasharray="5 3" label={{ value: `Base: ${Math.round(be.clientes_base)}`, fill: C.base, fontSize: 10, position: "top" }}
+              x={be.clientes_base} stroke={C.base} strokeDasharray="5 3"
+              label={{ value: `Base: ${Math.round(be.clientes_base)}`, fill: C.base, fontSize: 10, position: "top" }}
             />
-            <Line type="monotone" dataKey="ingresos"      name="Ingresos"       stroke={C.green}     strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="costes_totales" name="Costes totales" stroke={C.red}       strokeWidth={2} dot={false} strokeDasharray="4 2" />
+            <Line type="monotone" dataKey="ingresos"       name="Ingresos"       stroke={C.green} strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="costes_totales" name="Costes totales" stroke={C.red}   strokeWidth={2} dot={false} strokeDasharray="4 2" />
           </LineChart>
         </ResponsiveContainer>
       </div>
-
       <ChartExplanation>
         Con <strong>{be.clientes_be} clientes/día</strong> cubres todos los costes.
         Tu estimación base de <strong>{Math.round(be.clientes_base)} clientes/día</strong>{" "}
@@ -528,11 +831,73 @@ function BloqueBreakEven({ be, alquilerPct }: { be: BreakEvenInfo; alquilerPct: 
   );
 }
 
-// ─── BLOQUE: Sensibilidad (tornado chart) ─────────────────────────────────────
+// ─── BLOQUE: Métricas operativas avanzadas ────────────────────────────────────
+
+function BloqueMetricasAvanzadas({ f }: { f: FinancieroResponse }) {
+  const ec = f.estructura_costes;
+  const eb = f.economia_base;
+  if (!ec || !eb) return null;
+
+  const params      = (f.parametros ?? {}) as ParamRecord;
+  const numEmpParam = params.num_empleados as { valor_usado?: number } | undefined;
+  const numEmp      = Math.max(1, Math.round(numEmpParam?.valor_usado ?? 1));
+
+  const costePorEmp         = Math.round(ec.personal / numEmp);
+  const totalCostes         = ec.alquiler + ec.personal + ec.variable + ec.otros;
+  const ratioCostesIngresos = ec.ingresos_totales > 0
+    ? Math.round((totalCostes / ec.ingresos_totales) * 100)
+    : 0;
+  const ocupacionPct = Math.round(
+    (eb.ocupacion_efectiva ?? (f as unknown as { ocupacion_efectiva?: number }).ocupacion_efectiva ?? 0) * 100,
+  );
+
+  return (
+    <section className={styles.section}>
+      <SectionTitle
+        title="Métricas operativas"
+        badge={
+          <span style={{
+            fontSize: 10, color: C.muted, background: C.surface2,
+            border: `1px solid ${C.border}`, borderRadius: 100, padding: "2px 8px",
+          }}>régimen estable</span>
+        }
+      />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <StatCard
+          label="Coste por empleado"
+          value={`${fmt(costePorEmp)} €`}
+          sub={`${numEmp} empleado${numEmp !== 1 ? "s" : ""} en nómina`}
+          tooltip="Coste mensual medio por empleado incluyendo salario bruto y seguridad social (factor ×1.31 SS)."
+        />
+        <StatCard
+          label="Ingreso por cliente"
+          value={`${Math.round(eb.ticket_medio)} €`}
+          sub="ticket medio estimado"
+          tooltip="Importe medio que genera cada visita o compra. Basado en la mediana de precios de competidores."
+        />
+        <StatCard
+          label="Ratio costes / ingresos"
+          value={`${ratioCostesIngresos}%`}
+          sub={ratioCostesIngresos < 60 ? "eficiente" : ratioCostesIngresos < 75 ? "normal" : "riesgo — costes altos"}
+          color={ratioCostesIngresos < 60 ? C.green : ratioCostesIngresos < 75 ? C.yellow : C.red}
+          tooltip="Si superas el 75% el negocio tiene poco colchón ante imprevistos — toca reducir costes o subir ticket medio."
+        />
+        <StatCard
+          label="Capacidad utilizada"
+          value={`${ocupacionPct}%`}
+          sub="sobre capacidad máxima (techo 80%)"
+          color={ocupacionPct > 85 ? C.red : ocupacionPct > 65 ? C.yellow : C.green}
+          tooltip="Porcentaje de tu capacidad operativa que estás usando. El modelo limita al 80% en régimen estable para ser conservador."
+        />
+      </div>
+    </section>
+  );
+}
+
+// ─── BLOQUE: Sensibilidad (tornado chart) ────────────────────────────────────
 
 function BloqueSensibilidad({ items }: { items: SensitividadItem[] }) {
   if (!items.length) return null;
-
   const maxAbs = Math.max(...items.map(i => Math.abs(i.impacto_ebitda)), 1);
 
   return (
@@ -555,16 +920,14 @@ function BloqueSensibilidad({ items }: { items: SensitividadItem[] }) {
             <div key={item.variable}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
                 <span style={{ fontSize: 11, color: C.muted }}>{item.label}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color,
-                  fontVariantNumeric: "tabular-nums" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>
                   {positive ? "+" : ""}{fmt(item.impacto_ebitda)} €
                 </span>
               </div>
               <div style={{ height: 6, borderRadius: 4, background: "rgba(255,255,255,0.06)" }}>
                 <div style={{
                   height: "100%", borderRadius: 4, width: `${pct}%`,
-                  background: color, opacity: 0.75,
-                  boxShadow: `0 0 6px ${color}55`,
+                  background: color, opacity: 0.75, boxShadow: `0 0 6px ${color}55`,
                 }} />
               </div>
             </div>
@@ -579,14 +942,18 @@ function BloqueSensibilidad({ items }: { items: SensitividadItem[] }) {
   );
 }
 
-// ─── BLOQUE 5: Escenarios ─── GRÁFICOS 3, 4, 5 ───────────────────────────────
+// ─── BLOQUE 5: Escenarios ─────────────────────────────────────────────────────
+
+type ChartTab = "caja" | "ebitda" | "mensual" | "comparativa" | "estres" | "costes" | "capacidad";
 
 function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
-  const [activeChart, setActiveChart] = useState<"caja" | "mensual" | "comparativa" | "estres">("caja");
+  const [activeChart, setActiveChart] = useState<ChartTab>("caja");
 
   const proyeccion = f.proyeccion;
+  const ec = f.estructura_costes;
+  const eb = f.economia_base;
 
-  // Datos caja acumulada — cada 3 meses
+  // Caja acumulada — cada 3 meses
   const cajaData = proyeccion
     .filter((_, i) => i % 3 === 2 || i === 0)
     .map(m => ({
@@ -596,8 +963,15 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
       Optimista:   m.acumulado_optimista,
     }));
 
-  // Datos evolución mensual EBITDA (base) — todos los meses
-  // Con bandas de volatilidad ±15% derivadas de ingresos_base_low/high
+  // Caja real vs EBITDA acumulado
+  let cumEbitda = 0;
+  const cajaVsEbitdaData = proyeccion.map(m => {
+    cumEbitda += m.ebitda_base;
+    return { mes: m.mes, ebitdaCum: Math.round(cumEbitda), cajaReal: m.acumulado_base };
+  }).filter((_, i) => i % 3 === 2 || i === 0)
+    .map(m => ({ mes: `M${m.mes}`, "EBITDA acum.": m.ebitdaCum, "Caja real": m.cajaReal }));
+
+  // EBITDA mensual con bandas
   const costeMercPct = ((f.parametros as Record<string, unknown>).coste_mercancia_pct as { valor_usado?: number })?.valor_usado ?? 0.40;
   const margenUnit   = 1 - costeMercPct;
   const mensualData = proyeccion.map(m => {
@@ -607,7 +981,7 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
     return { mes: m.mes, ebitda: m.ebitda_base, ebitda_low: low, ebitda_high: high };
   });
 
-  // Datos comparativa escenarios (ingresos año 1 / año 2 / año 3)
+  // Comparativa escenarios anual
   const comparativaData = [
     {
       periodo: "Año 1",
@@ -629,7 +1003,7 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
     },
   ];
 
-  // Datos estrés (×0.40 ingresos, costes fijos intactos) — cada 3 meses
+  // Estrés — cada 3 meses
   const stressData = proyeccion
     .filter((_, i) => i % 3 === 2 || i === 0)
     .map(m => ({
@@ -638,11 +1012,33 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
       Estrés: m.acumulado_stress ?? 0,
     }));
 
-  const tabs = [
-    { id: "caja" as const, label: "Caja acumulada" },
-    { id: "mensual" as const, label: "EBITDA mensual" },
-    { id: "comparativa" as const, label: "Comparativa" },
-    { id: "estres" as const, label: "Estrés" },
+  // Distribución de costes
+  const costesDistData = ec ? [
+    { name: "Personal",  value: ec.personal, fill: C.personal },
+    { name: "Alquiler",  value: ec.alquiler, fill: C.alquiler },
+    { name: "Variable",  value: ec.variable, fill: C.variable },
+    { name: "Otros",     value: ec.otros,    fill: C.otros    },
+  ].sort((a, b) => b.value - a.value) : [];
+
+  // Capacidad vs demanda
+  const ocupacionEfectiva = eb?.ocupacion_efectiva
+    ?? (f as unknown as { ocupacion_efectiva?: number }).ocupacion_efectiva
+    ?? 0.8;
+  const maxCap = f.capacity_model?.max_clients_day
+    ?? (eb ? Math.round(eb.clientes_dia / Math.max(0.1, ocupacionEfectiva)) : 0);
+  const capacidadData = eb ? [
+    { name: "Demanda estimada", value: Math.round(eb.clientes_dia),  fill: C.green  },
+    { name: "Capacidad máxima", value: maxCap,                       fill: C.indigo },
+  ] : [];
+
+  const tabs: { id: ChartTab; label: string }[] = [
+    { id: "caja",        label: "Caja" },
+    { id: "ebitda",      label: "Caja vs EBITDA" },
+    { id: "mensual",     label: "Mensual" },
+    { id: "comparativa", label: "Comparativa" },
+    { id: "estres",      label: "Estrés" },
+    { id: "costes",      label: "Costes" },
+    { id: "capacidad",   label: "Capacidad" },
   ];
 
   return (
@@ -650,7 +1046,7 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
       <SectionTitle title="Escenarios — 36 meses" />
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 14, flexWrap: "wrap" }}>
         {tabs.map(t => (
           <button
             key={t.id}
@@ -667,7 +1063,7 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
         ))}
       </div>
 
-      {/* GRÁFICO 3: Caja acumulada */}
+      {/* GRÁFICO: Caja acumulada 3 escenarios */}
       {activeChart === "caja" && (
         <>
           <div style={{ height: 180 }}>
@@ -676,7 +1072,7 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
                 <defs>
                   {[["gOpt", C.optimista], ["gBase", C.base], ["gCons", C.conservador]].map(([id, color]) => (
                     <linearGradient key={id} id={id} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={color} stopOpacity={0.2} />
+                      <stop offset="5%"  stopColor={color} stopOpacity={0.2} />
                       <stop offset="95%" stopColor={color} stopOpacity={0} />
                     </linearGradient>
                   ))}
@@ -702,12 +1098,80 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
           ]} />
           <ChartExplanation>
             Caja acumulada desde el día 1 (negativa = inversión no recuperada).
-            La línea cruza cero en el mes de payback. La curva base cruza en el mes {f.payback_meses_base >= 999 ? "nunca (ajusta parámetros)" : f.payback_meses_base}.
+            La curva base cruza cero en el mes {f.payback_meses_base >= 999 ? "nunca (ajusta parámetros)" : f.payback_meses_base}.
           </ChartExplanation>
         </>
       )}
 
-      {/* GRÁFICO 4: EBITDA mensual */}
+      {/* GRÁFICO: Caja real vs EBITDA acumulado */}
+      {activeChart === "ebitda" && (
+        <>
+          <div style={{
+            padding: "8px 12px", borderRadius: 8, marginBottom: 10,
+            background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.2)",
+            fontSize: 11, color: C.muted, lineHeight: 1.5,
+          }}>
+            <span style={{ color: C.indigo, fontWeight: 700 }}>EBITDA acumulado</span> = beneficio operativo generado (sin descontar inversión inicial).{" "}
+            <span style={{ color: C.base, fontWeight: 700 }}>Caja real</span> = EBITDA menos la inversión inicial. La diferencia es el capital todavía sin recuperar.
+          </div>
+          <div style={{ height: 180 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={cajaVsEbitdaData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gEbitdaAcum" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor={C.indigo} stopOpacity={0.2} />
+                    <stop offset="95%" stopColor={C.indigo} stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="gCajaReal" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor={C.base} stopOpacity={0.15} />
+                    <stop offset="95%" stopColor={C.base} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                <XAxis dataKey="mes" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
+                <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" strokeDasharray="4 4" />
+                {f.payback_meses_base < 999 && (() => {
+                  const pbLabel = `M${f.payback_meses_base}`;
+                  const inData  = cajaVsEbitdaData.some(d => d.mes === pbLabel);
+                  if (!inData) return null;
+                  return (
+                    <ReferenceLine
+                      x={pbLabel} stroke={C.base} strokeDasharray="3 3"
+                      label={{ value: `Payback M${f.payback_meses_base}`, fill: C.base, fontSize: 10, position: "top" }}
+                    />
+                  );
+                })()}
+                <ReTooltip
+                  contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+                  formatter={(v: number, name: string) => [`${fmt(v)} €`, name]}
+                />
+                <Area type="monotone" dataKey="EBITDA acum." stroke={C.indigo} fill="url(#gEbitdaAcum)" strokeWidth={2} dot={false} />
+                <Area type="monotone" dataKey="Caja real"    stroke={C.base}   fill="url(#gCajaReal)"   strokeWidth={2} dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          {f.payback_meses_base < 999 && (
+            <div style={{
+              marginTop: 8, padding: "6px 10px", borderRadius: 6,
+              background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)",
+              fontSize: 11, color: C.yellow, fontWeight: 600, textAlign: "center",
+            }}>
+              La caja es negativa hasta el mes {f.payback_meses_base} — entonces recuperas toda la inversión
+            </div>
+          )}
+          <LegendRow items={[
+            { color: C.indigo, label: "EBITDA acumulado (beneficio operativo)" },
+            { color: C.base,   label: `Caja real (payback mes ${f.payback_meses_base >= 999 ? ">36" : f.payback_meses_base})` },
+          ]} />
+          <ChartExplanation>
+            La brecha vertical entre ambas curvas representa el capital invertido aún no recuperado.
+            Cuando la caja real cruza cero, has recuperado toda la inversión inicial.
+          </ChartExplanation>
+        </>
+      )}
+
+      {/* GRÁFICO: EBITDA mensual */}
       {activeChart === "mensual" && (
         <>
           <div style={{ height: 180 }}>
@@ -744,7 +1208,7 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
         </>
       )}
 
-      {/* GRÁFICO 5: Comparativa escenarios */}
+      {/* GRÁFICO: Comparativa escenarios */}
       {activeChart === "comparativa" && (
         <>
           <div style={{ height: 180 }}>
@@ -775,7 +1239,7 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
         </>
       )}
 
-      {/* GRÁFICO 6: Escenario de estrés */}
+      {/* GRÁFICO: Escenario estrés / Cash runway */}
       {activeChart === "estres" && (
         <>
           <div style={{
@@ -784,20 +1248,19 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
             fontSize: 11, color: C.muted, lineHeight: 1.5,
           }}>
             <span style={{ color: C.red, fontWeight: 700 }}>Escenario estrés:</span>{" "}
-            ingresos al 40% (apertura en malas condiciones + imprevisto) con{" "}
-            <strong style={{ color: C.text }}>costes fijos intactos</strong>.
-            Muestra si el negocio sobrevive sin caja adicional.
+            ingresos al 40% con <strong style={{ color: C.text }}>costes fijos intactos</strong>.
+            Si la caja estrés nunca sube a cero, necesitas reserva adicional para sobrevivir.
           </div>
           <div style={{ height: 180 }}>
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={stressData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gStress" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={C.red} stopOpacity={0.2} />
-                    <stop offset="95%" stopColor={C.red} stopOpacity={0} />
+                    <stop offset="5%"  stopColor={C.red}  stopOpacity={0.2} />
+                    <stop offset="95%" stopColor={C.red}  stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="gBaseS" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={C.base} stopOpacity={0.15} />
+                    <stop offset="5%"  stopColor={C.base} stopOpacity={0.15} />
                     <stop offset="95%" stopColor={C.base} stopOpacity={0} />
                   </linearGradient>
                 </defs>
@@ -809,7 +1272,7 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
                   contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
                   formatter={(v: number, name: string) => [`${fmt(v)} €`, name]}
                 />
-                <Area type="monotone" dataKey="Base"   name="Base (×1.0)"   stroke={C.base} fill="url(#gBaseS)" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
+                <Area type="monotone" dataKey="Base"   name="Base (×1.0)"    stroke={C.base} fill="url(#gBaseS)" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
                 <Area type="monotone" dataKey="Estrés" name="Estrés (×0.40)" stroke={C.red}  fill="url(#gStress)" strokeWidth={2}   dot={false} />
               </AreaChart>
             </ResponsiveContainer>
@@ -819,8 +1282,73 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
             { color: C.red,  label: `Estrés (payback ${(f.payback_meses_stress ?? 999) >= 999 ? ">36m" : f.payback_meses_stress + "m"})` },
           ]} />
           <ChartExplanation>
-            Si la curva de estrés nunca cruza cero, el negocio necesita reserva de tesorería adicional
-            para sobrevivir un mal inicio. Compara con tu capital disponible para evaluar el riesgo real.
+            Si la curva de estrés nunca cruza cero, el negocio necesita reserva de tesorería adicional.
+            Compara con tu capital disponible para evaluar el riesgo real de quedarte sin caja.
+          </ChartExplanation>
+        </>
+      )}
+
+      {/* GRÁFICO: Distribución de costes */}
+      {activeChart === "costes" && ec && (
+        <>
+          <div style={{ height: 180 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={costesDistData} layout="vertical" margin={{ top: 4, right: 50, left: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
+                <XAxis type="number" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} />
+                <YAxis type="category" dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} width={64} />
+                <ReTooltip
+                  contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+                  formatter={(v: number) => [`${fmt(v)} €/mes`, ""]}
+                />
+                <Bar dataKey="value" name="Coste" radius={[0, 4, 4, 0]}>
+                  {costesDistData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <ChartExplanation>
+            Distribución de costes operativos mensuales en régimen estable.{" "}
+            {ec.personal > ec.alquiler
+              ? `El personal (${fmt(ec.personal)} €) supera al alquiler (${fmt(ec.alquiler)} €) — palanca clave: empleados y turnos.`
+              : `El alquiler (${fmt(ec.alquiler)} €) es el mayor coste — negocia bien el contrato.`}
+          </ChartExplanation>
+        </>
+      )}
+
+      {/* GRÁFICO: Capacidad vs demanda */}
+      {activeChart === "capacidad" && eb && (
+        <>
+          <div style={{ height: 180 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={capacidadData} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} width={34}
+                  label={{ value: "clientes/día", angle: -90, position: "insideLeft", fill: C.subtle, fontSize: 10, offset: 10 }} />
+                <ReTooltip
+                  contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+                  formatter={(v: number) => [`${Math.round(v)} clientes/día`, ""]}
+                />
+                <Bar dataKey="value" name="Clientes/día" radius={[4, 4, 0, 0]} maxBarSize={60}>
+                  {capacidadData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <ChartExplanation>
+            Demanda estimada: <strong>{Math.round(eb.clientes_dia)} clientes/día</strong> en régimen estable.{" "}
+            Capacidad máxima: <strong>{maxCap} clientes/día</strong>.{" "}
+            Utilizas el <strong>{Math.round(ocupacionEfectiva * 100)}%</strong> de tu capacidad —{" "}
+            {ocupacionEfectiva > 0.85
+              ? "estás muy cerca del límite, considera ampliar."
+              : ocupacionEfectiva > 0.65
+                ? "hay margen para crecer sin añadir recursos."
+                : "tienes capacidad ociosa significativa."}
           </ChartExplanation>
         </>
       )}
@@ -844,7 +1372,6 @@ function LegendRow({ items }: { items: { color: string; label: string }[] }) {
 // ─── BLOQUE 6: Métricas clave ─────────────────────────────────────────────────
 
 function BloqueMetricas({ m }: { m: MetricasClave }) {
-  // ROI: ≥40% verde (≈12% anual > coste oportunidad), ≥0% amarillo, negativo rojo
   const colorRoi = (v: number) => v >= 0.40 ? C.green : v >= 0 ? C.yellow : C.red;
   const roiStress = m.roi_stress ?? -1;
   const pbStress  = m.payback_stress ?? 999;
@@ -858,24 +1385,28 @@ function BloqueMetricas({ m }: { m: MetricasClave }) {
           value={`${Math.round(m.roi_base * 100)}%`}
           sub={`Cons: ${Math.round(m.roi_conservador * 100)}% · Opt: ${Math.round(m.roi_optimista * 100)}%`}
           color={colorRoi(m.roi_base)}
+          tooltip="ROI: Retorno sobre la inversión en 3 años. Indica cuánto ganas respecto al dinero invertido. Por encima del 40% es rentable."
         />
         <StatCard
           label="ROI estrés (×0.40)"
           value={roiStress <= -1 ? "—" : `${Math.round(roiStress * 100)}%`}
           sub="ingresos mínimos, costes fijos intactos"
           color={roiStress >= 0 ? C.green : C.red}
+          tooltip="ROI en el peor escenario realista: solo el 40% de los ingresos esperados con todos los costes fijos vigentes."
         />
         <StatCard
           label="Margen bruto"
           value={`${Math.round(m.margen_bruto_pct * 100)}%`}
           sub="ingresos - coste mercancía"
           color={m.margen_bruto_pct >= 0.45 ? C.green : m.margen_bruto_pct >= 0.30 ? C.yellow : C.red}
+          tooltip="Margen bruto: porcentaje de beneficio real sobre ingresos antes de descontar costes fijos. Por encima del 45% es saludable."
         />
         <StatCard
           label="Payback"
           value={m.payback_meses >= 999 ? ">36m" : `${m.payback_meses}m`}
           sub={`Estrés: ${pbStress >= 999 ? ">36m" : pbStress + "m"}`}
           color={m.payback_meses <= 18 ? C.green : m.payback_meses <= 30 ? C.yellow : C.red}
+          tooltip="Payback: meses hasta recuperar toda la inversión inicial. Menos de 18 meses es excelente; más de 30 meses es arriesgado."
         />
       </div>
     </section>
@@ -942,7 +1473,6 @@ function BloqueRiesgos({ riesgos }: { riesgos: Riesgo[] }) {
 
 function BloqueInsights({ insights }: { insights: Insight[] }) {
   if (insights.length === 0) return null;
-
   return (
     <section className={styles.section}>
       <SectionTitle title="Insights" />
@@ -952,7 +1482,6 @@ function BloqueInsights({ insights }: { insights: Insight[] }) {
           const color  = isRisk ? C.red : C.green;
           const bg     = isRisk ? "rgba(239,68,68,0.05)" : "rgba(16,185,129,0.05)";
           const border = isRisk ? "rgba(239,68,68,0.18)" : "rgba(16,185,129,0.18)";
-
           return (
             <div key={i} style={{
               background: bg, border: `1px solid ${border}`,
@@ -986,10 +1515,10 @@ function BloqueInsights({ insights }: { insights: Insight[] }) {
 // ─── Sliders (grupo) ──────────────────────────────────────────────────────────
 
 const LABELS_DESGLOSE: Record<string, string> = {
-  reforma_local: "Reforma del local",
-  equipamiento: "Equipamiento",
-  deposito_fianza: "Depósito fianza (Art.36 LAU)",
-  otros_iniciales: "Licencias y gestoría",
+  reforma_local:    "Reforma del local",
+  equipamiento:     "Equipamiento",
+  deposito_fianza:  "Depósito fianza (Art.36 LAU)",
+  otros_iniciales:  "Licencias y gestoría",
 };
 
 function ParamGroup({ color, icon, label, children }: {
@@ -1045,7 +1574,7 @@ function SliderParam({ label, unit, value, min, max, fuente, color, onChange }: 
           borderRadius: 5, padding: "2px 8px", letterSpacing: "0.02em",
           lineHeight: 1.6, minWidth: 60, textAlign: "right",
         }}>
-          {Math.round(value).toLocaleString("es-ES")}{unit && `\u00A0${unit.trim()}`}
+          {Math.round(value).toLocaleString("es-ES")}{unit && ` ${unit.trim()}`}
         </span>
       </div>
       <div style={{ position: "relative", height: 20, display: "flex", alignItems: "center" }}>
@@ -1094,20 +1623,23 @@ function SliderParam({ label, unit, value, min, max, fuente, color, onChange }: 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function FinancialPanel({ financiero, loading, zonaId, sessionId, onUpdate }: Props) {
-  const [overrides, setOverrides] = useState<Record<string, number>>({});
-  const [modoConfig, setModoConfig] = useState<"auto" | "manual">("auto");
+  const [overrides, setOverrides]             = useState<Record<string, number>>({});
+  const [modoConfig, setModoConfig]           = useState<"auto" | "manual">("auto");
   const [businessContext, setBusinessContext] = useState<BusinessContext>({ tipo: "nuevo" });
-  const slidersRef = useRef<HTMLDivElement>(null);
+  const [recalculating, setRecalculating]     = useState(false);
 
   const refetch = useCallback(async (
     newOverrides: Record<string, number>,
     bc?: BusinessContext,
   ) => {
+    setRecalculating(true);
     try {
       const data = await api.financiero(zonaId, sessionId, newOverrides, bc ?? businessContext);
       onUpdate(data);
     } catch (e) {
       console.error("Error recalculando:", e);
+    } finally {
+      setRecalculating(false);
     }
   }, [zonaId, sessionId, onUpdate, businessContext]);
 
@@ -1124,10 +1656,6 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
     refetch(overrides, next);
   };
 
-  const scrollToSliders = () => {
-    slidersRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
   if (loading) {
     return (
       <div className={styles.loadingState}>
@@ -1141,16 +1669,16 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
     return (
       <div className={styles.emptyState}>
         <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-          <rect x="4" y="20" width="5" height="8" rx="2" fill="var(--accent)" opacity="0.4" />
+          <rect x="4"    y="20" width="5" height="8"  rx="2" fill="var(--accent)" opacity="0.4" />
           <rect x="13.5" y="12" width="5" height="16" rx="2" fill="var(--accent)" opacity="0.6" />
-          <rect x="23" y="6" width="5" height="22" rx="2" fill="var(--accent)" />
+          <rect x="23"   y="6"  width="5" height="22" rx="2" fill="var(--accent)" />
         </svg>
         <span>Datos financieros no disponibles</span>
       </div>
     );
   }
 
-  const f = financiero;
+  const f      = financiero;
   const params = f.parametros ?? {};
 
   return (
@@ -1158,26 +1686,18 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
 
       {/* ── Selector Auto / Manual ── */}
       <section className={styles.section} style={{ paddingBottom: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: 4 }}>
-            {(["auto", "manual"] as const).map(m => (
-              <button key={m} onClick={() => setModoConfig(m)} style={{
-                all: "unset", cursor: "pointer", fontSize: 11, fontWeight: 700,
-                letterSpacing: "0.06em", textTransform: "uppercase",
-                padding: "4px 12px", borderRadius: 6,
-                background: modoConfig === m ? "rgba(99,102,241,0.18)" : C.surface,
-                border: `1px solid ${modoConfig === m ? "rgba(99,102,241,0.5)" : C.border}`,
-                color: modoConfig === m ? C.indigo : C.muted,
-                transition: "all 0.15s",
-              }}>{m}</button>
-            ))}
-          </div>
-          <button onClick={scrollToSliders} style={{
-            all: "unset", cursor: "pointer", fontSize: 11, fontWeight: 600,
-            color: C.indigo, background: "rgba(99,102,241,0.08)",
-            border: "1px solid rgba(99,102,241,0.25)", borderRadius: 6,
-            padding: "4px 12px", letterSpacing: "0.04em",
-          }}>Editar supuestos ↓</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {(["auto", "manual"] as const).map(m => (
+            <button key={m} onClick={() => setModoConfig(m)} style={{
+              all: "unset", cursor: "pointer", fontSize: 11, fontWeight: 700,
+              letterSpacing: "0.06em", textTransform: "uppercase",
+              padding: "4px 12px", borderRadius: 6,
+              background: modoConfig === m ? "rgba(99,102,241,0.18)" : C.surface,
+              border: `1px solid ${modoConfig === m ? "rgba(99,102,241,0.5)" : C.border}`,
+              color: modoConfig === m ? C.indigo : C.muted,
+              transition: "all 0.15s",
+            }}>{m}</button>
+          ))}
         </div>
 
         {/* Contexto negocio (modo manual) */}
@@ -1232,12 +1752,12 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
       </section>
 
       {/* ── BLOQUE 1: Decisión rápida ── */}
-      {f.decision && <BloqueDecision d={f.decision} />}
+      {f.decision && <BloqueDecision d={f.decision} viabilityScore={computeViabilityScore(f)} />}
 
-      {/* ── Avisos del modelo (validation_flags) ── */}
+      {/* ── Avisos del modelo ── */}
       <BloqueValidationFlags flags={f.validation_flags ?? []} />
 
-      {/* ── Correcciones automáticas (si las hay) ── */}
+      {/* ── Correcciones automáticas ── */}
       <BloqueCorrecciones correcciones={f.correcciones_aplicadas ?? []} />
 
       {/* ── Alerta alquiler ── */}
@@ -1251,6 +1771,9 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
         </div>
       )}
 
+      {/* ── Configuración editable (MOVIDA ARRIBA) ── */}
+      <BloqueConfigEditable f={f} overrides={overrides} onOverride={handleOverride} recalculating={recalculating} />
+
       {/* ── BLOQUE 2: Economía base ── */}
       <BloqueEconomia f={f} />
 
@@ -1259,6 +1782,9 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
 
       {/* ── BLOQUE 4: Break-even ── */}
       {f.break_even && <BloqueBreakEven be={f.break_even} alquilerPct={f.alquiler_sobre_ventas_pct} />}
+
+      {/* ── Métricas operativas avanzadas ── */}
+      <BloqueMetricasAvanzadas f={f} />
 
       {/* ── BLOQUE 5: Escenarios ── */}
       <BloqueEscenarios f={f} />
@@ -1282,9 +1808,7 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
         <section className={styles.section}>
           <div className={styles.sectionHeader}>
             <h3 className={styles.sectionTitle}>Desglose inversión inicial</h3>
-            <span className={styles.totalBadge}>
-              {fmt(f.inversion_total)} €
-            </span>
+            <span className={styles.totalBadge}>{fmt(f.inversion_total)} €</span>
           </div>
           <div className={styles.desgloseGrid}>
             {Object.entries(f.desglose_inversion)
@@ -1312,99 +1836,6 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
           )}
         </section>
       )}
-
-      {/* ── Ajustar parámetros (sliders) ── */}
-      <section ref={slidersRef} className={styles.section}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-          <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Ajustar parámetros</h3>
-          <span style={{
-            fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
-            color: C.muted, background: C.surface2, border: `1px solid ${C.border}`,
-            borderRadius: 4, padding: "2px 7px",
-          }}>interactivo</span>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <ParamGroup color={C.green} icon="↑" label="Ingresos">
-            {params.ticket_medio && (
-              <SliderParam color={C.green} label="Ticket medio" unit="€"
-                value={overrides.ticket_medio ?? (params.ticket_medio as { valor_usado: number }).valor_usado}
-                min={(params.ticket_medio as { rango_min: number }).rango_min}
-                max={(params.ticket_medio as { rango_max: number }).rango_max}
-                fuente={(params.ticket_medio as { fuente: string }).fuente}
-                onChange={v => handleOverride("ticket_medio", v)} />
-            )}
-            {params.clients_per_day && (
-              <SliderParam color={C.green} label="Clientes / día (base)" unit=""
-                value={overrides.clients_per_day ?? (params.clients_per_day as { valor_usado: number }).valor_usado}
-                min={(params.clients_per_day as { rango_min: number }).rango_min}
-                max={Math.max(
-                  (params.clients_per_day as { rango_max: number }).rango_max,
-                  (f.parametros as { max_capacity?: number }).max_capacity ?? (params.clients_per_day as { rango_max: number }).rango_max,
-                )}
-                fuente={(params.clients_per_day as { fuente: string }).fuente}
-                onChange={v => handleOverride("clients_per_day", v)} />
-            )}
-            {params.dias_apertura_mes && (
-              <SliderParam color={C.green} label="Días apertura / mes" unit=" días"
-                value={overrides.dias_apertura_mes ?? (params.dias_apertura_mes as { valor_usado: number }).valor_usado}
-                min={(params.dias_apertura_mes as { rango_min: number }).rango_min}
-                max={(params.dias_apertura_mes as { rango_max: number }).rango_max}
-                fuente={(params.dias_apertura_mes as { fuente: string }).fuente}
-                onChange={v => handleOverride("dias_apertura_mes", v)} />
-            )}
-          </ParamGroup>
-
-          <ParamGroup color={C.yellow} icon="≡" label="Costes fijos">
-            {params.alquiler_mensual && (
-              <SliderParam color={C.yellow} label="Alquiler mensual" unit="€"
-                value={overrides.alquiler_mensual ?? (params.alquiler_mensual as { valor_usado: number }).valor_usado}
-                min={(params.alquiler_mensual as { rango_min: number }).rango_min}
-                max={(params.alquiler_mensual as { rango_max: number }).rango_max}
-                fuente={(params.alquiler_mensual as { fuente: string }).fuente}
-                onChange={v => handleOverride("alquiler_mensual", v)} />
-            )}
-            {params.salarios_mensual && (
-              <SliderParam color={C.yellow} label="Salarios mensuales" unit="€"
-                value={overrides.salarios_mensual ?? (params.salarios_mensual as { valor_usado: number }).valor_usado}
-                min={(params.salarios_mensual as { rango_min: number }).rango_min}
-                max={(params.salarios_mensual as { rango_max: number }).rango_max}
-                fuente={(params.salarios_mensual as { fuente: string }).fuente}
-                onChange={v => handleOverride("salarios_mensual", v)} />
-            )}
-            {params.otros_fijos_mensual && (
-              <SliderParam color={C.yellow} label="Otros costes fijos" unit="€"
-                value={overrides.otros_fijos_mensual ?? (params.otros_fijos_mensual as { valor_usado: number }).valor_usado}
-                min={(params.otros_fijos_mensual as { rango_min: number }).rango_min}
-                max={(params.otros_fijos_mensual as { rango_max: number }).rango_max}
-                fuente={(params.otros_fijos_mensual as { fuente: string }).fuente}
-                onChange={v => handleOverride("otros_fijos_mensual", v)} />
-            )}
-          </ParamGroup>
-
-          <ParamGroup color={C.indigo} icon="%" label="Margen">
-            {params.coste_mercancia_pct && (
-              <SliderParam color={C.indigo} label="Coste mercancía" unit="%"
-                value={Math.round((overrides.coste_mercancia_pct ?? (params.coste_mercancia_pct as { valor_usado: number }).valor_usado) * 100)}
-                min={Math.round((params.coste_mercancia_pct as { rango_min: number }).rango_min * 100)}
-                max={Math.round((params.coste_mercancia_pct as { rango_max: number }).rango_max * 100)}
-                fuente={(params.coste_mercancia_pct as { fuente: string }).fuente}
-                onChange={v => handleOverride("coste_mercancia_pct", v / 100)} />
-            )}
-          </ParamGroup>
-
-          <ParamGroup color="#A78BFA" icon="⬡" label="Inversión inicial">
-            {params.reforma_local && (
-              <SliderParam color="#A78BFA" label="Reforma" unit=" €"
-                value={overrides.reforma_local ?? (params.reforma_local as { valor_usado: number }).valor_usado}
-                min={(params.reforma_local as { rango_min: number }).rango_min}
-                max={(params.reforma_local as { rango_max: number }).rango_max}
-                fuente={(params.reforma_local as { fuente: string }).fuente}
-                onChange={v => handleOverride("reforma_local", v)} />
-            )}
-          </ParamGroup>
-        </div>
-      </section>
     </div>
   );
 }
