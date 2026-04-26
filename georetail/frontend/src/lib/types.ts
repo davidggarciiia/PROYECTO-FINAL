@@ -578,6 +578,7 @@ export interface FinancieroResponse {
   tipo_negocio?: "nuevo" | "traspaso";
   validation_flags?: string[];
   ocupacion_efectiva?: number;
+  max_staff_capacity?: number;
   validacion_financiera?: ValidacionFinanciera;
   // Análisis v4: stress + sensibilidad
   ebitda_anual_stress?: number;

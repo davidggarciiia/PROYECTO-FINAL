@@ -371,47 +371,65 @@ function BloqueCapacidad({ cm }: { cm: CapacityModelInfo }) {
 type ParamRecord = Record<string, unknown>;
 
 function BloqueConfigEditable({
-  f, overrides, onOverride, recalculating,
+  f, overrides, onOverride, onBatchOverride, recalculating,
 }: {
   f: FinancieroResponse;
   overrides: Record<string, number>;
   onOverride: (key: string, value: number) => void;
+  onBatchOverride: (batch: Record<string, number>) => void;
   recalculating: boolean;
 }) {
   const params = (f.parametros ?? {}) as ParamRecord;
 
-  const numEmpParam     = params.num_empleados as { valor_usado?: number } | undefined;
-  const numEmpSugerido  = numEmpParam?.valor_usado ?? null;
+  const numEmpRaw      = params.num_empleados;
+  const numEmpSugerido = typeof numEmpRaw === "number" ? numEmpRaw
+    : (numEmpRaw as { valor_usado?: number } | undefined)?.valor_usado ?? null;
   const salariosParam   = params.salarios_mensual as { valor_usado?: number } | undefined;
   const salariosTotales = salariosParam?.valor_usado ?? 0;
-  const salariosPorEmp  = numEmpSugerido && numEmpSugerido > 0
-    ? salariosTotales / numEmpSugerido
-    : null;
 
-  const currentSalarios  = overrides.salarios_mensual ?? salariosTotales;
-  const currentEmpleados = salariosPorEmp && salariosPorEmp > 0
-    ? Math.max(1, Math.round(currentSalarios / salariosPorEmp))
-    : (numEmpSugerido ? Math.round(numEmpSugerido) : null);
+  // Current values — overrides take precedence
+  const currentEmpleados = overrides.num_empleados != null
+    ? Math.max(1, Math.round(overrides.num_empleados))
+    : (numEmpSugerido != null ? Math.max(1, Math.round(numEmpSugerido)) : null);
+  const currentSalarios = overrides.salarios_mensual ?? salariosTotales;
 
-  // Impacto del cambio de salario (respecto al modelo)
-  const salaryDelta    = currentSalarios - salariosTotales;
-  const benefitImpact  = -salaryDelta;
-  const showImpact     = salariosTotales > 0 && Math.abs(benefitImpact) > 50;
+  // Salary per employee — always derived from current state
+  const salarioPorEmpActual = currentEmpleados && currentEmpleados > 0
+    ? Math.max(800, Math.round(currentSalarios / currentEmpleados))
+    : 1500;
 
-  // Validación: clientes > capacidad
-  const eb = f.economia_base;
-  const capModel       = (f as unknown as { capacity_model?: { max_clients_day?: number } }).capacity_model;
-  const ocupEfectiva   = eb?.ocupacion_efectiva
+  // Impact vs model
+  const salaryDelta   = currentSalarios - salariosTotales;
+  const benefitImpact = -salaryDelta;
+  const showImpact    = salariosTotales > 0 && Math.abs(benefitImpact) > 50;
+
+  // Staff capacity from backend (max_staff_capacity reflects num_empleados × productividad)
+  const maxStaffCapacity = f.max_staff_capacity ?? 0;
+  const clientsParam     = params.clients_per_day as { valor_usado?: number } | undefined;
+  const currentClients   = overrides.clients_per_day ?? clientsParam?.valor_usado ?? null;
+
+  // Capacity: local (aforo) vs staff
+  const eb           = f.economia_base;
+  const capModel     = f.capacity_model;
+  const ocupEfectiva = eb?.ocupacion_efectiva
     ?? (f as unknown as { ocupacion_efectiva?: number }).ocupacion_efectiva ?? 0.8;
-  const maxCapacity    = capModel?.max_clients_day
+  const maxCapacidad = capModel?.max_clients_day
     ?? (eb ? Math.round(eb.clientes_dia / Math.max(0.1, ocupEfectiva)) : null);
-  const clientsParam   = params.clients_per_day as { valor_usado?: number } | undefined;
-  const currentClients = overrides.clients_per_day ?? clientsParam?.valor_usado ?? null;
-  const exceedsCapacity = maxCapacity != null && currentClients != null && currentClients > maxCapacity;
+  const exceedsCapacity = maxCapacidad != null && currentClients != null && currentClients > maxCapacidad;
 
-  const handleEmpleados = (n: number) => {
-    if (salariosPorEmp == null) return;
-    onOverride("salarios_mensual", Math.round(n * salariosPorEmp));
+  // Staff-specific warnings
+  const staffCapacity = maxStaffCapacity > 0 ? maxStaffCapacity : null;
+  const exceedsStaff  = staffCapacity != null && currentClients != null && currentClients > staffCapacity;
+  const overStaffed   = staffCapacity != null && currentClients != null && currentEmpleados != null
+    && currentClients < staffCapacity * 0.55 && currentEmpleados > 1;
+
+  const handleEmpleadoCount = (n: number) => {
+    onBatchOverride({ num_empleados: n, salarios_mensual: Math.round(n * salarioPorEmpActual) });
+  };
+
+  const handleSalPorEmp = (sal: number) => {
+    const empCount = currentEmpleados ?? 1;
+    onBatchOverride({ num_empleados: empCount, salarios_mensual: Math.round(empCount * sal) });
   };
 
   const btnStyle: React.CSSProperties = {
@@ -453,51 +471,115 @@ function BloqueConfigEditable({
         }
       />
 
-      {/* Input empleados */}
+      {/* Plantilla: empleados y salarios */}
       {currentEmpleados != null && (
         <div style={{
           background: C.surface, border: `1px solid rgba(99,102,241,0.25)`,
           borderRadius: 10, padding: "12px 14px", marginBottom: 12,
         }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{
+            fontSize: 10, fontWeight: 700, textTransform: "uppercase",
+            letterSpacing: "0.07em", color: C.indigo, marginBottom: 10,
+          }}>Plantilla</div>
+
+          {/* Stepper empleados */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
             <div>
               <div style={{ fontSize: 12, color: C.muted, fontWeight: 500, display: "flex", alignItems: "center" }}>
                 Número de empleados
-                <InfoTooltip text="Al modificarlo se recalculan automáticamente los costes de personal, beneficio neto y ROI. Cada empleado adicional reduce el beneficio en su coste mensual." />
+                <InfoTooltip text="Cuántas personas trabajan en el negocio. Al cambiarlo se recalcula la capacidad de atención, los costes de personal, el beneficio y el ROI." />
               </div>
               {numEmpSugerido != null && (
                 <div style={{ fontSize: 10, color: C.subtle, marginTop: 3 }}>
-                  Sugerido por el modelo:{" "}
+                  Sugerido:{" "}
                   <strong style={{ color: C.muted }}>
                     {Math.round(numEmpSugerido)} empleado{Math.round(numEmpSugerido) !== 1 ? "s" : ""}
                   </strong>
                 </div>
               )}
-              {showImpact && (
-                <div style={{
-                  marginTop: 5, fontSize: 11, fontWeight: 700,
-                  color: benefitImpact > 0 ? C.green : C.red,
-                  display: "flex", alignItems: "center", gap: 4,
-                }}>
-                  {benefitImpact > 0 ? "+" : "−"}{fmt(Math.abs(benefitImpact))} €
-                  <span style={{ fontSize: 10, color: C.subtle, fontWeight: 400 }}>vs modelo · beneficio mensual</span>
-                </div>
-              )}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <button style={btnStyle} onClick={() => handleEmpleados(Math.max(1, currentEmpleados - 1))}>−</button>
+              <button style={btnStyle} onClick={() => handleEmpleadoCount(Math.max(1, currentEmpleados - 1))}>−</button>
               <span style={{
                 fontSize: 22, fontWeight: 800, color: C.text,
                 fontVariantNumeric: "tabular-nums", minWidth: 30, textAlign: "center",
               }}>{currentEmpleados}</span>
-              <button style={btnStyle} onClick={() => handleEmpleados(currentEmpleados + 1)}>+</button>
+              <button style={btnStyle} onClick={() => handleEmpleadoCount(Math.min(20, currentEmpleados + 1))}>+</button>
             </div>
           </div>
+
+          {/* Slider: coste por empleado */}
+          <SliderParam
+            color={C.yellow}
+            label="Coste/empleado (salario bruto + SS)"
+            unit="€/mes"
+            value={salarioPorEmpActual}
+            min={800}
+            max={5000}
+            fuente="Bruto + ~31% Seg. Social empresa · convenio colectivo"
+            onChange={handleSalPorEmp}
+          />
+
+          {/* Coste total + impacto */}
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.border}`,
+          }}>
+            <span style={{ fontSize: 11, color: C.subtle }}>Coste personal total/mes</span>
+            <div style={{ textAlign: "right" }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: C.text }}>
+                {fmt(currentSalarios)} €
+              </span>
+              {showImpact && (
+                <div style={{ fontSize: 11, fontWeight: 700, color: benefitImpact > 0 ? C.green : C.red }}>
+                  {benefitImpact > 0 ? "+" : "−"}{fmt(Math.abs(benefitImpact))} €{" "}
+                  <span style={{ fontWeight: 400, color: C.subtle }}>vs modelo</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Personal insuficiente para la demanda */}
+          {exceedsStaff && currentClients != null && staffCapacity != null && (
+            <div style={{
+              display: "flex", alignItems: "flex-start", gap: 8,
+              padding: "8px 10px", borderRadius: 8, marginTop: 10,
+              background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)",
+              fontSize: 11, color: C.muted, lineHeight: 1.55,
+            }}>
+              <span style={{ color: C.red, fontWeight: 700, flexShrink: 0 }}>!</span>
+              <span>
+                Con <strong style={{ color: C.text }}>{currentEmpleados} empleado{currentEmpleados !== 1 ? "s" : ""}</strong>{" "}
+                la capacidad es de{" "}
+                <strong style={{ color: C.red }}>{Math.round(staffCapacity)} clientes/día</strong>,
+                pero tienes <strong style={{ color: C.text }}>{Math.round(currentClients)} estimados</strong>.{" "}
+                Añade personal o reduce la demanda objetivo.
+              </span>
+            </div>
+          )}
+
+          {/* Sobredimensión */}
+          {overStaffed && !exceedsStaff && currentClients != null && staffCapacity != null && (
+            <div style={{
+              display: "flex", alignItems: "flex-start", gap: 8,
+              padding: "8px 10px", borderRadius: 8, marginTop: 10,
+              background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.3)",
+              fontSize: 11, color: C.muted, lineHeight: 1.55,
+            }}>
+              <span style={{ color: C.yellow, fontWeight: 700, flexShrink: 0 }}>⚠</span>
+              <span>
+                Posible sobredimensión: el equipo puede atender{" "}
+                <strong style={{ color: C.text }}>{Math.round(staffCapacity)}</strong> clientes/día
+                pero solo esperas <strong style={{ color: C.text }}>{Math.round(currentClients)}</strong>.{" "}
+                Los costes de personal son elevados para la demanda estimada.
+              </span>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Validación: clientes > capacidad */}
-      {exceedsCapacity && (
+      {/* Validación: clientes > capacidad del local (solo si no hay ya warning de personal) */}
+      {exceedsCapacity && !exceedsStaff && (
         <div style={{
           display: "flex", alignItems: "flex-start", gap: 8,
           padding: "8px 12px", borderRadius: 8, marginBottom: 8,
@@ -508,7 +590,7 @@ function BloqueConfigEditable({
           <span>
             <strong style={{ color: C.red }}>{Math.round(currentClients!)} clientes/día</strong>{" "}
             supera la capacidad estimada del local{" "}
-            (<strong style={{ color: C.text }}>{Math.round(maxCapacity!)} máx.</strong>).{" "}
+            (<strong style={{ color: C.text }}>{Math.round(maxCapacidad!)} máx.</strong>).{" "}
             Considera reducir el aforo o aumentar turnos.
           </span>
         </div>
@@ -838,9 +920,9 @@ function BloqueMetricasAvanzadas({ f }: { f: FinancieroResponse }) {
   const eb = f.economia_base;
   if (!ec || !eb) return null;
 
-  const params      = (f.parametros ?? {}) as ParamRecord;
-  const numEmpParam = params.num_empleados as { valor_usado?: number } | undefined;
-  const numEmp      = Math.max(1, Math.round(numEmpParam?.valor_usado ?? 1));
+  const params     = (f.parametros ?? {}) as ParamRecord;
+  const numEmpRaw2 = params.num_empleados;
+  const numEmp     = Math.max(1, typeof numEmpRaw2 === "number" ? Math.round(numEmpRaw2) : 1);
 
   const costePorEmp         = Math.round(ec.personal / numEmp);
   const totalCostes         = ec.alquiler + ec.personal + ec.variable + ec.otros;
@@ -1651,6 +1733,12 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
     debouncedRefetch(next);
   };
 
+  const handleBatchOverride = (batch: Record<string, number>) => {
+    const next = { ...overrides, ...batch };
+    setOverrides(next);
+    debouncedRefetch(next);
+  };
+
   const handleBusinessContext = (next: BusinessContext) => {
     setBusinessContext(next);
     refetch(overrides, next);
@@ -1772,7 +1860,7 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
       )}
 
       {/* ── Configuración editable (MOVIDA ARRIBA) ── */}
-      <BloqueConfigEditable f={f} overrides={overrides} onOverride={handleOverride} recalculating={recalculating} />
+      <BloqueConfigEditable f={f} overrides={overrides} onOverride={handleOverride} onBatchOverride={handleBatchOverride} recalculating={recalculating} />
 
       {/* ── BLOQUE 2: Economía base ── */}
       <BloqueEconomia f={f} />

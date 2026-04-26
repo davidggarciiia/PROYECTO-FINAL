@@ -157,6 +157,7 @@ class FinancieroResponse(BaseModel):
     tipo_negocio:           str                        = "nuevo"
     validation_flags:       list[str]                  = []
     ocupacion_efectiva:     float                      = 0.0
+    max_staff_capacity:     float                      = 0.0
     # Validación LLM — capa crítica (None si el LLM falla)
     validacion_financiera:  Optional[ValidacionFinanciera] = None
     # Análisis v4: sensibilidad + estrés
@@ -432,6 +433,7 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         tipo_negocio=tipo_negocio,
         validation_flags=resultado.get("validation_flags", []),
         ocupacion_efectiva=resultado.get("ocupacion_efectiva", 0.0),
+        max_staff_capacity=round(float(resultado.get("max_staff_capacity", 0.0)), 1),
         validacion_financiera=validacion_financiera,
         sensibilidad=[SensitividadItem(**s) for s in resultado.get("sensibilidad", [])],
     )
@@ -884,7 +886,7 @@ def _aplicar_overrides(
         max_capacity=        estimados.max_capacity,
         dias_apertura_mes=   _build("dias_apertura_mes",   estimados.dias_apertura_mes),
         alquiler_mensual=    _build("alquiler_mensual",    estimados.alquiler_mensual),
-        num_empleados=       estimados.num_empleados,
+        num_empleados=int(overrides["num_empleados"]) if "num_empleados" in overrides else estimados.num_empleados,
         salarios_mensual=    _build("salarios_mensual",    estimados.salarios_mensual),
         otros_fijos_mensual= _build("otros_fijos_mensual", estimados.otros_fijos_mensual),
         coste_mercancia_pct= _build("coste_mercancia_pct", estimados.coste_mercancia_pct),
