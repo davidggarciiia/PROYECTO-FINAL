@@ -33,8 +33,11 @@ _RAMP_TRASPASO     = [0.60, 0.68, 0.75, 0.81, 0.86, 0.90, 0.94, 0.97, 0.99, 1.00
 _RAMP_POR_SECTOR: dict[str, list[float]] = {
     "restauracion":  _RAMP_RESTAURACION,
     "moda":          _RAMP_RETAIL,
-    "supermercado":  _RAMP_RETAIL,
-    "farmacia":      _RAMP_RETAIL,
+    "alimentacion":  _RAMP_RETAIL,
+    "salud":         _RAMP_RETAIL,
+    "deporte":       _RAMP_HYBRID,
+    "educacion":     _RAMP_APPOINTMENT,
+    "servicios":     _RAMP_RETAIL,
     "tatuajes":      _RAMP_APPOINTMENT,
     "estetica":      _RAMP_APPOINTMENT,
     "clinica":       _RAMP_APPOINTMENT,
@@ -43,24 +46,89 @@ _RAMP_POR_SECTOR: dict[str, list[float]] = {
 }
 
 # ── Estacionalidad mensual por sector ─────────────────────────────────────────
-# Índice 0 = Enero. Normalizado: la media de los 12 coeficientes ≈ 1.0
-# Fuente: benchmarks sector retail/restauración BCN + patronal sectorial
+# Índice 0 = Enero. Normalizado: suma = 12.0, media = 1.0.
+#
+# Metodología y fuentes (revisión 2026-04):
+#   - Restauración BCN: Observatori del Turisme a Barcelona (2023-2024), Gremio de Hoteles BCN,
+#     Mastercard SpendingPulse hostelería España (oct 2023). Agosto revisado al alza respecto
+#     a la estimación genérica nacional: turismo internacional (80.8% visitantes extranjeros)
+#     compensa la salida de residentes; ocupación hotelera Jul-Ago 85-88% (fuente: Gremio Hoteles).
+#   - Moda/Textil: Barómetro Acotex mensual 2023-2025 (Indicador del Comercio de Moda,
+#     Modaes / FashionUnited). Noviembre (Black Friday) supera a Diciembre desde 2022.
+#     Enero beneficia de rebajas (+9.9% interanual en ene-2023, Acotex).
+#   - Tatuajes: profesionales del sector + fuentes médicas confirman caída estival —
+#     sol y baño en playa/piscina contraindicados con tatuaje reciente (2-4 semanas).
+#     "En verano disminuye la demanda; el trabajo se reactiva en septiembre"
+#     (inksweettattoo.es, lamanozurda.es, 222tattoomadrid.com, 2024).
+#   - Peluquería/Estética: Professional Beauty España (2025); 59.3% de salones permanecen
+#     abiertos en agosto — agosto no es tan bajo como otros sectores. Dic y May-Jun son pico
+#     (Navidad + bodas/comuniones). Fuente: beautymarket.es, professionalbeauty.es.
+#   - Salud (farmacia/clínica): Sistema de Vigilancia de la Gripe, ISCIII / Red Centinela.
+#     Epidemia gripal: semanas 47-03 (nov-ene/feb); pico máximo sem. 4-6 (finales ene / feb).
+#     Verano (jun-ago): demanda OTC mínima. Oct-Nov: inicio subida respiratorias + preparación
+#     vacunas. Dic: segunda ola gripal. Fuente: vgripe.isciii.es, gacetamedica.com (2025-2026).
+#   - Alimentación: Panel de Consumo Alimentario MAPA 2024. Diciembre = 9.9% gasto anual
+#     (pico navideño). Oct-Nov = 8.6-8.7% cada mes (post-verano). Agosto: menor actividad.
+#     Fuente: mapa.gob.es/dam/mapa/contenido/alimentacion (informe-consumo-2024).
+#   - Deporte (gimnasios): Estadísticas globales fitness (Wodify, GymDesk, 2025-2026).
+#     Enero +25% matriculaciones (propósitos). Sep +10-15% retorno post-verano. Jun-Jul
+#     operación bikini = segunda ola. Verano: caída asistencia. Confirmado para España por
+#     Vitonica.com y prensa sectorial. Fuente: wod.guru, wodify.com, vitonica.com.
+#   - Educación (academias): Calendario escolar España. Verano (jul-ago): colapso de la
+#     demanda. Sep-Oct: matriculación masiva inicio de curso. La eliminación de exámenes
+#     de septiembre ha reducido la demanda de julio-agosto aún más (telecinco.es, 2022;
+#     infobae.com sector educativo, oct 2024). Fuente: academias.com, INEE blog.
+#   - Servicios: El 35-41% de los trabajadores españoles toman vacaciones en julio-agosto
+#     (Wolters Kluwer / Audiolis, 2024), lo que reduce la actividad B2B y B2C en agosto.
+#     Enero y septiembre son meses de alta actividad de arranque. Fuente: sage.com,
+#     INE Índice Cifra de Negocios Sector Servicios.
+#   - Shisha Lounge: no existen datos estadísticos sectoriales públicos en España. Estimación
+#     basada en patrón de ocio nocturno: pico verano (terrazas) + Navidad (sociabilidad).
+#     Enero-Feb: caída post-festiva. Conservar como estimación informada.
 _SEASONAL: dict[str, list[float]] = {
-    # Restauración: pico Dic, caída Ago (-25%), punta Jun-Jul turismo
-    "restauracion": [0.85, 0.82, 0.91, 0.96, 1.03, 1.06, 1.04, 0.75, 1.05, 1.04, 1.00, 1.22],
-    # Moda: pico Nav/Dic, rebajas Ene-Feb (-35%), caída Ago
-    "moda":         [0.65, 0.68, 0.88, 0.97, 1.07, 0.96, 0.86, 0.80, 1.00, 1.06, 1.12, 1.38],
-    # Tatuajes: relativamente estable, ligero pico verano (turistas)
-    "tatuajes":     [0.88, 0.84, 0.96, 1.01, 1.05, 1.12, 1.10, 0.97, 1.02, 1.00, 0.97, 0.97],
-    # Estética: pico Nav y primavera (bodas), caída Ago
-    "estetica":     [0.90, 0.87, 1.00, 1.04, 1.06, 1.04, 0.90, 0.84, 1.00, 1.00, 1.05, 1.15],
-    # Peluquería: pico Nav y verano (bodas), caída Feb
-    "peluqueria":   [0.90, 0.87, 0.98, 1.00, 1.03, 1.07, 0.96, 0.85, 1.00, 0.98, 1.00, 1.21],
-    # Farmacia: pico Ene (gripes), estable resto, sin picos grandes
-    "farmacia":     [1.12, 1.02, 0.96, 0.93, 0.91, 0.88, 0.90, 0.91, 0.95, 1.00, 1.05, 1.10],
-    # Supermercado: estable, leve pico navidad
-    "supermercado": [0.96, 0.91, 0.96, 0.99, 1.01, 1.01, 1.05, 1.01, 1.01, 1.00, 1.02, 1.09],
-    # Shisha lounge: pico verano y navidad, flojo Feb
+    # Restauración BCN: turismo internacional (80.8% visitantes extranjeros) compensa la
+    # salida de residentes en verano. Agosto NO es un mes bajo en BCN —ocup. hotelera
+    # 85-88% jul-ago (Gremio Hoteles BCN). Jul pico alto; Dic pico festivo; Feb mínimo.
+    # Fuente: Observatori Turisme BCN 2023-24; Mastercard SpendingPulse hostelería oct-2023.
+    "restauracion": [0.83, 0.82, 0.91, 0.96, 1.03, 1.08, 1.11, 0.99, 1.03, 1.04, 1.01, 1.19],
+    # Moda/Textil: Noviembre (Black Friday) supera a Diciembre desde 2022. Enero-rebajas
+    # sostiene ventas. Diciembre algo menor que los picos históricos de Navidad tradicional.
+    # Fuente: Barómetro Acotex mensual; Indicador Comercio de Moda (Modaes/FashionUnited).
+    "moda":         [0.70, 0.69, 0.93, 1.04, 1.14, 1.01, 0.90, 0.84, 1.07, 1.12, 1.24, 1.32],
+    # Tatuajes: verano es temporada BAJA (no alta) — sol y baño contraindicados las 2-4 semanas
+    # post-tatuaje. Demanda baja jun-ago; reactiva en septiembre. Pico natural oct-nov (eventos
+    # de otoño) y primavera (may). Turismo en BCN genera algo de demanda extranjera en verano
+    # pero no compensa la caída de demanda local. Septiembre = reactivación clara.
+    # Fuente: inksweettattoo.es, lamanozurda.es, 222tattoomadrid.com (2024).
+    "tatuajes":     [0.90, 0.88, 0.98, 1.07, 1.10, 0.98, 0.92, 0.88, 1.12, 1.10, 1.04, 1.02],
+    # Estética: pico Dec (Nav/año nuevo) y primavera May-Jun (bodas, comuniones, eventos).
+    # Agosto: 59.3% salones abiertos pero menor demanda. Fuente: beautymarket.es; Professional
+    # Beauty España 2025.
+    "estetica":     [0.90, 0.86, 1.00, 1.05, 1.08, 1.05, 0.91, 0.84, 1.02, 1.02, 1.07, 1.18],
+    # Peluquería: pico dic (Navidad) y may-jun (bodas/comuniones); 59.3% salones abiertos
+    # en agosto (no cierra tanto como otros sectores). Fuente: professionalbeauty.es 2025.
+    "peluqueria":   [0.90, 0.85, 0.99, 1.01, 1.06, 1.09, 0.97, 0.88, 1.02, 1.00, 1.01, 1.22],
+    # Salud/Farmacia: pico ene-feb (epidemia gripal semanas 4-6, ISCIII). Oct-Nov: subida
+    # respiratorias + vacunación gripal. Dic: inicio 2ª ola gripal. Jun-ago: mínimo.
+    # Fuente: Sistema Vigilancia Gripe España, vgripe.isciii.es; ISCIII / Red Centinela.
+    "salud":        [1.15, 1.07, 1.00, 0.95, 0.91, 0.88, 0.90, 0.92, 0.96, 1.02, 1.09, 1.15],
+    # Alimentación: dic = 9.9% gasto anual (pico navideño); oct-nov elevados (8.6-8.7%/mes);
+    # ago: leve caída. Fuente: Panel Consumo Alimentario MAPA 2024 (informe-consumo-2024).
+    "alimentacion": [0.95, 0.90, 0.95, 0.98, 0.99, 0.99, 1.04, 1.02, 1.02, 1.02, 1.04, 1.10],
+    # Deporte (gimnasios): ene +25% (propósitos año nuevo); sep +10-15% (vuelta rutina);
+    # jun +operación bikini; verano (jul-ago): menor asistencia (exterior/vacaciones).
+    # Fuente: Wodify Membership Stats 2025-26; wod.guru; vitonica.com; prensa española.
+    "deporte":      [1.16, 1.07, 1.02, 0.97, 1.04, 1.06, 0.90, 0.85, 1.02, 1.00, 0.96, 0.94],
+    # Educación (academias/refuerzo): colapso verano jul-ago; máximo sep-oct (inicio de curso).
+    # La eliminación exámenes sep ha agravado la caída estival. May: fin de curso + exámenes.
+    # Fuente: INEE blog 2022-23; Infobae sector educativo oct-2024; academias.com.
+    "educacion":    [0.97, 0.95, 1.03, 1.08, 1.10, 0.87, 0.65, 0.59, 1.30, 1.30, 1.19, 0.97],
+    # Servicios (generales): 35-41% trabajadores de vacaciones en jul-ago (reducción B2B/B2C).
+    # Sep-ene: meses fuertes de actividad empresarial. Fuente: Wolters Kluwer / Audiolis 2024;
+    # INE Índice Cifra de Negocios Sector Servicios.
+    "servicios":    [0.95, 0.90, 0.97, 1.01, 1.04, 1.05, 1.02, 0.95, 1.04, 1.03, 1.00, 1.04],
+    # Shisha Lounge: estimación sectorial (sin datos estadísticos públicos en España).
+    # Pico verano (terrazas, turismo) + navidad (sociabilidad). Caída ene-feb post-festiva.
     "shisha_lounge":[0.88, 0.84, 0.94, 1.00, 1.06, 1.12, 1.13, 0.86, 1.00, 1.00, 1.03, 1.12],
     # Default: sin estacionalidad
     "_default":     [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
@@ -110,7 +178,17 @@ async def calcular_proyeccion(
     """
     Modelo financiero de 12 pasos con mejoras v4:
     - Ramp-up diferenciado por sector y tipo de negocio
-    - Estacionalidad mensual (asume apertura en Enero como referencia conservadora)
+    - Estacionalidad mensual contrastada con fuentes oficiales (ver _SEASONAL):
+        · Restauración BCN: Observatori Turisme Barcelona 2023-24; Gremio Hoteles BCN.
+        · Moda/Textil: Barómetro Acotex mensual 2023-2025 (Modaes/FashionUnited).
+        · Tatuajes: inksweettattoo.es, lamanozurda.es (demanda baja en verano por sol/baño).
+        · Salud/Farmacia: Sistema Vigilancia Gripe ISCIII / Red Centinela (vgripe.isciii.es).
+        · Alimentación: Panel Consumo Alimentario MAPA 2024.
+        · Deporte: Wodify Membership Stats 2025-26; vitonica.com.
+        · Peluquería/Estética: Professional Beauty España 2025; beautymarket.es.
+        · Educación: INEE blog; Infobae sector educativo oct-2024.
+        · Servicios: Wolters Kluwer / Audiolis 2024; INE Cifra de Negocios Servicios.
+    - Asume apertura en Enero como mes de referencia
     - Escenario de estrés (×0.40 ingresos, costes fijos intactos)
     - ROI = ganancia_neta / inversión (documentado explícitamente)
 

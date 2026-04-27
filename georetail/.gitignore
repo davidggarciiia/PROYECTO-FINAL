@@ -21,3 +21,4 @@ data/optuna/
 data/shapefiles/
 *.pkl
 *.json.gz
+docs/APISYPIPELINES.txt

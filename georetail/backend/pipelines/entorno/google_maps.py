@@ -32,11 +32,11 @@ _SECTOR_CATEGORIAS: dict[str, list[str]] = {
     "estetica":        ["peluquería", "salón de belleza", "barbería"],
     "tatuajes":        ["estudio de tatuajes", "piercing"],
     "shisha_lounge":   ["shisha lounge", "hookah bar"],
-    "supermercado":    ["supermercado", "frutería", "panadería"],
-    "farmacia":        ["farmacia"],
-    "electronica":     ["tienda de electrónica", "telefonía móvil"],
-    "libreria":        ["librería", "papelería"],
-    "sport":           ["tienda deportiva", "gimnasio", "yoga"],
+    "alimentacion":    ["supermercado", "frutería", "panadería"],
+    "salud":           ["farmacia", "clínica", "fisioterapia"],
+    "servicios":       ["tienda de electrónica", "telefonía móvil", "lavandería"],
+    "educacion":       ["librería", "academia", "papelería"],
+    "deporte":         ["gimnasio", "tienda deportiva", "yoga", "artes marciales"],
 }
 
 # Sectores prioritarios si hay más sectores que el límite de búsquedas

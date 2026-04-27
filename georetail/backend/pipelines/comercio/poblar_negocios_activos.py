@@ -45,11 +45,11 @@ _SECTORES_GOSOM: dict[str, list[str]] = {
     "estetica":      ["peluquería", "salón de belleza", "barbería"],
     "tatuajes":      ["estudio de tatuajes", "piercing"],
     "shisha_lounge": ["shisha lounge", "hookah bar"],
-    "supermercado":  ["supermercado", "frutería", "panadería"],
-    "farmacia":      ["farmacia"],
-    "electronica":   ["tienda de electrónica", "telefonía móvil"],
-    "libreria":      ["librería", "papelería"],
-    "sport":         ["tienda deportiva", "gimnasio"],
+    "alimentacion":  ["supermercado", "frutería", "panadería"],
+    "salud":         ["farmacia", "clínica", "fisioterapia"],
+    "servicios":     ["tienda de electrónica", "telefonía móvil", "lavandería"],
+    "educacion":     ["librería", "academia", "papelería"],
+    "deporte":       ["gimnasio", "tienda deportiva", "artes marciales"],
 }
 
 _VALID_SECTORES_GOSOM = set(_SECTORES_GOSOM)

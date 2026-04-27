@@ -199,7 +199,7 @@ async def get_zona_completa(zona_id: str, sector: Optional[str]) -> Optional[dic
                 SELECT na.nombre, na.sector_codigo AS sector,
                        round(ST_Distance(na.geometria::geography, z.geometria::geography)::numeric, 0) AS distancia_m,
                        na.rating, na.total_resenas AS num_resenas, na.precio_nivel,
-                       (na.sector_codigo = $2) AS es_competencia_directa
+                       COALESCE(na.sector_codigo = $2, FALSE) AS es_competencia_directa
                 FROM negocios_activos na
                 JOIN zonas z ON z.id=$1
                 WHERE ST_DWithin(na.geometria::geography, z.geometria::geography, 500)

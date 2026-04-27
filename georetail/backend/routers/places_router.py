@@ -69,7 +69,7 @@ _TERMINOS_YELP = {
 # `sector_codigo=None` en los resultados para no violar la FK de negocios_activos.
 _VALID_SECTORES = {
     "restauracion", "moda", "estetica", "tatuajes", "shisha_lounge",
-    "supermercado", "farmacia", "electronica", "libreria", "sport",
+    "alimentacion", "salud", "servicios", "educacion", "deporte",
 }
 
 

@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # ── VCity Martin tileserver ────────────────────────────────────────────────────
 _VCITY_BASE    = "https://martin.vcity.dataviz.bsc.es"
 _LAYER         = "barcelonapedestrians_100percentage_v2"
-_ZOOM          = 15
+_ZOOM          = 17
 _TIMEOUT_S     = 15.0
 _MAX_CONN      = 5   # be gentle with the tileserver
 

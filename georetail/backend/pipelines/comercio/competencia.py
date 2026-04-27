@@ -36,7 +36,8 @@ logger = logging.getLogger(__name__)
 # ── Configuración ──────────────────────────────────────────────────────────────
 
 _RADIO_M            = 500
-_SECTORES           = ["restauracion", "moda", "estetica", "tatuajes", "shisha_lounge"]
+_SECTORES           = ["restauracion", "moda", "estetica", "tatuajes", "shisha_lounge",
+                       "deporte", "salud", "educacion", "alimentacion", "servicios"]
 _PAUSA_ENTRE_ZONAS  = 0.3
 
 # Términos de búsqueda gosom por sector (se usa el primero como query principal)
@@ -46,11 +47,11 @@ _SECTOR_CATEGORIAS: dict[str, list[str]] = {
     "estetica":      ["peluquería", "salón de belleza", "barbería"],
     "tatuajes":      ["estudio de tatuajes", "piercing"],
     "shisha_lounge": ["shisha lounge", "hookah bar"],
-    "supermercado":  ["supermercado", "frutería", "panadería"],
-    "farmacia":      ["farmacia"],
-    "electronica":   ["tienda de electrónica", "telefonía móvil"],
-    "libreria":      ["librería", "papelería"],
-    "sport":         ["tienda deportiva", "gimnasio", "yoga"],
+    "alimentacion":  ["supermercado", "frutería", "panadería"],
+    "salud":         ["farmacia", "clínica", "fisioterapia"],
+    "servicios":     ["tienda de electrónica", "telefonía móvil", "lavandería"],
+    "educacion":     ["librería", "academia", "papelería"],
+    "deporte":       ["gimnasio", "tienda deportiva", "yoga", "artes marciales"],
 }
 
 # Sectores relacionados a scrapear por sector objetivo (competidores + complementarios)
@@ -61,7 +62,7 @@ _SECTORES_A_SCRAPEAR: dict[str, list[str]] = {
 
 _VALID_SECTORES = {
     "restauracion", "moda", "estetica", "tatuajes", "shisha_lounge",
-    "supermercado", "farmacia", "electronica", "libreria", "sport",
+    "alimentacion", "salud", "servicios", "educacion", "deporte",
 }
 
 

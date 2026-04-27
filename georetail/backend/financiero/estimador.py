@@ -26,8 +26,11 @@ _BUSINESS_MODEL_MAP: dict[str, str] = {
     "peluqueria":    "appointment_based",
     "shisha_lounge": "hybrid",
     "moda":          "retail_walkin",
-    "supermercado":  "retail_walkin",
-    "farmacia":      "retail_walkin",
+    "alimentacion":  "retail_walkin",
+    "salud":         "retail_walkin",
+    "deporte":       "appointment_based",
+    "educacion":     "appointment_based",
+    "servicios":     "retail_walkin",
 }
 
 

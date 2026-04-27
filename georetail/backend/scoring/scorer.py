@@ -275,20 +275,17 @@ def _score_manual(datos: dict, sector: dict) -> dict:
     _fp_pt    = datos.get("flujo_popular_times_score")
     _fp_vcity = datos.get("vcity_flujo_peatonal")
     _fp_ratio = datos.get("ratio_locales_comerciales")
-    if any(x is not None for x in [_fp_total, _fp_pt, _fp_vcity, _fp_ratio]):
-        _flujo_result = calcular_flujo_con_temporalidad(
-            row=datos,
-            idea_tags=datos.get("_idea_tags"),
-            perfil_negocio=perfil_negocio,
-            popular_times_score=_fp_pt,
-            vcity_flujo=_fp_vcity,
-            vianants_intensitat=_fp_total,
-            ratio_locales=_fp_ratio,
-            vianants_max_barcelona=3000.0,
-        )
-        s_flujo = _flujo_result["score_flujo"]
-    else:
-        s_flujo = 0.0
+    _flujo_result = calcular_flujo_con_temporalidad(
+        row=datos,
+        idea_tags=datos.get("_idea_tags"),
+        perfil_negocio=perfil_negocio,
+        popular_times_score=_fp_pt,
+        vcity_flujo=_fp_vcity,
+        vianants_intensitat=_fp_total,
+        ratio_locales=_fp_ratio,
+        vianants_max_barcelona=3000.0,
+    )
+    s_flujo = _flujo_result["score_flujo"]
 
     # DEMOGRAFÍA — score enriquecido multi-variable (renta + tendencia + segmento + capital humano)
     # Si hay idea_tags disponibles en datos, se usan para ajustar pesos.

@@ -14,7 +14,9 @@ combinando tres dimensiones:
      Penalización si la única opción disponible es transporte de baja fiabilidad.
 
   2. Score de movilidad activa (peso 20%, o 35% para negocios ecológicos/ciclistas)
-     Combina estaciones Bicing en radio 400 m y presencia de carril bici en 200 m.
+     Combina estaciones Bicing en radio 400 m (0-100, 7+ estaciones → 100) y presencia
+     de carril bici en 200 m como indicador binario 0-100 (100 si existe, 0 si no).
+     La media ponderada 70/30 puede alcanzar 100 cuando ambos componentes son 100.
 
   3. Bonus PMR (opcional, hasta +8 pts)
      Activado por tags clientela_movilidad_reducida / salud_tercera_edad.
@@ -335,7 +337,13 @@ async def calcular_score_transporte(
         if filas:
             score_transit, detalles_transit = _calcular_score_transit(filas)
         else:
-            logger.debug("transporte_score: sin paradas en radio %dm para zona %s", _RADIO_SQL_MAX, zona_id)
+            logger.info(
+                "transporte_score: 0 paradas en radio %dm zona=%s "
+                "(pipeline TMB pendiente) — fallback neutro 50",
+                _RADIO_SQL_MAX, zona_id,
+            )
+            score_transit = 50.0
+            bd_disponible = False
     except Exception as exc:
         _es_tabla_faltante = "UndefinedTable" in type(exc).__name__ or "42P01" in str(exc)
         if _es_tabla_faltante:
@@ -378,8 +386,9 @@ async def calcular_score_transporte(
         tiene_carril = False
 
     score_bicing = min(100.0, (num_bicing or 0) * 15.0)  # 7+ estaciones → 100
-    score_carril = 30.0 if tiene_carril else 0.0
+    score_carril = 100.0 if tiene_carril else 0.0        # indicador binario 0-100 (no bonus fijo)
     score_movilidad = min(100.0, score_bicing * 0.7 + score_carril * 0.3)
+    # máximo teórico: 100×0.7 + 100×0.3 = 100 ✓
     score_movilidad = round(score_movilidad, 1)
 
     # ── 3. Pesos combinados ──────────────────────────────────────────────────
