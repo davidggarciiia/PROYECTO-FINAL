@@ -113,7 +113,7 @@
 .desgloseBarFill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #6366F1, #10B981);
+  background: linear-gradient(90deg, #7C3AED, #10B981);
   transition: width 0.4s ease;
 }
 
@@ -127,10 +127,10 @@
 .totalBadge {
   font-size: 11px;
   font-weight: 700;
-  color: #A78BFA;
+  color: #A855F7;
 
-  background: rgba(167,139,250,0.1);
-  border: 1px solid rgba(167,139,250,0.25);
+  background: rgba(124,58,237,0.12);
+  border: 1px solid rgba(124,58,237,0.3);
 
   padding: 3px 8px;
   border-radius: 6px;
@@ -142,10 +142,10 @@
 
   font-size: 12px;
   font-weight: 500;
-  color: #CBD5F5;
+  color: #D8B4FE;
 
-  background: rgba(99,102,241,0.08);
-  border: 1px solid rgba(99,102,241,0.2);
+  background: rgba(124,58,237,0.1);
+  border: 1px solid rgba(124,58,237,0.25);
   border-radius: 8px;
 
   display: inline-flex;
@@ -168,8 +168,9 @@
 
 /* ── Sections ── */
 .section {
-  padding: 14px 16px;
+  padding: 16px 16px;
   border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
 }
 .sectionHeader {
   display: flex;
@@ -283,7 +284,7 @@
   position: absolute;
   top: 0; left: 0;
   height: 100%;
-  background: linear-gradient(90deg, var(--accent), var(--accent-light));
+  background: linear-gradient(90deg, #7C3AED, #A855F7);
   border-radius: 4px;
   pointer-events: none;
 }

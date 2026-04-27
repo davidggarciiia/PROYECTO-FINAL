@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   AreaChart, Area,
   BarChart, Bar, Cell,
@@ -30,25 +30,25 @@ interface Props {
 
 // ─── Colores constantes ───────────────────────────────────────────────────────
 const C = {
-  conservador: "#6366F1",
+  conservador: "#7C3AED",
   base:        "#F59E0B",
   optimista:   "#10B981",
   alquiler:    "#EF4444",
   personal:    "#F59E0B",
   variable:    "#8B5CF6",
-  otros:       "#64748B",
+  otros:       "#6B7280",
   beneficio:   "#10B981",
   perdida:     "#EF4444",
   green:       "#10B981",
   yellow:      "#F59E0B",
   red:         "#EF4444",
-  indigo:      "#6366F1",
-  text:        "#E2E8F0",
-  muted:       "#94A3B8",
-  subtle:      "#475569",
+  indigo:      "#7C3AED",
+  text:        "#F3EEFF",
+  muted:       "#A78BC8",
+  subtle:      "#6B5A8A",
   border:      "rgba(255,255,255,0.07)",
-  surface:     "rgba(255,255,255,0.03)",
-  surface2:    "rgba(255,255,255,0.05)",
+  surface:     "rgba(124,58,237,0.04)",
+  surface2:    "rgba(124,58,237,0.08)",
 };
 
 const fmt  = (n: number) => Math.round(n).toLocaleString("es-ES");
@@ -116,15 +116,85 @@ function InfoTooltip({ text }: { text: string }) {
   );
 }
 
+// ─── Info popup por gráfico ───────────────────────────────────────────────────
+
+const CHART_INFOS = {
+  ebitdaMensual: "EBITDA mes a mes durante 36 meses. Verde = mes rentable, rojo = pérdida. Los primeros meses son negativos por la curva de arranque (rampa hasta mes 12). Las líneas punteadas muestran la variabilidad ±15%.",
+  cajaAcumulada: "Saldo de caja desde el día 1 en tres escenarios. Cuando la curva cruza 0€, recuperas toda la inversión. La diferencia entre curvas refleja el riesgo de cada escenario a lo largo del tiempo.",
+  cajaVsEbitda:  "El EBITDA acumulado es el beneficio operativo generado. La Caja real descuenta la inversión inicial. La brecha vertical entre ambas es el capital aún no recuperado.",
+  comparativa:   "Ingresos totales por año y escenario (en miles €). El Año 1 es inferior por la rampa de arranque. A partir del Año 2 el negocio opera a plena capacidad (80% ocupación).",
+  estres:        "Simula una crisis: solo el 40% de los ingresos esperados con todos los costes fijos intactos. Si la curva no cruza 0€ en 36 meses, necesitas reservas o financiación adicional.",
+  costes:        "Costes operativos mensuales en régimen estable por categoría. La más grande es tu palanca de ahorro principal — personal + alquiler suelen ser el 70-80% del total.",
+  capacidad:     "Compara la demanda estimada (clientes/día) con la capacidad máxima del local. Si la demanda supera la capacidad, necesitas más aforo, turnos adicionales o personal.",
+} as const;
+
+function ChartInfoButton({ infoKey }: { infoKey: keyof typeof CHART_INFOS }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-flex" }}>
+      <button
+        onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
+        aria-label="Información del gráfico"
+        style={{
+          all: "unset", cursor: "pointer",
+          width: 18, height: 18, borderRadius: "50%",
+          background: open ? "rgba(124,58,237,0.22)" : "rgba(255,255,255,0.05)",
+          border: `1px solid ${open ? "rgba(124,58,237,0.55)" : "rgba(255,255,255,0.1)"}`,
+          color: open ? "#7C3AED" : C.subtle,
+          fontSize: 10, fontWeight: 700, letterSpacing: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          transition: "all 0.15s", flexShrink: 0,
+        }}
+      >i</button>
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 8px)", right: 0,
+          zIndex: 200, width: 280,
+          background: "#1A1230",
+          border: "1px solid rgba(124,58,237,0.28)",
+          borderRadius: 10, padding: "12px 14px",
+          fontSize: 12, color: C.muted, lineHeight: 1.65,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(124,58,237,0.1)",
+        }}>
+          {CHART_INFOS[infoKey]}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Componentes pequeños ─────────────────────────────────────────────────────
 
-function SectionTitle({ title, badge }: { title: string; badge?: React.ReactNode }) {
+function SectionTitle({ title, badge, accent, info }: {
+  title: string; badge?: React.ReactNode; accent?: string; info?: keyof typeof CHART_INFOS;
+}) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-      <h3 style={{
-        fontSize: 10, fontWeight: 700, textTransform: "uppercase",
-        letterSpacing: "0.08em", color: C.muted, margin: 0,
-      }}>{title}</h3>
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        {accent && (
+          <span style={{
+            width: 3, height: 14, borderRadius: 2,
+            background: accent, flexShrink: 0,
+            boxShadow: `0 0 6px ${accent}66`,
+          }} />
+        )}
+        <h3 style={{
+          fontSize: 10, fontWeight: 700, textTransform: "uppercase",
+          letterSpacing: "0.08em", color: C.muted, margin: 0,
+        }}>{title}</h3>
+        {info && <ChartInfoButton infoKey={info} />}
+      </div>
       {badge}
     </div>
   );
@@ -1024,420 +1094,7 @@ function BloqueSensibilidad({ items }: { items: SensitividadItem[] }) {
   );
 }
 
-// ─── BLOQUE 5: Escenarios ─────────────────────────────────────────────────────
-
-type ChartTab = "caja" | "ebitda" | "mensual" | "comparativa" | "estres" | "costes" | "capacidad";
-
-function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
-  const [activeChart, setActiveChart] = useState<ChartTab>("caja");
-
-  const proyeccion = f.proyeccion;
-  const ec = f.estructura_costes;
-  const eb = f.economia_base;
-
-  // Caja acumulada — cada 3 meses
-  const cajaData = proyeccion
-    .filter((_, i) => i % 3 === 2 || i === 0)
-    .map(m => ({
-      mes: `M${m.mes}`,
-      Conservador: m.acumulado_conservador,
-      Base:        m.acumulado_base,
-      Optimista:   m.acumulado_optimista,
-    }));
-
-  // Caja real vs EBITDA acumulado
-  let cumEbitda = 0;
-  const cajaVsEbitdaData = proyeccion.map(m => {
-    cumEbitda += m.ebitda_base;
-    return { mes: m.mes, ebitdaCum: Math.round(cumEbitda), cajaReal: m.acumulado_base };
-  }).filter((_, i) => i % 3 === 2 || i === 0)
-    .map(m => ({ mes: `M${m.mes}`, "EBITDA acum.": m.ebitdaCum, "Caja real": m.cajaReal }));
-
-  // EBITDA mensual con bandas
-  const costeMercPct = ((f.parametros as Record<string, unknown>).coste_mercancia_pct as { valor_usado?: number })?.valor_usado ?? 0.40;
-  const margenUnit   = 1 - costeMercPct;
-  const mensualData = proyeccion.map(m => {
-    const cfMes = m.costes_fijos ?? 0;
-    const low   = m.ingresos_base_low  != null ? Math.round(m.ingresos_base_low  * margenUnit) - cfMes : null;
-    const high  = m.ingresos_base_high != null ? Math.round(m.ingresos_base_high * margenUnit) - cfMes : null;
-    return { mes: m.mes, ebitda: m.ebitda_base, ebitda_low: low, ebitda_high: high };
-  });
-
-  // Comparativa escenarios anual
-  const comparativaData = [
-    {
-      periodo: "Año 1",
-      Conservador: Math.round(proyeccion.slice(0, 12).reduce((s, m) => s + m.ingresos_conservador, 0) / 1000),
-      Base:        Math.round(proyeccion.slice(0, 12).reduce((s, m) => s + m.ingresos_base, 0) / 1000),
-      Optimista:   Math.round(proyeccion.slice(0, 12).reduce((s, m) => s + m.ingresos_optimista, 0) / 1000),
-    },
-    {
-      periodo: "Año 2",
-      Conservador: Math.round(proyeccion.slice(12, 24).reduce((s, m) => s + m.ingresos_conservador, 0) / 1000),
-      Base:        Math.round(proyeccion.slice(12, 24).reduce((s, m) => s + m.ingresos_base, 0) / 1000),
-      Optimista:   Math.round(proyeccion.slice(12, 24).reduce((s, m) => s + m.ingresos_optimista, 0) / 1000),
-    },
-    {
-      periodo: "Año 3",
-      Conservador: Math.round(proyeccion.slice(24, 36).reduce((s, m) => s + m.ingresos_conservador, 0) / 1000),
-      Base:        Math.round(proyeccion.slice(24, 36).reduce((s, m) => s + m.ingresos_base, 0) / 1000),
-      Optimista:   Math.round(proyeccion.slice(24, 36).reduce((s, m) => s + m.ingresos_optimista, 0) / 1000),
-    },
-  ];
-
-  // Estrés — cada 3 meses
-  const stressData = proyeccion
-    .filter((_, i) => i % 3 === 2 || i === 0)
-    .map(m => ({
-      mes: `M${m.mes}`,
-      Base:   m.acumulado_base,
-      Estrés: m.acumulado_stress ?? 0,
-    }));
-
-  // Distribución de costes
-  const costesDistData = ec ? [
-    { name: "Personal",  value: ec.personal, fill: C.personal },
-    { name: "Alquiler",  value: ec.alquiler, fill: C.alquiler },
-    { name: "Variable",  value: ec.variable, fill: C.variable },
-    { name: "Otros",     value: ec.otros,    fill: C.otros    },
-  ].sort((a, b) => b.value - a.value) : [];
-
-  // Capacidad vs demanda
-  const ocupacionEfectiva = eb?.ocupacion_efectiva
-    ?? (f as unknown as { ocupacion_efectiva?: number }).ocupacion_efectiva
-    ?? 0.8;
-  const maxCap = f.capacity_model?.max_clients_day
-    ?? (eb ? Math.round(eb.clientes_dia / Math.max(0.1, ocupacionEfectiva)) : 0);
-  const capacidadData = eb ? [
-    { name: "Demanda estimada", value: Math.round(eb.clientes_dia),  fill: C.green  },
-    { name: "Capacidad máxima", value: maxCap,                       fill: C.indigo },
-  ] : [];
-
-  const tabs: { id: ChartTab; label: string }[] = [
-    { id: "caja",        label: "Caja" },
-    { id: "ebitda",      label: "Caja vs EBITDA" },
-    { id: "mensual",     label: "Mensual" },
-    { id: "comparativa", label: "Comparativa" },
-    { id: "estres",      label: "Estrés" },
-    { id: "costes",      label: "Costes" },
-    { id: "capacidad",   label: "Capacidad" },
-  ];
-
-  return (
-    <section className={styles.section}>
-      <SectionTitle title="Escenarios — 36 meses" />
-
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 14, flexWrap: "wrap" }}>
-        {tabs.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setActiveChart(t.id)}
-            style={{
-              all: "unset", cursor: "pointer",
-              fontSize: 11, fontWeight: 600, padding: "5px 10px",
-              borderRadius: 6, transition: "all 0.15s",
-              background: activeChart === t.id ? "rgba(255,255,255,0.1)" : "transparent",
-              color: activeChart === t.id ? C.text : C.muted,
-              border: `1px solid ${activeChart === t.id ? "rgba(255,255,255,0.15)" : "transparent"}`,
-            }}
-          >{t.label}</button>
-        ))}
-      </div>
-
-      {/* GRÁFICO: Caja acumulada 3 escenarios */}
-      {activeChart === "caja" && (
-        <>
-          <div style={{ height: 180 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={cajaData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  {[["gOpt", C.optimista], ["gBase", C.base], ["gCons", C.conservador]].map(([id, color]) => (
-                    <linearGradient key={id} id={id} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={color} stopOpacity={0.2} />
-                      <stop offset="95%" stopColor={color} stopOpacity={0} />
-                    </linearGradient>
-                  ))}
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="mes" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
-                <ReferenceLine y={0} stroke="rgba(255,255,255,0.12)" strokeDasharray="4 4" />
-                <ReTooltip
-                  contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
-                  formatter={(v: number, name: string) => [`${fmt(v)} €`, name]}
-                />
-                <Area type="monotone" dataKey="Optimista"   stroke={C.optimista}   fill="url(#gOpt)"  strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey="Base"        stroke={C.base}        fill="url(#gBase)" strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey="Conservador" stroke={C.conservador} fill="url(#gCons)" strokeWidth={2} dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-          <LegendRow items={[
-            { color: C.optimista,   label: `Optimista (${f.payback_meses_optimista >= 999 ? ">36m" : f.payback_meses_optimista + "m"})` },
-            { color: C.base,        label: `Base (${f.payback_meses_base >= 999 ? ">36m" : f.payback_meses_base + "m"})` },
-            { color: C.conservador, label: `Conservador (${f.payback_meses_conservador >= 999 ? ">36m" : f.payback_meses_conservador + "m"})` },
-          ]} />
-          <ChartExplanation>
-            Caja acumulada desde el día 1 (negativa = inversión no recuperada).
-            La curva base cruza cero en el mes {f.payback_meses_base >= 999 ? "nunca (ajusta parámetros)" : f.payback_meses_base}.
-          </ChartExplanation>
-        </>
-      )}
-
-      {/* GRÁFICO: Caja real vs EBITDA acumulado */}
-      {activeChart === "ebitda" && (
-        <>
-          <div style={{
-            padding: "8px 12px", borderRadius: 8, marginBottom: 10,
-            background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.2)",
-            fontSize: 11, color: C.muted, lineHeight: 1.5,
-          }}>
-            <span style={{ color: C.indigo, fontWeight: 700 }}>EBITDA acumulado</span> = beneficio operativo generado (sin descontar inversión inicial).{" "}
-            <span style={{ color: C.base, fontWeight: 700 }}>Caja real</span> = EBITDA menos la inversión inicial. La diferencia es el capital todavía sin recuperar.
-          </div>
-          <div style={{ height: 180 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={cajaVsEbitdaData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gEbitdaAcum" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={C.indigo} stopOpacity={0.2} />
-                    <stop offset="95%" stopColor={C.indigo} stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gCajaReal" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={C.base} stopOpacity={0.15} />
-                    <stop offset="95%" stopColor={C.base} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="mes" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
-                <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" strokeDasharray="4 4" />
-                {f.payback_meses_base < 999 && (() => {
-                  const pbLabel = `M${f.payback_meses_base}`;
-                  const inData  = cajaVsEbitdaData.some(d => d.mes === pbLabel);
-                  if (!inData) return null;
-                  return (
-                    <ReferenceLine
-                      x={pbLabel} stroke={C.base} strokeDasharray="3 3"
-                      label={{ value: `Payback M${f.payback_meses_base}`, fill: C.base, fontSize: 10, position: "top" }}
-                    />
-                  );
-                })()}
-                <ReTooltip
-                  contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
-                  formatter={(v: number, name: string) => [`${fmt(v)} €`, name]}
-                />
-                <Area type="monotone" dataKey="EBITDA acum." stroke={C.indigo} fill="url(#gEbitdaAcum)" strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey="Caja real"    stroke={C.base}   fill="url(#gCajaReal)"   strokeWidth={2} dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-          {f.payback_meses_base < 999 && (
-            <div style={{
-              marginTop: 8, padding: "6px 10px", borderRadius: 6,
-              background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)",
-              fontSize: 11, color: C.yellow, fontWeight: 600, textAlign: "center",
-            }}>
-              La caja es negativa hasta el mes {f.payback_meses_base} — entonces recuperas toda la inversión
-            </div>
-          )}
-          <LegendRow items={[
-            { color: C.indigo, label: "EBITDA acumulado (beneficio operativo)" },
-            { color: C.base,   label: `Caja real (payback mes ${f.payback_meses_base >= 999 ? ">36" : f.payback_meses_base})` },
-          ]} />
-          <ChartExplanation>
-            La brecha vertical entre ambas curvas representa el capital invertido aún no recuperado.
-            Cuando la caja real cruza cero, has recuperado toda la inversión inicial.
-          </ChartExplanation>
-        </>
-      )}
-
-      {/* GRÁFICO: EBITDA mensual */}
-      {activeChart === "mensual" && (
-        <>
-          <div style={{ height: 180 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={mensualData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis
-                  dataKey="mes" tick={{ fill: C.subtle, fontSize: 10 }}
-                  axisLine={false} tickLine={false}
-                  tickFormatter={v => (v % 6 === 0 || v === 1) ? `M${v}` : ""}
-                />
-                <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
-                <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" />
-                <ReTooltip
-                  contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
-                  formatter={(v: number) => [`${fmt(v)} €`, "EBITDA base"]}
-                  labelFormatter={v => `Mes ${v}`}
-                />
-                <Bar dataKey="ebitda" name="EBITDA base" radius={[2, 2, 0, 0]}>
-                  {mensualData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.ebitda >= 0 ? C.green : C.red} fillOpacity={0.8} />
-                  ))}
-                </Bar>
-                <Line type="monotone" dataKey="ebitda_high" name="Variabilidad +" stroke="rgba(245,158,11,0.5)" strokeDasharray="3 2" dot={false} strokeWidth={1} />
-                <Line type="monotone" dataKey="ebitda_low"  name="Variabilidad −" stroke="rgba(245,158,11,0.5)" strokeDasharray="3 2" dot={false} strokeWidth={1} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-          <ChartExplanation>
-            EBITDA mensual escenario base — verde = beneficio, rojo = pérdida.
-            Las líneas discontinuas muestran la banda de variabilidad ±15%.
-            La rampa alcanza el máximo en el mes 12 (ocupación techo: 80%).
-          </ChartExplanation>
-        </>
-      )}
-
-      {/* GRÁFICO: Comparativa escenarios */}
-      {activeChart === "comparativa" && (
-        <>
-          <div style={{ height: 180 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={comparativaData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="periodo" tick={{ fill: C.subtle, fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}k`} width={34} />
-                <ReTooltip
-                  contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
-                  formatter={(v: number, name: string) => [`${fmt(v)}k €`, name]}
-                />
-                <Bar dataKey="Conservador" fill={C.conservador} radius={[3, 3, 0, 0]} maxBarSize={28} />
-                <Bar dataKey="Base"        fill={C.base}        radius={[3, 3, 0, 0]} maxBarSize={28} />
-                <Bar dataKey="Optimista"   fill={C.optimista}   radius={[3, 3, 0, 0]} maxBarSize={28} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <LegendRow items={[
-            { color: C.conservador, label: "Conservador" },
-            { color: C.base,        label: "Base" },
-            { color: C.optimista,   label: "Optimista" },
-          ]} />
-          <ChartExplanation>
-            Ingresos anuales por escenario (en miles €). El año 1 siempre es inferior por la curva de arranque.
-            A partir del año 2 el negocio opera a plena capacidad.
-          </ChartExplanation>
-        </>
-      )}
-
-      {/* GRÁFICO: Escenario estrés / Cash runway */}
-      {activeChart === "estres" && (
-        <>
-          <div style={{
-            padding: "8px 12px", borderRadius: 8, marginBottom: 10,
-            background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)",
-            fontSize: 11, color: C.muted, lineHeight: 1.5,
-          }}>
-            <span style={{ color: C.red, fontWeight: 700 }}>Escenario estrés:</span>{" "}
-            ingresos al 40% con <strong style={{ color: C.text }}>costes fijos intactos</strong>.
-            Si la caja estrés nunca sube a cero, necesitas reserva adicional para sobrevivir.
-          </div>
-          <div style={{ height: 180 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stressData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gStress" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={C.red}  stopOpacity={0.2} />
-                    <stop offset="95%" stopColor={C.red}  stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gBaseS" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={C.base} stopOpacity={0.15} />
-                    <stop offset="95%" stopColor={C.base} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="mes" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
-                <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" strokeDasharray="4 4" />
-                <ReTooltip
-                  contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
-                  formatter={(v: number, name: string) => [`${fmt(v)} €`, name]}
-                />
-                <Area type="monotone" dataKey="Base"   name="Base (×1.0)"    stroke={C.base} fill="url(#gBaseS)" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
-                <Area type="monotone" dataKey="Estrés" name="Estrés (×0.40)" stroke={C.red}  fill="url(#gStress)" strokeWidth={2}   dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-          <LegendRow items={[
-            { color: C.base, label: `Base (payback ${f.payback_meses_base >= 999 ? ">36m" : f.payback_meses_base + "m"})` },
-            { color: C.red,  label: `Estrés (payback ${(f.payback_meses_stress ?? 999) >= 999 ? ">36m" : f.payback_meses_stress + "m"})` },
-          ]} />
-          <ChartExplanation>
-            Si la curva de estrés nunca cruza cero, el negocio necesita reserva de tesorería adicional.
-            Compara con tu capital disponible para evaluar el riesgo real de quedarte sin caja.
-          </ChartExplanation>
-        </>
-      )}
-
-      {/* GRÁFICO: Distribución de costes */}
-      {activeChart === "costes" && ec && (
-        <>
-          <div style={{ height: 180 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={costesDistData} layout="vertical" margin={{ top: 4, right: 50, left: 8, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
-                <XAxis type="number" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} />
-                <YAxis type="category" dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} width={64} />
-                <ReTooltip
-                  contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
-                  formatter={(v: number) => [`${fmt(v)} €/mes`, ""]}
-                />
-                <Bar dataKey="value" name="Coste" radius={[0, 4, 4, 0]}>
-                  {costesDistData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <ChartExplanation>
-            Distribución de costes operativos mensuales en régimen estable.{" "}
-            {ec.personal > ec.alquiler
-              ? `El personal (${fmt(ec.personal)} €) supera al alquiler (${fmt(ec.alquiler)} €) — palanca clave: empleados y turnos.`
-              : `El alquiler (${fmt(ec.alquiler)} €) es el mayor coste — negocia bien el contrato.`}
-          </ChartExplanation>
-        </>
-      )}
-
-      {/* GRÁFICO: Capacidad vs demanda */}
-      {activeChart === "capacidad" && eb && (
-        <>
-          <div style={{ height: 180 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={capacidadData} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} width={34}
-                  label={{ value: "clientes/día", angle: -90, position: "insideLeft", fill: C.subtle, fontSize: 10, offset: 10 }} />
-                <ReTooltip
-                  contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
-                  formatter={(v: number) => [`${Math.round(v)} clientes/día`, ""]}
-                />
-                <Bar dataKey="value" name="Clientes/día" radius={[4, 4, 0, 0]} maxBarSize={60}>
-                  {capacidadData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <ChartExplanation>
-            Demanda estimada: <strong>{Math.round(eb.clientes_dia)} clientes/día</strong> en régimen estable.{" "}
-            Capacidad máxima: <strong>{maxCap} clientes/día</strong>.{" "}
-            Utilizas el <strong>{Math.round(ocupacionEfectiva * 100)}%</strong> de tu capacidad —{" "}
-            {ocupacionEfectiva > 0.85
-              ? "estás muy cerca del límite, considera ampliar."
-              : ocupacionEfectiva > 0.65
-                ? "hay margen para crecer sin añadir recursos."
-                : "tienes capacidad ociosa significativa."}
-          </ChartExplanation>
-        </>
-      )}
-    </section>
-  );
-}
-
+// ─── Leyenda de gráficos ──────────────────────────────────────────────────────
 function LegendRow({ items }: { items: { color: string; label: string }[] }) {
   return (
     <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 8, flexWrap: "wrap" }}>
@@ -1448,6 +1105,363 @@ function LegendRow({ items }: { items: { color: string; label: string }[] }) {
         </span>
       ))}
     </div>
+  );
+}
+
+const CHART_BG = "rgba(26,18,48,0.38)";
+
+// ─── CHART: EBITDA mensual — 36 meses ────────────────────────────────────────
+function ChartEbitdaMensual({ f }: { f: FinancieroResponse }) {
+  if (!f.proyeccion?.length) return null;
+  const costeMercPct = ((f.parametros as Record<string, unknown>).coste_mercancia_pct as { valor_usado?: number })?.valor_usado ?? 0.40;
+  const margenUnit   = 1 - costeMercPct;
+  const mensualData  = f.proyeccion.map(m => {
+    const cfMes = m.costes_fijos ?? 0;
+    const low   = m.ingresos_base_low  != null ? Math.round(m.ingresos_base_low  * margenUnit) - cfMes : null;
+    const high  = m.ingresos_base_high != null ? Math.round(m.ingresos_base_high * margenUnit) - cfMes : null;
+    return { mes: m.mes, ebitda: m.ebitda_base, ebitda_low: low, ebitda_high: high };
+  });
+  return (
+    <section className={styles.section} style={{ background: CHART_BG }}>
+      <SectionTitle title="EBITDA mensual — 36 meses" accent={C.green} info="ebitdaMensual" />
+      <div style={{ height: 180 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={mensualData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+            <XAxis dataKey="mes" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false}
+              tickFormatter={v => (v % 6 === 0 || v === 1) ? `M${v}` : ""} />
+            <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
+            <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" />
+            <ReTooltip contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+              formatter={(v: number) => [`${fmt(v)} €`, "EBITDA base"]} labelFormatter={v => `Mes ${v}`} />
+            <Bar dataKey="ebitda" name="EBITDA base" radius={[2, 2, 0, 0]}>
+              {mensualData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.ebitda >= 0 ? C.green : C.red} fillOpacity={0.8} />
+              ))}
+            </Bar>
+            <Line type="monotone" dataKey="ebitda_high" name="Variabilidad +" stroke="rgba(245,158,11,0.5)" strokeDasharray="3 2" dot={false} strokeWidth={1} />
+            <Line type="monotone" dataKey="ebitda_low"  name="Variabilidad −" stroke="rgba(245,158,11,0.5)" strokeDasharray="3 2" dot={false} strokeWidth={1} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+      <ChartExplanation>
+        EBITDA mensual escenario base — verde = beneficio, rojo = pérdida.
+        Las líneas discontinuas muestran la banda de variabilidad ±15%.
+        La rampa alcanza el máximo en el mes 12 (ocupación techo: 80%).
+      </ChartExplanation>
+    </section>
+  );
+}
+
+// ─── CHART: Caja acumulada — 3 escenarios ────────────────────────────────────
+function ChartCajaAcumulada({ f }: { f: FinancieroResponse }) {
+  if (!f.proyeccion?.length) return null;
+  const cajaData = f.proyeccion
+    .filter((_, i) => i % 3 === 2 || i === 0)
+    .map(m => ({
+      mes: `M${m.mes}`,
+      Conservador: m.acumulado_conservador,
+      Base:        m.acumulado_base,
+      Optimista:   m.acumulado_optimista,
+    }));
+  return (
+    <section className={styles.section} style={{ background: CHART_BG }}>
+      <SectionTitle title="Caja acumulada — 3 escenarios" accent={C.conservador} info="cajaAcumulada" />
+      <div style={{ height: 180 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={cajaData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <defs>
+              {([["gOptC", C.optimista], ["gBaseC", C.base], ["gConsC", C.conservador]] as const).map(([id, color]) => (
+                <linearGradient key={id} id={id} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor={color} stopOpacity={0.2} />
+                  <stop offset="95%" stopColor={color} stopOpacity={0} />
+                </linearGradient>
+              ))}
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+            <XAxis dataKey="mes" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
+            <ReferenceLine y={0} stroke="rgba(255,255,255,0.12)" strokeDasharray="4 4" />
+            <ReTooltip contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+              formatter={(v: number, name: string) => [`${fmt(v)} €`, name]} />
+            <Area type="monotone" dataKey="Optimista"   stroke={C.optimista}   fill="url(#gOptC)"  strokeWidth={2} dot={false} />
+            <Area type="monotone" dataKey="Base"        stroke={C.base}        fill="url(#gBaseC)" strokeWidth={2} dot={false} />
+            <Area type="monotone" dataKey="Conservador" stroke={C.conservador} fill="url(#gConsC)" strokeWidth={2} dot={false} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      <LegendRow items={[
+        { color: C.optimista,   label: `Optimista (${f.payback_meses_optimista >= 999 ? ">36m" : f.payback_meses_optimista + "m"})` },
+        { color: C.base,        label: `Base (${f.payback_meses_base >= 999 ? ">36m" : f.payback_meses_base + "m"})` },
+        { color: C.conservador, label: `Conservador (${f.payback_meses_conservador >= 999 ? ">36m" : f.payback_meses_conservador + "m"})` },
+      ]} />
+      <ChartExplanation>
+        Caja acumulada desde el día 1 (negativa = inversión no recuperada).
+        La curva base cruza cero en el mes {f.payback_meses_base >= 999 ? "nunca (ajusta parámetros)" : f.payback_meses_base}.
+      </ChartExplanation>
+    </section>
+  );
+}
+
+// ─── CHART: Caja real vs EBITDA acumulado ────────────────────────────────────
+function ChartCajaVsEbitda({ f }: { f: FinancieroResponse }) {
+  if (!f.proyeccion?.length) return null;
+  let cumEbitda = 0;
+  const cajaVsEbitdaData = f.proyeccion.map(m => {
+    cumEbitda += m.ebitda_base;
+    return { mes: m.mes, ebitdaCum: Math.round(cumEbitda), cajaReal: m.acumulado_base };
+  }).filter((_, i) => i % 3 === 2 || i === 0)
+    .map(m => ({ mes: `M${m.mes}`, "EBITDA acum.": m.ebitdaCum, "Caja real": m.cajaReal }));
+  return (
+    <section className={styles.section} style={{ background: CHART_BG }}>
+      <SectionTitle title="Caja real vs EBITDA acumulado" accent={C.indigo} info="cajaVsEbitda" />
+      <div style={{
+        padding: "8px 12px", borderRadius: 8, marginBottom: 10,
+        background: "rgba(124,58,237,0.06)", border: "1px solid rgba(124,58,237,0.2)",
+        fontSize: 11, color: C.muted, lineHeight: 1.5,
+      }}>
+        <span style={{ color: C.indigo, fontWeight: 700 }}>EBITDA acumulado</span> = beneficio operativo generado (sin descontar inversión inicial).{" "}
+        <span style={{ color: C.base, fontWeight: 700 }}>Caja real</span> = EBITDA menos la inversión inicial. La diferencia es el capital todavía sin recuperar.
+      </div>
+      <div style={{ height: 180 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={cajaVsEbitdaData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="gEbitdaAcum" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor={C.indigo} stopOpacity={0.2} />
+                <stop offset="95%" stopColor={C.indigo} stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="gCajaReal" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor={C.base} stopOpacity={0.15} />
+                <stop offset="95%" stopColor={C.base} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+            <XAxis dataKey="mes" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
+            <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" strokeDasharray="4 4" />
+            {f.payback_meses_base < 999 && (() => {
+              const pbLabel = `M${f.payback_meses_base}`;
+              const inData  = cajaVsEbitdaData.some(d => d.mes === pbLabel);
+              if (!inData) return null;
+              return (
+                <ReferenceLine x={pbLabel} stroke={C.base} strokeDasharray="3 3"
+                  label={{ value: `Payback M${f.payback_meses_base}`, fill: C.base, fontSize: 10, position: "top" }} />
+              );
+            })()}
+            <ReTooltip contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+              formatter={(v: number, name: string) => [`${fmt(v)} €`, name]} />
+            <Area type="monotone" dataKey="EBITDA acum." stroke={C.indigo} fill="url(#gEbitdaAcum)" strokeWidth={2} dot={false} />
+            <Area type="monotone" dataKey="Caja real"    stroke={C.base}   fill="url(#gCajaReal)"   strokeWidth={2} dot={false} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      {f.payback_meses_base < 999 && (
+        <div style={{
+          marginTop: 8, padding: "6px 10px", borderRadius: 6,
+          background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)",
+          fontSize: 11, color: C.yellow, fontWeight: 600, textAlign: "center",
+        }}>
+          La caja es negativa hasta el mes {f.payback_meses_base} — entonces recuperas toda la inversión
+        </div>
+      )}
+      <LegendRow items={[
+        { color: C.indigo, label: "EBITDA acumulado (beneficio operativo)" },
+        { color: C.base,   label: `Caja real (payback mes ${f.payback_meses_base >= 999 ? ">36" : f.payback_meses_base})` },
+      ]} />
+      <ChartExplanation>
+        La brecha vertical entre ambas curvas representa el capital invertido aún no recuperado.
+        Cuando la caja real cruza cero, has recuperado toda la inversión inicial.
+      </ChartExplanation>
+    </section>
+  );
+}
+
+// ─── CHART: Comparativa escenarios — 3 años ──────────────────────────────────
+function ChartComparativa({ f }: { f: FinancieroResponse }) {
+  if (!f.proyeccion?.length) return null;
+  const p = f.proyeccion;
+  const comparativaData = [
+    { periodo: "Año 1",
+      Conservador: Math.round(p.slice(0, 12).reduce((s, m) => s + m.ingresos_conservador, 0) / 1000),
+      Base:        Math.round(p.slice(0, 12).reduce((s, m) => s + m.ingresos_base, 0) / 1000),
+      Optimista:   Math.round(p.slice(0, 12).reduce((s, m) => s + m.ingresos_optimista, 0) / 1000) },
+    { periodo: "Año 2",
+      Conservador: Math.round(p.slice(12, 24).reduce((s, m) => s + m.ingresos_conservador, 0) / 1000),
+      Base:        Math.round(p.slice(12, 24).reduce((s, m) => s + m.ingresos_base, 0) / 1000),
+      Optimista:   Math.round(p.slice(12, 24).reduce((s, m) => s + m.ingresos_optimista, 0) / 1000) },
+    { periodo: "Año 3",
+      Conservador: Math.round(p.slice(24, 36).reduce((s, m) => s + m.ingresos_conservador, 0) / 1000),
+      Base:        Math.round(p.slice(24, 36).reduce((s, m) => s + m.ingresos_base, 0) / 1000),
+      Optimista:   Math.round(p.slice(24, 36).reduce((s, m) => s + m.ingresos_optimista, 0) / 1000) },
+  ];
+  return (
+    <section className={styles.section} style={{ background: CHART_BG }}>
+      <SectionTitle title="Comparativa escenarios — 3 años" accent={C.yellow} info="comparativa" />
+      <div style={{ height: 180 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={comparativaData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+            <XAxis dataKey="periodo" tick={{ fill: C.subtle, fontSize: 11 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}k`} width={34} />
+            <ReTooltip contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+              formatter={(v: number, name: string) => [`${fmt(v)}k €`, name]} />
+            <Bar dataKey="Conservador" fill={C.conservador} radius={[3, 3, 0, 0]} maxBarSize={28} />
+            <Bar dataKey="Base"        fill={C.base}        radius={[3, 3, 0, 0]} maxBarSize={28} />
+            <Bar dataKey="Optimista"   fill={C.optimista}   radius={[3, 3, 0, 0]} maxBarSize={28} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <LegendRow items={[
+        { color: C.conservador, label: "Conservador" },
+        { color: C.base,        label: "Base" },
+        { color: C.optimista,   label: "Optimista" },
+      ]} />
+      <ChartExplanation>
+        Ingresos anuales por escenario (en miles €). El año 1 siempre es inferior por la curva de arranque.
+        A partir del año 2 el negocio opera a plena capacidad.
+      </ChartExplanation>
+    </section>
+  );
+}
+
+// ─── CHART: Escenario estrés — cash runway ────────────────────────────────────
+function ChartEstres({ f }: { f: FinancieroResponse }) {
+  if (!f.proyeccion?.length) return null;
+  const stressData = f.proyeccion
+    .filter((_, i) => i % 3 === 2 || i === 0)
+    .map(m => ({ mes: `M${m.mes}`, Base: m.acumulado_base, Estrés: m.acumulado_stress ?? 0 }));
+  return (
+    <section className={styles.section} style={{ background: CHART_BG }}>
+      <SectionTitle title="Escenario estrés — cash runway" accent={C.red} info="estres" />
+      <div style={{
+        padding: "8px 12px", borderRadius: 8, marginBottom: 10,
+        background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)",
+        fontSize: 11, color: C.muted, lineHeight: 1.5,
+      }}>
+        <span style={{ color: C.red, fontWeight: 700 }}>Escenario estrés:</span>{" "}
+        ingresos al 40% con <strong style={{ color: C.text }}>costes fijos intactos</strong>.
+        Si la caja estrés nunca sube a cero, necesitas reserva adicional para sobrevivir.
+      </div>
+      <div style={{ height: 180 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={stressData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="gStress" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor={C.red}  stopOpacity={0.2} />
+                <stop offset="95%" stopColor={C.red}  stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="gBaseS" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor={C.base} stopOpacity={0.15} />
+                <stop offset="95%" stopColor={C.base} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+            <XAxis dataKey="mes" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
+            <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" strokeDasharray="4 4" />
+            <ReTooltip contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+              formatter={(v: number, name: string) => [`${fmt(v)} €`, name]} />
+            <Area type="monotone" dataKey="Base"   name="Base (×1.0)"    stroke={C.base} fill="url(#gBaseS)" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
+            <Area type="monotone" dataKey="Estrés" name="Estrés (×0.40)" stroke={C.red}  fill="url(#gStress)" strokeWidth={2}  dot={false} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      <LegendRow items={[
+        { color: C.base, label: `Base (payback ${f.payback_meses_base >= 999 ? ">36m" : f.payback_meses_base + "m"})` },
+        { color: C.red,  label: `Estrés (payback ${(f.payback_meses_stress ?? 999) >= 999 ? ">36m" : f.payback_meses_stress + "m"})` },
+      ]} />
+      <ChartExplanation>
+        Si la curva de estrés nunca cruza cero, el negocio necesita reserva de tesorería adicional.
+        Compara con tu capital disponible para evaluar el riesgo real de quedarte sin caja.
+      </ChartExplanation>
+    </section>
+  );
+}
+
+// ─── CHART: Distribución de costes mensuales ─────────────────────────────────
+function ChartCostesDistribucion({ f }: { f: FinancieroResponse }) {
+  const ec = f.estructura_costes;
+  if (!ec) return null;
+  const costesDistData = [
+    { name: "Personal",  value: ec.personal, fill: C.personal },
+    { name: "Alquiler",  value: ec.alquiler, fill: C.alquiler },
+    { name: "Variable",  value: ec.variable, fill: C.variable },
+    { name: "Otros",     value: ec.otros,    fill: C.otros    },
+  ].sort((a, b) => b.value - a.value);
+  return (
+    <section className={styles.section} style={{ background: CHART_BG }}>
+      <SectionTitle title="Distribución de costes mensuales" accent={C.yellow} info="costes" />
+      <div style={{ height: 180 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={costesDistData} layout="vertical" margin={{ top: 4, right: 50, left: 8, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
+            <XAxis type="number" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} />
+            <YAxis type="category" dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} width={64} />
+            <ReTooltip contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+              formatter={(v: number) => [`${fmt(v)} €/mes`, ""]} />
+            <Bar dataKey="value" name="Coste" radius={[0, 4, 4, 0]}>
+              {costesDistData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.fill} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <ChartExplanation>
+        Distribución de costes operativos mensuales en régimen estable.{" "}
+        {ec.personal > ec.alquiler
+          ? `El personal (${fmt(ec.personal)} €) supera al alquiler (${fmt(ec.alquiler)} €) — palanca clave: empleados y turnos.`
+          : `El alquiler (${fmt(ec.alquiler)} €) es el mayor coste — negocia bien el contrato.`}
+      </ChartExplanation>
+    </section>
+  );
+}
+
+// ─── CHART: Capacidad vs demanda ─────────────────────────────────────────────
+function ChartCapacidad({ f }: { f: FinancieroResponse }) {
+  const eb = f.economia_base;
+  if (!eb) return null;
+  const ocupacionEfectiva = eb.ocupacion_efectiva
+    ?? (f as unknown as { ocupacion_efectiva?: number }).ocupacion_efectiva
+    ?? 0.8;
+  const maxCap = f.capacity_model?.max_clients_day
+    ?? Math.round(eb.clientes_dia / Math.max(0.1, ocupacionEfectiva));
+  const capacidadData = [
+    { name: "Demanda estimada", value: Math.round(eb.clientes_dia), fill: C.green  },
+    { name: "Capacidad máxima", value: maxCap,                      fill: C.indigo },
+  ];
+  return (
+    <section className={styles.section} style={{ background: CHART_BG }}>
+      <SectionTitle title="Capacidad vs demanda" accent={C.indigo} info="capacidad" />
+      <div style={{ height: 180 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={capacidadData} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+            <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} width={34}
+              label={{ value: "clientes/día", angle: -90, position: "insideLeft", fill: C.subtle, fontSize: 10, offset: 10 }} />
+            <ReTooltip contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+              formatter={(v: number) => [`${Math.round(v)} clientes/día`, ""]} />
+            <Bar dataKey="value" name="Clientes/día" radius={[4, 4, 0, 0]} maxBarSize={60}>
+              {capacidadData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.fill} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <ChartExplanation>
+        Demanda estimada: <strong>{Math.round(eb.clientes_dia)} clientes/día</strong> en régimen estable.{" "}
+        Capacidad máxima: <strong>{maxCap} clientes/día</strong>.{" "}
+        Utilizas el <strong>{Math.round(ocupacionEfectiva * 100)}%</strong> de tu capacidad —{" "}
+        {ocupacionEfectiva > 0.85
+          ? "estás muy cerca del límite, considera ampliar."
+          : ocupacionEfectiva > 0.65
+            ? "hay margen para crecer sin añadir recursos."
+            : "tienes capacidad ociosa significativa."}
+      </ChartExplanation>
+    </section>
   );
 }
 
@@ -1868,28 +1882,46 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
       {/* ── BLOQUE 3: Estructura de costes ── */}
       {f.estructura_costes && <BloqueCostes ec={f.estructura_costes} />}
 
+      {/* ── CHART: EBITDA mensual ── */}
+      <ChartEbitdaMensual f={f} />
+
       {/* ── BLOQUE 4: Break-even ── */}
       {f.break_even && <BloqueBreakEven be={f.break_even} alquilerPct={f.alquiler_sobre_ventas_pct} />}
+
+      {/* ── CHART: Caja acumulada ── */}
+      <ChartCajaAcumulada f={f} />
 
       {/* ── Métricas operativas avanzadas ── */}
       <BloqueMetricasAvanzadas f={f} />
 
-      {/* ── BLOQUE 5: Escenarios ── */}
-      <BloqueEscenarios f={f} />
+      {/* ── CHART: Caja vs EBITDA ── */}
+      <ChartCajaVsEbitda f={f} />
 
       {/* ── Sensibilidad ── */}
       {f.sensibilidad && f.sensibilidad.length > 0 && (
         <BloqueSensibilidad items={f.sensibilidad} />
       )}
 
+      {/* ── CHART: Comparativa anual ── */}
+      <ChartComparativa f={f} />
+
       {/* ── BLOQUE 6: Métricas clave ── */}
       {f.metricas_clave && <BloqueMetricas m={f.metricas_clave} />}
+
+      {/* ── CHART: Distribución costes ── */}
+      <ChartCostesDistribucion f={f} />
 
       {/* ── BLOQUE 7: Riesgos ── */}
       <BloqueRiesgos riesgos={f.riesgos ?? []} />
 
+      {/* ── CHART: Estrés ── */}
+      <ChartEstres f={f} />
+
       {/* ── BLOQUE 8: Insights ── */}
       <BloqueInsights insights={f.insights ?? []} />
+
+      {/* ── CHART: Capacidad vs demanda ── */}
+      <ChartCapacidad f={f} />
 
       {/* ── Desglose inversión inicial ── */}
       {f.desglose_inversion && (
