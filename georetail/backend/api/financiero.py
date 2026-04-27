@@ -30,6 +30,7 @@ from schemas.models import (
     SensitividadItem,
 )
 from agente.validador_financiero import validar_financiero
+from financiero.validador_pipeline import run_pipeline, BusinessInput as PipelineInput
 from financiero.estimador import estimar_parametros, ParametrosEstimados, PE
 from financiero.calculadora import calcular_proyeccion, MAX_OCCUPANCY
 from db.sesiones import get_sesion
@@ -221,6 +222,35 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
     }
     flujo_peatonal      = float(perfil.get("flujo_peatonal_dia", v["clients_per_day"] * 12))
 
+    # ── Pipeline determinista: clasificación + validaciones físicas ───────────
+    _sal_base = benchmarks.get("salario_base_mensual_convenio", 1400.0)
+    _dur       = (benchmarks.get("duracion_servicio_min")
+                  if business_model_type == "appointment_based" else None)
+    _pipeline_result = run_pipeline(PipelineInput(
+        sector=sector,
+        m2_local=float(perfil.get("m2_aprox", 60.0)),
+        empleados=v["num_empleados"],
+        horas_apertura=float(benchmarks.get("horas_apertura_dia", 9.0)),
+        clientes_dia=v["clients_per_day"],
+        ticket_medio=v["ticket_medio"],
+        cogs_pct=v["coste_mercancia_pct"],
+        salario_base_mensual=float(_sal_base),
+        duracion_servicio=float(_dur) if _dur else None,
+    ))
+    # Aplicar el ajuste de clientes del pipeline (sólo si es más restrictivo)
+    if _pipeline_result.constraints["adjusted_clients"] < v["clients_per_day"]:
+        v["clients_per_day"] = _pipeline_result.constraints["adjusted_clients"]
+    # Convertir correcciones al formato de CorreccionAplicada
+    _pipeline_corrections: list[dict] = [
+        {
+            "parametro":       c["field"],
+            "valor_original":  float(c["original"]),
+            "valor_corregido": float(c["corrected"]),
+            "motivo":          c["reason"],
+        }
+        for c in _pipeline_result.corrections
+    ]
+
     # ── Correcciones hard (CRÍTICO — antes de la calculadora) ─────────────────
     correcciones_raw = _aplicar_correcciones_demanda(
         v=v,
@@ -229,6 +259,7 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         capacidad_operativa=capacidad_operativa,
         sector=sector,
     )
+    correcciones_raw = _pipeline_corrections + correcciones_raw
 
     # ── Modelo de capacidad ───────────────────────────────────────────────────
     capacity_model = _build_capacity_model(
@@ -431,7 +462,9 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         correcciones_aplicadas=[CorreccionAplicada(**c) for c in correcciones_raw],
         capacity_model=capacity_model,
         tipo_negocio=tipo_negocio,
-        validation_flags=resultado.get("validation_flags", []),
+        validation_flags=list(dict.fromkeys(
+            _pipeline_result.flags + resultado.get("validation_flags", [])
+        )),
         ocupacion_efectiva=resultado.get("ocupacion_efectiva", 0.0),
         max_staff_capacity=round(float(resultado.get("max_staff_capacity", 0.0)), 1),
         validacion_financiera=validacion_financiera,
