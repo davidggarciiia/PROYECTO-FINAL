@@ -30,25 +30,25 @@ interface Props {
 
 // ─── Colores constantes ───────────────────────────────────────────────────────
 const C = {
-  conservador: "#7C3AED",
+  conservador: "#6366F1",
   base:        "#F59E0B",
   optimista:   "#10B981",
   alquiler:    "#EF4444",
   personal:    "#F59E0B",
-  variable:    "#8B5CF6",
-  otros:       "#6B7280",
+  variable:    "#94A3B8",
+  otros:       "#64748B",
   beneficio:   "#10B981",
   perdida:     "#EF4444",
   green:       "#10B981",
   yellow:      "#F59E0B",
   red:         "#EF4444",
-  indigo:      "#7C3AED",
-  text:        "#F3EEFF",
-  muted:       "#A78BC8",
-  subtle:      "#6B5A8A",
-  border:      "rgba(255,255,255,0.07)",
-  surface:     "rgba(124,58,237,0.04)",
-  surface2:    "rgba(124,58,237,0.08)",
+  indigo:      "#6366F1",
+  text:        "#E2E8F0",
+  muted:       "#94A3B8",
+  subtle:      "#64748B",
+  border:      "rgba(255,255,255,0.06)",
+  surface:     "rgba(255,255,255,0.025)",
+  surface2:    "rgba(255,255,255,0.04)",
 };
 
 const fmt  = (n: number) => Math.round(n).toLocaleString("es-ES");
@@ -71,8 +71,8 @@ function TooltipBase({ active, payload, label }: TooltipBaseProps) {
   if (!active || !payload?.length) return null;
   return (
     <div style={{
-      background: "#0D1220", border: `1px solid ${C.border}`,
-      borderRadius: 8, padding: "8px 12px", fontSize: 12,
+      background: "#111827", border: `1px solid ${C.border}`,
+      borderRadius: 6, padding: "8px 12px", fontSize: 12,
     }}>
       {label != null && <div style={{ color: C.muted, marginBottom: 4 }}>{label}</div>}
       {payload.map((p) => (
@@ -104,10 +104,10 @@ function InfoTooltip({ text }: { text: string }) {
         <span style={{
           position: "absolute", bottom: "calc(100% + 6px)", left: "50%",
           transform: "translateX(-50%)", zIndex: 200,
-          background: "#0D1220", border: `1px solid ${C.border}`,
-          borderRadius: 8, padding: "8px 10px", width: 200,
+          background: "#111827", border: `1px solid ${C.border}`,
+          borderRadius: 6, padding: "8px 10px", width: 200,
           fontSize: 11, color: C.muted, lineHeight: 1.55,
-          boxShadow: "0 4px 20px rgba(0,0,0,0.7)",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
           pointerEvents: "none", whiteSpace: "normal",
           display: "block",
         }}>{text}</span>
@@ -148,11 +148,11 @@ function ChartInfoButton({ infoKey }: { infoKey: keyof typeof CHART_INFOS }) {
         aria-label="Información del gráfico"
         style={{
           all: "unset", cursor: "pointer",
-          width: 18, height: 18, borderRadius: "50%",
-          background: open ? "rgba(124,58,237,0.22)" : "rgba(255,255,255,0.05)",
-          border: `1px solid ${open ? "rgba(124,58,237,0.55)" : "rgba(255,255,255,0.1)"}`,
-          color: open ? "#7C3AED" : C.subtle,
-          fontSize: 10, fontWeight: 700, letterSpacing: 0,
+          width: 16, height: 16, borderRadius: "50%",
+          background: open ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
+          border: `1px solid ${open ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.07)"}`,
+          color: open ? C.muted : C.subtle,
+          fontSize: 9, fontWeight: 700, letterSpacing: 0,
           display: "flex", alignItems: "center", justifyContent: "center",
           transition: "all 0.15s", flexShrink: 0,
         }}
@@ -161,11 +161,11 @@ function ChartInfoButton({ infoKey }: { infoKey: keyof typeof CHART_INFOS }) {
         <div style={{
           position: "absolute", top: "calc(100% + 8px)", right: 0,
           zIndex: 200, width: 280,
-          background: "#1A1230",
-          border: "1px solid rgba(124,58,237,0.28)",
-          borderRadius: 10, padding: "12px 14px",
+          background: "#111827",
+          border: `1px solid ${C.border}`,
+          borderRadius: 8, padding: "12px 14px",
           fontSize: 12, color: C.muted, lineHeight: 1.65,
-          boxShadow: "0 8px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(124,58,237,0.1)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
         }}>
           {CHART_INFOS[infoKey]}
         </div>
@@ -184,9 +184,8 @@ function SectionTitle({ title, badge, accent, info }: {
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
         {accent && (
           <span style={{
-            width: 3, height: 14, borderRadius: 2,
-            background: accent, flexShrink: 0,
-            boxShadow: `0 0 6px ${accent}66`,
+            width: 2, height: 12, borderRadius: 1,
+            background: accent, flexShrink: 0, opacity: 0.8,
           }} />
         )}
         <h3 style={{
@@ -210,29 +209,26 @@ function ChartExplanation({ children }: { children: React.ReactNode }) {
 }
 
 function StatCard({
-  label, value, sub, color, icon, tooltip,
+  label, value, sub, color, tooltip,
 }: { label: string; value: string; sub?: string; color?: string; icon?: string; tooltip?: string }) {
   return (
     <div style={{
-      background: C.surface, border: `1px solid ${C.border}`,
-      borderRadius: 10, padding: "12px 14px",
-      display: "flex", flexDirection: "column", gap: 4,
+      padding: "14px 0",
+      borderBottom: `1px solid ${C.border}`,
+      display: "flex", flexDirection: "column", gap: 3,
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {icon && <span style={{ fontSize: 14 }}>{icon}</span>}
-        <span style={{
-          fontSize: 18, fontWeight: 800, color: color ?? C.text,
-          fontVariantNumeric: "tabular-nums", lineHeight: 1,
-        }}>{value}</span>
-      </div>
-      <span style={{
+      <div style={{
+        fontSize: 22, fontWeight: 800, color: color ?? C.text,
+        fontVariantNumeric: "tabular-nums", lineHeight: 1, letterSpacing: "-0.02em",
+      }}>{value}</div>
+      <div style={{
         fontSize: 10, color: C.muted, textTransform: "uppercase",
-        letterSpacing: "0.05em", display: "flex", alignItems: "center",
+        letterSpacing: "0.06em", display: "flex", alignItems: "center",
       }}>
         {label}
         {tooltip && <InfoTooltip text={tooltip} />}
-      </span>
-      {sub && <span style={{ fontSize: 10, color: C.subtle }}>{sub}</span>}
+      </div>
+      {sub && <div style={{ fontSize: 10, color: C.subtle, marginTop: 1 }}>{sub}</div>}
     </div>
   );
 }
@@ -283,45 +279,44 @@ const DECISION_CONFIG = {
 };
 
 function BloqueDecision({ d, viabilityScore }: { d: DecisionBlock; viabilityScore?: number }) {
-  const cfg   = DECISION_CONFIG[d.recomendacion];
-  const score = viabilityScore ?? null;
+  const cfg        = DECISION_CONFIG[d.recomendacion];
+  const score      = viabilityScore ?? null;
   const scoreColor = score == null ? C.muted : score >= 70 ? C.green : score >= 45 ? C.yellow : C.red;
   return (
     <section className={styles.section}>
-      <SectionTitle
-        title="Decisión rápida"
-        badge={score != null ? (
-          <span style={{
-            fontSize: 11, fontWeight: 700, color: scoreColor,
-            background: `${scoreColor}18`, border: `1px solid ${scoreColor}40`,
-            borderRadius: 100, padding: "2px 10px",
-            display: "flex", alignItems: "center", gap: 5,
-          }}>
-            Viabilidad: <span style={{ fontSize: 14 }}>{score}</span> / 100
-          </span>
-        ) : undefined}
-      />
       <div style={{
-        background: cfg.bg, border: `1px solid ${cfg.border}`,
-        borderRadius: 12, padding: "14px 16px", marginBottom: 14,
-        display: "flex", alignItems: "center", gap: 14,
+        display: "flex", alignItems: "baseline", justifyContent: "space-between",
+        marginBottom: 16,
       }}>
-        <div style={{
-          width: 44, height: 44, borderRadius: 10, flexShrink: 0,
-          background: `${cfg.color}22`, border: `2px solid ${cfg.color}55`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 22, fontWeight: 900, color: cfg.color,
-        }}>{cfg.emoji}</div>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: cfg.color, letterSpacing: "0.04em" }}>
-            {cfg.label}
-          </div>
-          <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-            ROI ≥ 40% · Payback ≤ 18m · Alquiler ≤ 10% (ingresos conservadores)
-          </div>
-        </div>
+        <h3 style={{
+          fontSize: 10, fontWeight: 700, textTransform: "uppercase",
+          letterSpacing: "0.08em", color: C.muted, margin: 0,
+        }}>Decisión</h3>
+        {score != null && (
+          <span style={{ fontSize: 11, color: C.muted, fontVariantNumeric: "tabular-nums" }}>
+            Viabilidad{" "}
+            <strong style={{ color: scoreColor, fontWeight: 800, fontSize: 13 }}>{score}</strong>
+            <span style={{ color: C.subtle }}> / 100</span>
+          </span>
+        )}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10,
+        paddingBottom: 16, marginBottom: 14,
+        borderBottom: `1px solid ${C.border}`,
+      }}>
+        <span style={{
+          width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+          background: cfg.color,
+        }} />
+        <span style={{ fontSize: 16, fontWeight: 700, color: cfg.color, letterSpacing: "0.02em" }}>
+          {cfg.label}
+        </span>
+        <span style={{ fontSize: 10, color: C.subtle, marginLeft: 2 }}>
+          ROI ≥ 40% · Payback ≤ 18m · Alquiler ≤ 15%
+        </span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
         <StatCard
           label="Beneficio mensual"
           value={`${d.beneficio_mensual >= 0 ? "+" : ""}${fmt(d.beneficio_mensual)} €`}
@@ -364,11 +359,11 @@ function BloqueValidationFlags({ flags }: { flags: string[] }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {flags.map((flag, i) => (
           <div key={i} style={{
-            display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px",
-            borderRadius: 8, fontSize: 11, lineHeight: 1.55,
-            background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)",
+            display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 0",
+            fontSize: 11, lineHeight: 1.55,
+            borderBottom: `1px solid ${C.border}`,
           }}>
-            <span style={{ color: C.yellow, flexShrink: 0, marginTop: 1 }}>!</span>
+            <span style={{ color: C.yellow, flexShrink: 0, marginTop: 1, opacity: 0.8 }}>·</span>
             <span style={{ color: C.muted }}>{flag}</span>
           </div>
         ))}
@@ -394,20 +389,16 @@ function BloqueCorrecciones({ correcciones }: { correcciones: CorreccionAplicada
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {correcciones.map((c, i) => (
           <div key={i} style={{
-            background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.25)",
-            borderRadius: 10, padding: "10px 12px",
+            padding: "10px 0",
+            borderBottom: `1px solid ${C.border}`,
           }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.yellow, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-              Corrección: {c.parametro.replace(/_/g, " ")}
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              {c.parametro.replace(/_/g, " ")}
             </div>
-            <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.55 }}>{c.motivo}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-              <span style={{ fontSize: 10, color: C.subtle }}>
-                Estimado: <strong style={{ color: C.text }}>{Math.round(c.valor_original)}</strong>
-              </span>
-              <span style={{ fontSize: 10, color: C.subtle }}>→</span>
-              <span style={{ fontSize: 10, color: C.subtle }}>
-                Corregido: <strong style={{ color: C.yellow }}>{Math.round(c.valor_corregido)}</strong>
+            <div style={{ fontSize: 11, color: C.subtle, lineHeight: 1.55 }}>{c.motivo}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
+              <span style={{ fontSize: 10, color: C.subtle, fontVariantNumeric: "tabular-nums" }}>
+                {Math.round(c.valor_original)} → <strong style={{ color: C.muted }}>{Math.round(c.valor_corregido)}</strong>
               </span>
             </div>
           </div>
@@ -422,10 +413,10 @@ function BloqueCorrecciones({ correcciones }: { correcciones: CorreccionAplicada
 function BloqueCapacidad({ cm }: { cm: CapacityModelInfo }) {
   return (
     <div style={{
-      marginTop: 12, padding: "10px 12px", borderRadius: 8,
-      background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.2)",
+      marginTop: 12, padding: "10px 0",
+      borderTop: `1px solid ${C.border}`,
     }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: C.green, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: C.subtle, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
         Modelo de capacidad
       </div>
       <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
@@ -512,19 +503,17 @@ function BloqueConfigEditable({
   };
 
   return (
-    <section className={styles.section} style={{ borderTop: "2px solid rgba(99,102,241,0.2)" }}>
+    <section className={styles.section} style={{ borderTop: `1px solid ${C.border}` }}>
       <SectionTitle
         title="Configuración editable"
         badge={
           recalculating ? (
             <span style={{
-              fontSize: 10, color: C.indigo, display: "flex", alignItems: "center", gap: 5,
-              background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.3)",
-              borderRadius: 100, padding: "2px 8px",
+              fontSize: 10, color: C.muted, display: "flex", alignItems: "center", gap: 5,
             }}>
               <span style={{
-                width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                border: `2px solid ${C.indigo}`,
+                width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+                border: `1.5px solid ${C.muted}`,
                 borderTopColor: "transparent",
                 display: "inline-block",
                 animation: "spin 0.7s linear infinite",
@@ -533,9 +522,7 @@ function BloqueConfigEditable({
             </span>
           ) : (
             <span style={{
-              fontSize: 10, fontWeight: 700, color: C.yellow,
-              background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)",
-              borderRadius: 100, padding: "2px 8px",
+              fontSize: 10, color: C.subtle,
             }}>ajusta y recalcula</span>
           )
         }
@@ -544,12 +531,12 @@ function BloqueConfigEditable({
       {/* Plantilla: empleados y salarios */}
       {currentEmpleados != null && (
         <div style={{
-          background: C.surface, border: `1px solid rgba(99,102,241,0.25)`,
-          borderRadius: 10, padding: "12px 14px", marginBottom: 12,
+          background: C.surface, border: `1px solid ${C.border}`,
+          borderRadius: 8, padding: "12px 14px", marginBottom: 12,
         }}>
           <div style={{
             fontSize: 10, fontWeight: 700, textTransform: "uppercase",
-            letterSpacing: "0.07em", color: C.indigo, marginBottom: 10,
+            letterSpacing: "0.07em", color: C.muted, marginBottom: 10,
           }}>Plantilla</div>
 
           {/* Stepper empleados */}
@@ -614,7 +601,7 @@ function BloqueConfigEditable({
             <div style={{
               display: "flex", alignItems: "flex-start", gap: 8,
               padding: "8px 10px", borderRadius: 8, marginTop: 10,
-              background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)",
+              background: "rgba(239,68,68,0.05)", border: `1px solid ${C.border}`,
               fontSize: 11, color: C.muted, lineHeight: 1.55,
             }}>
               <span style={{ color: C.red, fontWeight: 700, flexShrink: 0 }}>!</span>
@@ -633,10 +620,10 @@ function BloqueConfigEditable({
             <div style={{
               display: "flex", alignItems: "flex-start", gap: 8,
               padding: "8px 10px", borderRadius: 8, marginTop: 10,
-              background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.3)",
+              background: "rgba(245,158,11,0.04)", border: `1px solid ${C.border}`,
               fontSize: 11, color: C.muted, lineHeight: 1.55,
             }}>
-              <span style={{ color: C.yellow, fontWeight: 700, flexShrink: 0 }}>⚠</span>
+              <span style={{ color: C.yellow, fontWeight: 700, flexShrink: 0, fontSize: 10 }}>!</span>
               <span>
                 Posible sobredimensión: el equipo puede atender{" "}
                 <strong style={{ color: C.text }}>{Math.round(staffCapacity)}</strong> clientes/día
@@ -653,7 +640,7 @@ function BloqueConfigEditable({
         <div style={{
           display: "flex", alignItems: "flex-start", gap: 8,
           padding: "8px 12px", borderRadius: 8, marginBottom: 8,
-          background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)",
+          background: "rgba(239,68,68,0.05)", border: `1px solid ${C.border}`,
           fontSize: 11, color: C.muted, lineHeight: 1.55,
         }}>
           <span style={{ color: C.red, fontWeight: 700, flexShrink: 0 }}>!</span>
@@ -803,10 +790,10 @@ function BloqueEconomia({ f }: { f: FinancieroResponse }) {
 
       {md && !isAppointment && (
         <div style={{
-          marginTop: 12, padding: "10px 12px", borderRadius: 8,
-          background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)",
+          marginTop: 12, padding: "10px 0",
+          borderTop: `1px solid ${C.border}`,
         }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: C.indigo, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.subtle, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
             Modelo de demanda
           </div>
           <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
@@ -923,24 +910,23 @@ function BloqueBreakEven({ be, alquilerPct }: { be: BreakEvenInfo; alquilerPct: 
           </span>
         }
       />
-      <div style={{ display: "flex", gap: 16, marginBottom: 14, alignItems: "stretch" }}>
+      <div style={{ display: "flex", gap: 0, marginBottom: 14, alignItems: "stretch", borderBottom: `1px solid ${C.border}`, paddingBottom: 14 }}>
         <div style={{
-          flex: 1, background: C.surface, border: `1px solid ${C.border}`,
-          borderRadius: 10, padding: "12px 14px", textAlign: "center",
+          flex: 1, padding: "8px 0", textAlign: "center",
+          borderRight: `1px solid ${C.border}`,
         }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: C.yellow, lineHeight: 1 }}>{be.clientes_be}</div>
-          <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 4 }}>
+          <div style={{ fontSize: 32, fontWeight: 800, color: C.yellow, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{be.clientes_be}</div>
+          <div style={{ fontSize: 10, color: C.subtle, textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 5 }}>
             clientes/día mínimos
           </div>
         </div>
         <div style={{
-          flex: 1, background: C.surface, border: `1px solid ${C.border}`,
-          borderRadius: 10, padding: "12px 14px", textAlign: "center",
+          flex: 1, padding: "8px 0", textAlign: "center",
         }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: suficiente ? C.green : C.red, lineHeight: 1 }}>
+          <div style={{ fontSize: 32, fontWeight: 800, color: suficiente ? C.green : C.red, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
             {Math.round(be.clientes_base)}
           </div>
-          <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 4 }}>
+          <div style={{ fontSize: 10, color: C.subtle, textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 5 }}>
             clientes/día estimados
           </div>
         </div>
@@ -964,7 +950,7 @@ function BloqueBreakEven({ be, alquilerPct }: { be: BreakEvenInfo; alquilerPct: 
               x={be.clientes_base} stroke={C.base} strokeDasharray="5 3"
               label={{ value: `Base: ${Math.round(be.clientes_base)}`, fill: C.base, fontSize: 10, position: "top" }}
             />
-            <Line type="monotone" dataKey="ingresos"       name="Ingresos"       stroke={C.green} strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="ingresos"       name="Ingresos"       stroke={C.green} strokeWidth={1.5} dot={false} />
             <Line type="monotone" dataKey="costes_totales" name="Costes totales" stroke={C.red}   strokeWidth={2} dot={false} strokeDasharray="4 2" />
           </LineChart>
         </ResponsiveContainer>
@@ -1079,7 +1065,7 @@ function BloqueSensibilidad({ items }: { items: SensitividadItem[] }) {
               <div style={{ height: 6, borderRadius: 4, background: "rgba(255,255,255,0.06)" }}>
                 <div style={{
                   height: "100%", borderRadius: 4, width: `${pct}%`,
-                  background: color, opacity: 0.75, boxShadow: `0 0 6px ${color}55`,
+                  background: color, opacity: 0.7,
                 }} />
               </div>
             </div>
@@ -1108,8 +1094,6 @@ function LegendRow({ items }: { items: { color: string; label: string }[] }) {
   );
 }
 
-const CHART_BG = "rgba(26,18,48,0.38)";
-
 // ─── CHART: EBITDA mensual — 36 meses ────────────────────────────────────────
 function ChartEbitdaMensual({ f }: { f: FinancieroResponse }) {
   if (!f.proyeccion?.length) return null;
@@ -1122,7 +1106,7 @@ function ChartEbitdaMensual({ f }: { f: FinancieroResponse }) {
     return { mes: m.mes, ebitda: m.ebitda_base, ebitda_low: low, ebitda_high: high };
   });
   return (
-    <section className={styles.section} style={{ background: CHART_BG }}>
+    <section className={styles.section}>
       <SectionTitle title="EBITDA mensual — 36 meses" accent={C.green} info="ebitdaMensual" />
       <div style={{ height: 180 }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -1132,7 +1116,7 @@ function ChartEbitdaMensual({ f }: { f: FinancieroResponse }) {
               tickFormatter={v => (v % 6 === 0 || v === 1) ? `M${v}` : ""} />
             <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
             <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" />
-            <ReTooltip contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+            <ReTooltip contentStyle={{ background: "#111827", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12 }}
               formatter={(v: number) => [`${fmt(v)} €`, "EBITDA base"]} labelFormatter={v => `Mes ${v}`} />
             <Bar dataKey="ebitda" name="EBITDA base" radius={[2, 2, 0, 0]}>
               {mensualData.map((entry, index) => (
@@ -1165,7 +1149,7 @@ function ChartCajaAcumulada({ f }: { f: FinancieroResponse }) {
       Optimista:   m.acumulado_optimista,
     }));
   return (
-    <section className={styles.section} style={{ background: CHART_BG }}>
+    <section className={styles.section}>
       <SectionTitle title="Caja acumulada — 3 escenarios" accent={C.conservador} info="cajaAcumulada" />
       <div style={{ height: 180 }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -1173,7 +1157,7 @@ function ChartCajaAcumulada({ f }: { f: FinancieroResponse }) {
             <defs>
               {([["gOptC", C.optimista], ["gBaseC", C.base], ["gConsC", C.conservador]] as const).map(([id, color]) => (
                 <linearGradient key={id} id={id} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={color} stopOpacity={0.2} />
+                  <stop offset="5%"  stopColor={color} stopOpacity={0.08} />
                   <stop offset="95%" stopColor={color} stopOpacity={0} />
                 </linearGradient>
               ))}
@@ -1182,11 +1166,11 @@ function ChartCajaAcumulada({ f }: { f: FinancieroResponse }) {
             <XAxis dataKey="mes" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
             <ReferenceLine y={0} stroke="rgba(255,255,255,0.12)" strokeDasharray="4 4" />
-            <ReTooltip contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+            <ReTooltip contentStyle={{ background: "#111827", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12 }}
               formatter={(v: number, name: string) => [`${fmt(v)} €`, name]} />
-            <Area type="monotone" dataKey="Optimista"   stroke={C.optimista}   fill="url(#gOptC)"  strokeWidth={2} dot={false} />
-            <Area type="monotone" dataKey="Base"        stroke={C.base}        fill="url(#gBaseC)" strokeWidth={2} dot={false} />
-            <Area type="monotone" dataKey="Conservador" stroke={C.conservador} fill="url(#gConsC)" strokeWidth={2} dot={false} />
+            <Area type="monotone" dataKey="Optimista"   stroke={C.optimista}   fill="url(#gOptC)"  strokeWidth={1.5} dot={false} />
+            <Area type="monotone" dataKey="Base"        stroke={C.base}        fill="url(#gBaseC)" strokeWidth={1.5} dot={false} />
+            <Area type="monotone" dataKey="Conservador" stroke={C.conservador} fill="url(#gConsC)" strokeWidth={1.5} dot={false} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -1213,26 +1197,26 @@ function ChartCajaVsEbitda({ f }: { f: FinancieroResponse }) {
   }).filter((_, i) => i % 3 === 2 || i === 0)
     .map(m => ({ mes: `M${m.mes}`, "EBITDA acum.": m.ebitdaCum, "Caja real": m.cajaReal }));
   return (
-    <section className={styles.section} style={{ background: CHART_BG }}>
+    <section className={styles.section}>
       <SectionTitle title="Caja real vs EBITDA acumulado" accent={C.indigo} info="cajaVsEbitda" />
       <div style={{
-        padding: "8px 12px", borderRadius: 8, marginBottom: 10,
-        background: "rgba(124,58,237,0.06)", border: "1px solid rgba(124,58,237,0.2)",
-        fontSize: 11, color: C.muted, lineHeight: 1.5,
+        padding: "8px 0", marginBottom: 10,
+        borderBottom: `1px solid ${C.border}`,
+        fontSize: 11, color: C.subtle, lineHeight: 1.5,
       }}>
-        <span style={{ color: C.indigo, fontWeight: 700 }}>EBITDA acumulado</span> = beneficio operativo generado (sin descontar inversión inicial).{" "}
-        <span style={{ color: C.base, fontWeight: 700 }}>Caja real</span> = EBITDA menos la inversión inicial. La diferencia es el capital todavía sin recuperar.
+        <span style={{ color: C.muted, fontWeight: 600 }}>EBITDA acumulado</span> = beneficio operativo generado.{" "}
+        <span style={{ color: C.muted, fontWeight: 600 }}>Caja real</span> = EBITDA menos la inversión inicial.
       </div>
       <div style={{ height: 180 }}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={cajaVsEbitdaData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="gEbitdaAcum" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor={C.indigo} stopOpacity={0.2} />
+                <stop offset="5%"  stopColor={C.indigo} stopOpacity={0.07} />
                 <stop offset="95%" stopColor={C.indigo} stopOpacity={0} />
               </linearGradient>
               <linearGradient id="gCajaReal" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor={C.base} stopOpacity={0.15} />
+                <stop offset="5%"  stopColor={C.base} stopOpacity={0.06} />
                 <stop offset="95%" stopColor={C.base} stopOpacity={0} />
               </linearGradient>
             </defs>
@@ -1249,20 +1233,20 @@ function ChartCajaVsEbitda({ f }: { f: FinancieroResponse }) {
                   label={{ value: `Payback M${f.payback_meses_base}`, fill: C.base, fontSize: 10, position: "top" }} />
               );
             })()}
-            <ReTooltip contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+            <ReTooltip contentStyle={{ background: "#111827", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12 }}
               formatter={(v: number, name: string) => [`${fmt(v)} €`, name]} />
-            <Area type="monotone" dataKey="EBITDA acum." stroke={C.indigo} fill="url(#gEbitdaAcum)" strokeWidth={2} dot={false} />
-            <Area type="monotone" dataKey="Caja real"    stroke={C.base}   fill="url(#gCajaReal)"   strokeWidth={2} dot={false} />
+            <Area type="monotone" dataKey="EBITDA acum." stroke={C.indigo} fill="url(#gEbitdaAcum)" strokeWidth={1.5} dot={false} />
+            <Area type="monotone" dataKey="Caja real"    stroke={C.base}   fill="url(#gCajaReal)"   strokeWidth={1.5} dot={false} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
       {f.payback_meses_base < 999 && (
         <div style={{
-          marginTop: 8, padding: "6px 10px", borderRadius: 6,
-          background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)",
-          fontSize: 11, color: C.yellow, fontWeight: 600, textAlign: "center",
+          marginTop: 8, fontSize: 11, color: C.subtle, textAlign: "center",
         }}>
-          La caja es negativa hasta el mes {f.payback_meses_base} — entonces recuperas toda la inversión
+          Caja negativa hasta el mes{" "}
+          <span style={{ color: C.muted, fontWeight: 700 }}>{f.payback_meses_base}</span>{" "}
+          — recuperas toda la inversión en ese punto
         </div>
       )}
       <LegendRow items={[
@@ -1296,7 +1280,7 @@ function ChartComparativa({ f }: { f: FinancieroResponse }) {
       Optimista:   Math.round(p.slice(24, 36).reduce((s, m) => s + m.ingresos_optimista, 0) / 1000) },
   ];
   return (
-    <section className={styles.section} style={{ background: CHART_BG }}>
+    <section className={styles.section}>
       <SectionTitle title="Comparativa escenarios — 3 años" accent={C.yellow} info="comparativa" />
       <div style={{ height: 180 }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -1304,7 +1288,7 @@ function ChartComparativa({ f }: { f: FinancieroResponse }) {
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
             <XAxis dataKey="periodo" tick={{ fill: C.subtle, fontSize: 11 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}k`} width={34} />
-            <ReTooltip contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+            <ReTooltip contentStyle={{ background: "#111827", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12 }}
               formatter={(v: number, name: string) => [`${fmt(v)}k €`, name]} />
             <Bar dataKey="Conservador" fill={C.conservador} radius={[3, 3, 0, 0]} maxBarSize={28} />
             <Bar dataKey="Base"        fill={C.base}        radius={[3, 3, 0, 0]} maxBarSize={28} />
@@ -1332,7 +1316,7 @@ function ChartEstres({ f }: { f: FinancieroResponse }) {
     .filter((_, i) => i % 3 === 2 || i === 0)
     .map(m => ({ mes: `M${m.mes}`, Base: m.acumulado_base, Estrés: m.acumulado_stress ?? 0 }));
   return (
-    <section className={styles.section} style={{ background: CHART_BG }}>
+    <section className={styles.section}>
       <SectionTitle title="Escenario estrés — cash runway" accent={C.red} info="estres" />
       <div style={{
         padding: "8px 12px", borderRadius: 8, marginBottom: 10,
@@ -1348,11 +1332,11 @@ function ChartEstres({ f }: { f: FinancieroResponse }) {
           <AreaChart data={stressData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="gStress" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor={C.red}  stopOpacity={0.2} />
+                <stop offset="5%"  stopColor={C.red}  stopOpacity={0.07} />
                 <stop offset="95%" stopColor={C.red}  stopOpacity={0} />
               </linearGradient>
               <linearGradient id="gBaseS" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor={C.base} stopOpacity={0.15} />
+                <stop offset="5%"  stopColor={C.base} stopOpacity={0.06} />
                 <stop offset="95%" stopColor={C.base} stopOpacity={0} />
               </linearGradient>
             </defs>
@@ -1360,7 +1344,7 @@ function ChartEstres({ f }: { f: FinancieroResponse }) {
             <XAxis dataKey="mes" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
             <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" strokeDasharray="4 4" />
-            <ReTooltip contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+            <ReTooltip contentStyle={{ background: "#111827", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12 }}
               formatter={(v: number, name: string) => [`${fmt(v)} €`, name]} />
             <Area type="monotone" dataKey="Base"   name="Base (×1.0)"    stroke={C.base} fill="url(#gBaseS)" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
             <Area type="monotone" dataKey="Estrés" name="Estrés (×0.40)" stroke={C.red}  fill="url(#gStress)" strokeWidth={2}  dot={false} />
@@ -1390,7 +1374,7 @@ function ChartCostesDistribucion({ f }: { f: FinancieroResponse }) {
     { name: "Otros",     value: ec.otros,    fill: C.otros    },
   ].sort((a, b) => b.value - a.value);
   return (
-    <section className={styles.section} style={{ background: CHART_BG }}>
+    <section className={styles.section}>
       <SectionTitle title="Distribución de costes mensuales" accent={C.yellow} info="costes" />
       <div style={{ height: 180 }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -1398,7 +1382,7 @@ function ChartCostesDistribucion({ f }: { f: FinancieroResponse }) {
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
             <XAxis type="number" tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} />
             <YAxis type="category" dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} width={64} />
-            <ReTooltip contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+            <ReTooltip contentStyle={{ background: "#111827", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12 }}
               formatter={(v: number) => [`${fmt(v)} €/mes`, ""]} />
             <Bar dataKey="value" name="Coste" radius={[0, 4, 4, 0]}>
               {costesDistData.map((entry, index) => (
@@ -1432,7 +1416,7 @@ function ChartCapacidad({ f }: { f: FinancieroResponse }) {
     { name: "Capacidad máxima", value: maxCap,                      fill: C.indigo },
   ];
   return (
-    <section className={styles.section} style={{ background: CHART_BG }}>
+    <section className={styles.section}>
       <SectionTitle title="Capacidad vs demanda" accent={C.indigo} info="capacidad" />
       <div style={{ height: 180 }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -1441,7 +1425,7 @@ function ChartCapacidad({ f }: { f: FinancieroResponse }) {
             <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: C.subtle, fontSize: 10 }} axisLine={false} tickLine={false} width={34}
               label={{ value: "clientes/día", angle: -90, position: "insideLeft", fill: C.subtle, fontSize: 10, offset: 10 }} />
-            <ReTooltip contentStyle={{ background: "#0D1220", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+            <ReTooltip contentStyle={{ background: "#111827", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12 }}
               formatter={(v: number) => [`${Math.round(v)} clientes/día`, ""]} />
             <Bar dataKey="value" name="Clientes/día" radius={[4, 4, 0, 0]} maxBarSize={60}>
               {capacidadData.map((entry, index) => (
@@ -1517,9 +1501,8 @@ function BloqueRiesgos({ riesgos }: { riesgos: Riesgo[] }) {
       <section className={styles.section}>
         <SectionTitle title="Riesgos" />
         <div style={{
-          padding: "12px 14px", borderRadius: 10,
-          background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.2)",
-          fontSize: 12, color: C.muted,
+          padding: "10px 0",
+          fontSize: 12, color: C.subtle,
         }}>
           Análisis de riesgos no disponible para este perfil.
         </div>
@@ -1542,22 +1525,23 @@ function BloqueRiesgos({ riesgos }: { riesgos: Riesgo[] }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {riesgos.map((r, i) => (
           <div key={i} style={{
-            display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px",
-            borderRadius: 8, fontSize: 12, lineHeight: 1.55,
-            background: r.tipo === "bloqueo" ? "rgba(239,68,68,0.06)" : "rgba(245,158,11,0.06)",
-            border: `1px solid ${r.tipo === "bloqueo" ? "rgba(239,68,68,0.2)" : "rgba(245,158,11,0.2)"}`,
+            display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0",
+            fontSize: 12, lineHeight: 1.55,
+            borderBottom: `1px solid ${C.border}`,
           }}>
             <span style={{
               fontSize: 9, fontWeight: 700, textTransform: "uppercase",
-              letterSpacing: "0.06em", flexShrink: 0, marginTop: 1,
+              letterSpacing: "0.06em", flexShrink: 0, marginTop: 2,
               color: r.tipo === "bloqueo" ? C.red : C.yellow,
-              background: r.tipo === "bloqueo" ? "rgba(239,68,68,0.15)" : "rgba(245,158,11,0.15)",
-              border: `1px solid ${r.tipo === "bloqueo" ? "rgba(239,68,68,0.3)" : "rgba(245,158,11,0.3)"}`,
-              borderRadius: 4, padding: "2px 5px",
             }}>
-              {r.tipo === "bloqueo" ? "Bloqueo" : "Aviso"}
+              {r.tipo === "bloqueo" ? "●" : "·"}
             </span>
-            <span style={{ color: C.muted }}>{r.mensaje}</span>
+            <div>
+              <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: r.tipo === "bloqueo" ? C.red : C.yellow, marginRight: 6 }}>
+                {r.tipo === "bloqueo" ? "Bloqueo" : "Aviso"}
+              </span>
+              <span style={{ color: C.muted }}>{r.mensaje}</span>
+            </div>
           </div>
         ))}
       </div>
@@ -1576,29 +1560,29 @@ function BloqueInsights({ insights }: { insights: Insight[] }) {
         {insights.map((ins, i) => {
           const isRisk = ins.type === "risk";
           const color  = isRisk ? C.red : C.green;
-          const bg     = isRisk ? "rgba(239,68,68,0.05)" : "rgba(16,185,129,0.05)";
-          const border = isRisk ? "rgba(239,68,68,0.18)" : "rgba(16,185,129,0.18)";
+          const bg     = "transparent";
+          const border = C.border;
           return (
             <div key={i} style={{
-              background: bg, border: `1px solid ${border}`,
-              borderRadius: 10, padding: "12px 14px",
-              borderLeft: `3px solid ${color}`,
+              padding: "12px 0",
+              borderBottom: `1px solid ${C.border}`,
             }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                <span style={{
+                  width: 5, height: 5, borderRadius: "50%", background: color, flexShrink: 0,
+                }} />
                 <span style={{
                   fontSize: 9, fontWeight: 700, textTransform: "uppercase",
-                  letterSpacing: "0.06em", color,
-                  background: isRisk ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)",
-                  border: `1px solid ${border}`, borderRadius: 4, padding: "2px 6px",
+                  letterSpacing: "0.06em", color: C.subtle,
                 }}>
                   {isRisk ? "Riesgo" : "Oportunidad"}
                 </span>
               </div>
-              <p style={{ margin: "0 0 6px", fontSize: 12, color: C.text, fontWeight: 500, lineHeight: 1.5 }}>
+              <p style={{ margin: "0 0 5px", fontSize: 12, color: C.text, fontWeight: 500, lineHeight: 1.5 }}>
                 {ins.message}
               </p>
               <p style={{ margin: 0, fontSize: 11, color: C.muted, lineHeight: 1.55 }}>
-                <strong style={{ color: C.subtle }}>Sugerencia:</strong> {ins.suggestion}
+                {ins.suggestion}
               </p>
             </div>
           );
@@ -1617,8 +1601,8 @@ const LABELS_DESGLOSE: Record<string, string> = {
   otros_iniciales:  "Licencias y gestoría",
 };
 
-function ParamGroup({ color, icon, label, children }: {
-  color: string; icon: string; label: string; children: React.ReactNode;
+function ParamGroup({ icon, label, children }: {
+  color?: string; icon: string; label: string; children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(true);
   return (
@@ -1632,9 +1616,9 @@ function ParamGroup({ color, icon, label, children }: {
         borderBottom: open ? `1px solid ${C.border}` : "none",
       }}>
         <span style={{
-          width: 22, height: 22, borderRadius: 6, display: "flex", alignItems: "center",
+          width: 16, display: "flex", alignItems: "center",
           justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0,
-          background: `${color}22`, color, border: `1px solid ${color}44`,
+          color: C.subtle,
         }}>{icon}</span>
         <span style={{
           fontSize: 11, fontWeight: 600, letterSpacing: "0.06em",
@@ -1665,10 +1649,9 @@ function SliderParam({ label, unit, value, min, max, fuente, color, onChange }: 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <span style={{ fontSize: 12, color: C.muted, fontWeight: 500, lineHeight: 1 }}>{label}</span>
         <span style={{
-          fontSize: 12, fontWeight: 700, fontVariantNumeric: "tabular-nums",
-          color, background: `${color}18`, border: `1px solid ${color}33`,
-          borderRadius: 5, padding: "2px 8px", letterSpacing: "0.02em",
-          lineHeight: 1.6, minWidth: 60, textAlign: "right",
+          fontSize: 13, fontWeight: 800, fontVariantNumeric: "tabular-nums",
+          color, letterSpacing: "-0.01em",
+          lineHeight: 1, minWidth: 60, textAlign: "right",
         }}>
           {Math.round(value).toLocaleString("es-ES")}{unit && ` ${unit.trim()}`}
         </span>
@@ -1680,14 +1663,12 @@ function SliderParam({ label, unit, value, min, max, fuente, color, onChange }: 
         }} />
         <div style={{
           position: "absolute", left: 0, width: `${pct}%`, height: 4,
-          borderRadius: 99, background: `linear-gradient(90deg, ${color}88, ${color})`,
-          boxShadow: `0 0 8px ${color}55`, transition: "width 0.05s",
+          borderRadius: 99, background: color, opacity: 0.65, transition: "width 0.05s",
         }} />
         <div style={{
-          position: "absolute", left: `calc(${pct}% - 7px)`,
-          width: 14, height: 14, borderRadius: "50%", background: color,
-          boxShadow: `0 0 0 3px ${color}33, 0 0 10px ${color}88`,
-          border: "2px solid rgba(13,18,32,0.8)", transition: "left 0.05s",
+          position: "absolute", left: `calc(${pct}% - 6px)`,
+          width: 12, height: 12, borderRadius: "50%", background: color,
+          border: "2px solid rgba(13,18,32,0.9)", transition: "left 0.05s",
           pointerEvents: "none",
         }} />
         <input
@@ -1794,9 +1775,9 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
               all: "unset", cursor: "pointer", fontSize: 11, fontWeight: 700,
               letterSpacing: "0.06em", textTransform: "uppercase",
               padding: "4px 12px", borderRadius: 6,
-              background: modoConfig === m ? "rgba(99,102,241,0.18)" : C.surface,
-              border: `1px solid ${modoConfig === m ? "rgba(99,102,241,0.5)" : C.border}`,
-              color: modoConfig === m ? C.indigo : C.muted,
+              background: modoConfig === m ? C.surface2 : C.surface,
+              border: `1px solid ${modoConfig === m ? "rgba(255,255,255,0.12)" : C.border}`,
+              color: modoConfig === m ? C.text : C.muted,
               transition: "all 0.15s",
             }}>{m}</button>
           ))}

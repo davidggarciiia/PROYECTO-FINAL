@@ -37,13 +37,13 @@
 .kpi {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 14px 16px;
+  gap: 4px;
+  padding: 16px 20px;
   background: var(--surface);
 }
 .kpiVal {
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 20px;
+  font-weight: 800;
   color: var(--text);
   line-height: 1;
 }
@@ -68,18 +68,8 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px;
-  border-radius: 10px;
-
-  background: rgba(255,255,255,0.025);
-  border: 1px solid rgba(255,255,255,0.06);
-
-  transition: all 0.2s ease;
-}
-
-.desgloseItem:hover {
-  background: rgba(255,255,255,0.04);
-  border-color: rgba(255,255,255,0.1);
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
 .desgloseTop {
@@ -113,7 +103,8 @@
 .desgloseBarFill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #7C3AED, #10B981);
+  background: #6366F1;
+  opacity: 0.6;
   transition: width 0.4s ease;
 }
 
@@ -126,27 +117,18 @@
 
 .totalBadge {
   font-size: 11px;
-  font-weight: 700;
-  color: #A855F7;
-
-  background: rgba(124,58,237,0.12);
-  border: 1px solid rgba(124,58,237,0.3);
-
-  padding: 3px 8px;
-  border-radius: 6px;
+  font-weight: 800;
+  color: #94A3B8;
+  font-variant-numeric: tabular-nums;
 }
 
 .empleadosBox {
   margin-top: 12px;
-  padding: 8px 10px;
+  padding: 6px 0;
 
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
-  color: #D8B4FE;
-
-  background: rgba(124,58,237,0.1);
-  border: 1px solid rgba(124,58,237,0.25);
-  border-radius: 8px;
+  color: #64748B;
 
   display: inline-flex;
   align-items: center;
@@ -168,21 +150,20 @@
 
 /* ── Sections ── */
 .section {
-  padding: 16px 16px;
+  padding: 20px 20px;
   border-bottom: 1px solid var(--border);
-  transition: background 0.15s;
 }
 .sectionHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 .sectionTitle {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   color: var(--text-muted);
 }
 .breakEvenTag {
@@ -284,7 +265,8 @@
   position: absolute;
   top: 0; left: 0;
   height: 100%;
-  background: linear-gradient(90deg, #7C3AED, #A855F7);
+  background: #6366F1;
+  opacity: 0.65;
   border-radius: 4px;
   pointer-events: none;
 }
