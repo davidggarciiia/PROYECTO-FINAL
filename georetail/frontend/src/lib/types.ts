@@ -31,6 +31,7 @@ export interface ZonaResumen {
 }
 
 export interface CompetidorCercano {
+  id?: string;
   nombre: string;
   sector?: string;
   subsector?: string | null;
@@ -45,9 +46,37 @@ export interface CompetidorCercano {
   es_complementario?: boolean;
   es_vulnerable?: boolean;
   amenaza_score?: number;
+  resenas_resumen?: ResenasResumen | null;
+  resenas_destacadas?: ResenaDestacada[];
 }
 
 export type CompetidorDetalle = CompetidorCercano;
+
+export interface ResenasResumen {
+  total: number;
+  positivas: number;
+  negativas: number;
+  neutras: number;
+  rating_medio?: number | null;
+  temas_top: string[];
+  ultima_fecha?: string | null;
+}
+
+export interface ResenaDestacada {
+  texto: string;
+  rating?: number | null;
+  fecha?: string | null;
+  sentimiento?: string | null;
+  categoria?: string | null;
+  fuente: string;
+}
+
+export interface ResenasCobertura {
+  negocios_total: number;
+  negocios_con_resenas: number;
+  resenas_total: number;
+  cobertura_pct: number;
+}
 
 export interface PrecioSegmento {
   nivel_dominante?: number;
@@ -72,6 +101,7 @@ export interface CompetenciaDetalle {
   hhi_index: number;
   ratio_complementarios?: number;
   precio_segmento?: PrecioSegmento | null;
+  resenas_cobertura?: ResenasCobertura | null;
   amenaza: CompetidorDetalle[];
   oportunidad: CompetidorDetalle[];
   sinergicos: CompetidorDetalle[];
@@ -230,6 +260,23 @@ export interface ZonaDetalle {
   edad_media?: number;
   pct_extranjeros?: number;
   score_turismo?: number;
+  vcity_flujo_peatonal?: number;
+  nivel_estudios_alto_pct?: number;
+  delta_renta_3a?: number;
+  airbnb_density_500m?: number;
+  airbnb_occupancy_est?: number;
+  booking_hoteles_500m?: number;
+  precio_alquiler_m2?: number;
+  hhi_index?: number;
+  num_directos?: number;
+  num_bicing_400m?: number;
+  tendencia?: string | null;
+  tasa_supervivencia_3a?: number;
+  ratio_apertura_cierre_1a?: number;
+  hhi_sectorial?: number;
+  negocios_historico_count?: number;
+  renta_variacion_3a?: number;
+  dist_playa_m?: number;
   num_negocios_activos?: number;
   pct_locales_vacios?: number;
   num_lineas_transporte?: number;

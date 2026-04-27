@@ -90,10 +90,24 @@ async def _licencias_zona(conn, zona_id: int) -> dict[str, Any]:
     row = await conn.fetchrow(
         """
         SELECT
-            COUNT(*) FILTER (WHERE activa AND fecha_alta >= NOW() - INTERVAL '1 year')  AS abiertas_1a,
-            COUNT(*) FILTER (WHERE NOT activa AND fecha_baja >= NOW() - INTERVAL '1 year') AS cerradas_1a,
-            COUNT(*) FILTER (WHERE activa AND fecha_alta >= NOW() - INTERVAL '3 years') AS abiertas_3a,
-            COUNT(*) FILTER (WHERE NOT activa AND fecha_baja >= NOW() - INTERVAL '3 years') AS cerradas_3a
+            COUNT(*) FILTER (
+              WHERE data_atorgament >= NOW() - INTERVAL '1 year'
+                AND (data_caducitat IS NULL OR data_caducitat > NOW())
+            )  AS abiertas_1a,
+            COUNT(*) FILTER (
+              WHERE data_caducitat IS NOT NULL
+                AND data_caducitat >= NOW() - INTERVAL '1 year'
+                AND data_caducitat <= NOW()
+            ) AS cerradas_1a,
+            COUNT(*) FILTER (
+              WHERE data_atorgament >= NOW() - INTERVAL '3 years'
+                AND (data_caducitat IS NULL OR data_caducitat > NOW())
+            ) AS abiertas_3a,
+            COUNT(*) FILTER (
+              WHERE data_caducitat IS NOT NULL
+                AND data_caducitat >= NOW() - INTERVAL '3 years'
+                AND data_caducitat <= NOW()
+            ) AS cerradas_3a
         FROM licencias_actividad
         WHERE zona_id = $1
         """,
@@ -139,10 +153,10 @@ async def _hhi_zona(conn, zona_id: int) -> float | None:
     """Herfindahl-Hirschman Index sectorial para la zona."""
     rows = await conn.fetch(
         """
-        SELECT sector, COUNT(*) AS n
+        SELECT sector_codigo AS sector, COUNT(*) AS n
         FROM negocios_historico
-        WHERE zona_id = $1 AND sector IS NOT NULL
-        GROUP BY sector
+        WHERE zona_id = $1 AND sector_codigo IS NOT NULL
+        GROUP BY sector_codigo
         """,
         zona_id,
     )
@@ -159,10 +173,10 @@ async def _demografia_tendencia(conn, zona_id: int) -> dict[str, Any]:
     """Variación % de renta y población: snapshot más reciente vs más antiguo en ventana 3 años."""
     rows = await conn.fetch(
         """
-        SELECT renta_bruta_hogar, poblacion, updated_at::date AS fecha
-        FROM variables_zona
+        SELECT renta_media_hogar, poblacion, updated_at::date AS fecha
+        FROM vz_demografia
         WHERE zona_id = $1
-          AND renta_bruta_hogar IS NOT NULL
+          AND renta_media_hogar IS NOT NULL
           AND updated_at >= NOW() - INTERVAL '3 years'
         ORDER BY updated_at DESC
         """,
@@ -180,14 +194,14 @@ async def _demografia_tendencia(conn, zona_id: int) -> dict[str, Any]:
         return None
 
     return {
-        "renta_variacion_3a":     _pct_cambio(reciente["renta_bruta_hogar"], antiguo["renta_bruta_hogar"]),
+        "renta_variacion_3a":     _pct_cambio(reciente["renta_media_hogar"], antiguo["renta_media_hogar"]),
         "poblacion_variacion_3a": _pct_cambio(reciente["poblacion"], antiguo["poblacion"]),
     }
 
 
 async def _vacantes_zona(conn, zona_id: int) -> float | None:
     row = await conn.fetchrow(
-        "SELECT pct_locales_vacios FROM variables_zona WHERE zona_id = $1 ORDER BY updated_at DESC LIMIT 1",
+        "SELECT pct_locales_vacios FROM vz_comercial WHERE zona_id = $1 ORDER BY updated_at DESC LIMIT 1",
         zona_id,
     )
     if not row or row["pct_locales_vacios"] is None:

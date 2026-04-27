@@ -612,19 +612,19 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
     {
       periodo: "Año 1",
       Conservador: Math.round(proyeccion.slice(0, 12).reduce((s, m) => s + m.ingresos_conservador, 0) / 1000),
-      Base:        Math.round(proyeccion.slice(0, 12).reduce((s, m) => s + m.ingresos_base, 0) / 1000),
+      Base:        Math.round(proyeccion.slice(0, 12).reduce((s, m) => s + (m.ingresos_base ?? 0), 0) / 1000),
       Optimista:   Math.round(proyeccion.slice(0, 12).reduce((s, m) => s + m.ingresos_optimista, 0) / 1000),
     },
     {
       periodo: "Año 2",
       Conservador: Math.round(proyeccion.slice(12, 24).reduce((s, m) => s + m.ingresos_conservador, 0) / 1000),
-      Base:        Math.round(proyeccion.slice(12, 24).reduce((s, m) => s + m.ingresos_base, 0) / 1000),
+      Base:        Math.round(proyeccion.slice(12, 24).reduce((s, m) => s + (m.ingresos_base ?? 0), 0) / 1000),
       Optimista:   Math.round(proyeccion.slice(12, 24).reduce((s, m) => s + m.ingresos_optimista, 0) / 1000),
     },
     {
       periodo: "Año 3",
       Conservador: Math.round(proyeccion.slice(24, 36).reduce((s, m) => s + m.ingresos_conservador, 0) / 1000),
-      Base:        Math.round(proyeccion.slice(24, 36).reduce((s, m) => s + m.ingresos_base, 0) / 1000),
+      Base:        Math.round(proyeccion.slice(24, 36).reduce((s, m) => s + (m.ingresos_base ?? 0), 0) / 1000),
       Optimista:   Math.round(proyeccion.slice(24, 36).reduce((s, m) => s + m.ingresos_optimista, 0) / 1000),
     },
   ];
@@ -697,12 +697,12 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
           </div>
           <LegendRow items={[
             { color: C.optimista,   label: `Optimista (${f.payback_meses_optimista >= 999 ? ">36m" : f.payback_meses_optimista + "m"})` },
-            { color: C.base,        label: `Base (${f.payback_meses_base >= 999 ? ">36m" : f.payback_meses_base + "m"})` },
+            { color: C.base,        label: `Base (${(f.payback_meses_base ?? 0) >= 999 ? ">36m" : (f.payback_meses_base ?? 0) + "m"})` },
             { color: C.conservador, label: `Conservador (${f.payback_meses_conservador >= 999 ? ">36m" : f.payback_meses_conservador + "m"})` },
           ]} />
           <ChartExplanation>
             Caja acumulada desde el día 1 (negativa = inversión no recuperada).
-            La línea cruza cero en el mes de payback. La curva base cruza en el mes {f.payback_meses_base >= 999 ? "nunca (ajusta parámetros)" : f.payback_meses_base}.
+            La línea cruza cero en el mes de payback. La curva base cruza en el mes {(f.payback_meses_base ?? 0) >= 999 ? "nunca (ajusta parámetros)" : f.payback_meses_base}.
           </ChartExplanation>
         </>
       )}
@@ -728,7 +728,7 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
                 />
                 <Bar dataKey="ebitda" name="EBITDA base" radius={[2, 2, 0, 0]}>
                   {mensualData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.ebitda >= 0 ? C.green : C.red} fillOpacity={0.8} />
+                    <Cell key={`cell-${index}`} fill={(entry.ebitda ?? 0) >= 0 ? C.green : C.red} fillOpacity={0.8} />
                   ))}
                 </Bar>
                 <Line type="monotone" dataKey="ebitda_high" name="Variabilidad +" stroke="rgba(245,158,11,0.5)" strokeDasharray="3 2" dot={false} strokeWidth={1} />
@@ -815,7 +815,7 @@ function BloqueEscenarios({ f }: { f: FinancieroResponse }) {
             </ResponsiveContainer>
           </div>
           <LegendRow items={[
-            { color: C.base, label: `Base (payback ${f.payback_meses_base >= 999 ? ">36m" : f.payback_meses_base + "m"})` },
+            { color: C.base, label: `Base (payback ${(f.payback_meses_base ?? 0) >= 999 ? ">36m" : (f.payback_meses_base ?? 0) + "m"})` },
             { color: C.red,  label: `Estrés (payback ${(f.payback_meses_stress ?? 999) >= 999 ? ">36m" : f.payback_meses_stress + "m"})` },
           ]} />
           <ChartExplanation>

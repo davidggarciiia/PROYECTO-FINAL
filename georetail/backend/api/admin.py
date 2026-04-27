@@ -35,31 +35,85 @@ router = APIRouter(tags=["admin"])
 
 # Mapa nombre → módulo Python del pipeline
 _PIPELINES: dict[str, str] = {
+    # ── Turismo ─────────────────────────────────────────────────────
+    "airbnb":                 "pipelines.turismo.airbnb",
+    "booking":                "pipelines.turismo.booking",
+    "hut":                    "pipelines.turismo.hut",
+    "landmarks":              "pipelines.turismo.landmarks",
+    "intensitat_oficial":     "pipelines.turismo.intensitat_oficial",
+    # ── Entorno ─────────────────────────────────────────────────────
+    "overpass":               "pipelines.entorno.overpass",
+    "venues_ocio":            "pipelines.entorno.venues_ocio",
+    "google_maps":            "pipelines.entorno.google_maps",
+    "resenas":                "pipelines.entorno.resenas",
+    "resenas_scrape":         "pipelines.entorno.resenas_scrape",
+    "seguridad":              "pipelines.entorno.seguridad",
+    # ── Peatonal ────────────────────────────────────────────────────
+    "aforaments":             "pipelines.peatonal.aforaments",
+    "vianants":               "pipelines.peatonal.vianants",
+    "vcity":                  "pipelines.peatonal.vcity",
+    # ── Demografia ──────────────────────────────────────────────────
+    "demografia":             "pipelines.demografia.demografia",
+    "descarga_datos_publicos":"pipelines.demografia.descarga_datos_publicos",
+    # ── Comercio ────────────────────────────────────────────────────
+    "cens_comercial":         "pipelines.comercio.cens_comercial",
+    "llicencies":             "pipelines.comercio.llicencies",
+    "registre_mercantil":     "pipelines.comercio.registre_mercantil",
+    "entorno_comercial":      "pipelines.comercio.entorno_comercial",
+    "competencia":            "pipelines.comercio.competencia",
+    "poblar_negocios":        "pipelines.comercio.poblar_negocios_activos",
+    "dinamismo_comercial":    "pipelines.comercio.dinamismo",
+    # ── Transporte ──────────────────────────────────────────────────
     "transporte":             "pipelines.transporte.transporte",
     "transporte_agregado":    "pipelines.transporte.agregado_zona",
+    "gtfs_atm":               "pipelines.transporte.gtfs_atm",
     "bicing":                 "pipelines.transporte.bicing",
-    "aforaments":             "pipelines.peatonal.aforaments",
-    "resenas":                "pipelines.entorno.resenas",
-    "scores":                 "pipelines.scores",
-    "demografia":             "pipelines.demografia.demografia",
+    # ── Inmobiliario ────────────────────────────────────────────────
     "precios":                "pipelines.inmobiliario.precios",
-    "parametros_financieros": "pipelines.parametros_financieros",
-    "registre_mercantil":     "pipelines.comercio.registre_mercantil",
     "mercado_inmobiliario":   "pipelines.inmobiliario.mercado_inmobiliario",
-    "competencia":            "pipelines.comercio.competencia",
-    "google_maps":            "pipelines.entorno.google_maps",
-    "poblar_negocios":        "pipelines.comercio.poblar_negocios_activos",
+    # ── Agregadores finales ─────────────────────────────────────────
+    "scores":                 "pipelines.scores",
+    "parametros_financieros": "pipelines.parametros_financieros",
 }
 
-# Orden recomendado para poblar la BD desde cero
+# Orden recomendado para poblar la BD desde cero (respeta dependencias)
 _ORDEN_RECOMENDADO = [
-    "poblar_negocios",
-    "transporte",
-    "aforaments",
+    # 1. Geometrías y datos crudos sin dependencias
     "demografia",
-    "precios",
+    "transporte",
+    "gtfs_atm",
+    "aforaments",
+    "vianants",
+    "vcity",
+    # 2. Datos de stock turístico/comercial
+    "airbnb",
+    "hut",
+    "booking",
+    "landmarks",
+    "overpass",
+    "venues_ocio",
+    "seguridad",
+    "bicing",
+    # 3. Catálogos comerciales (cargar negocios_historico antes que dinamismo)
+    "cens_comercial",
+    "llicencies",
+    "registre_mercantil",
+    "entorno_comercial",
+    "poblar_negocios",
+    # 4. Enriquecimiento (Google Places, reseñas)
+    "google_maps",
+    "resenas_scrape",
     "resenas",
+    # 5. Inmobiliario
+    "precios",
+    "mercado_inmobiliario",
+    # 6. Análisis derivados (necesitan los anteriores)
+    "competencia",
+    "transporte_agregado",
+    "dinamismo_comercial",
+    # 7. Score global + parámetros financieros (al final, leen todo lo anterior)
     "scores",
+    "parametros_financieros",
 ]
 
 
@@ -161,12 +215,30 @@ async def lanzar_pipeline(nombre: str) -> PipelineRunResponse:
     except ImportError as exc:
         raise HTTPException(status_code=500, detail=f"No se pudo importar {modulo_path}: {exc}")
 
-    if not hasattr(modulo, "ejecutar"):
-        raise HTTPException(status_code=500, detail=f"{modulo_path} no tiene función ejecutar()")
+    # Acepta entry-points en este orden de preferencia: ejecutar() async,
+    # run() async, main() sync. Permite registrar pipelines heterogéneos
+    # sin tener que renombrar su función pública.
+    import asyncio
+    import inspect
 
-    logger.info("Admin: lanzando pipeline '%s'", nombre)
+    entry = None
+    for cand in ("ejecutar", "run", "main"):
+        if hasattr(modulo, cand):
+            entry = getattr(modulo, cand)
+            break
+    if entry is None:
+        raise HTTPException(
+            status_code=500,
+            detail=f"{modulo_path} no expone ejecutar(), run() ni main()",
+        )
+
+    logger.info("Admin: lanzando pipeline '%s' vía %s()", nombre, entry.__name__)
     try:
-        resultado = await modulo.ejecutar()
+        if inspect.iscoroutinefunction(entry):
+            resultado = await entry()
+        else:
+            # Función síncrona — no bloquear el event loop
+            resultado = await asyncio.to_thread(entry)
     except Exception as exc:
         logger.error("Pipeline '%s' terminó con error: %s", nombre, exc)
         raise HTTPException(status_code=500, detail=f"Pipeline '{nombre}' falló: {exc}")

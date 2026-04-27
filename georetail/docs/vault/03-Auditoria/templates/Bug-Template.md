@@ -1,3 +1,4 @@
+
 # BUG-XXX: [Título corto]
 
 **Fecha:** YYYY-MM-DD  

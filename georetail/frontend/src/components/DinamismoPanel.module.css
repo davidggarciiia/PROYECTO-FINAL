@@ -1,0 +1,598 @@
+/* DinamismoPanel — redesigned (F1 + F4) */
+
+/* ── Keyframes ───────────────────────────────────────────────── */
+@keyframes pulse {
+  0%, 100% { transform: scale(1);    opacity: 1;    }
+  50%      { transform: scale(1.06); opacity: 0.85; }
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+@keyframes growRight {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+
+/* ── Panel root ──────────────────────────────────────────────── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Empty state ─────────────────────────────────────────────── */
+.emptyState {
+  padding: 24px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+/* ── Section card ────────────────────────────────────────────── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.sectionKicker {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+/* ── Generic chips ───────────────────────────────────────────── */
+.chipGreen {
+  background: var(--green-dim);
+  color: var(--green);
+  border-color: var(--green-border);
+}
+
+.chipYellow {
+  background: var(--yellow-dim);
+  color: var(--yellow);
+  border-color: var(--yellow-border);
+}
+
+.chipRed {
+  background: var(--red-dim);
+  color: var(--red);
+  border-color: var(--red-border);
+}
+
+.chipNeutral {
+  background: var(--surface-3);
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+/* ── Sección 1: Tendencia hero ───────────────────────────────── */
+.trendHero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 0;
+  animation: fadeSlideIn 0.4s ease both;
+}
+
+.trendArrow {
+  font-size: 40px;
+  line-height: 1;
+  animation: pulse 2.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.trendHero[data-color="green"]  .trendArrow { color: var(--green); }
+.trendHero[data-color="yellow"] .trendArrow { color: var(--yellow); }
+.trendHero[data-color="red"]    .trendArrow { color: var(--red); }
+.trendHero[data-color="muted"]  .trendArrow { color: var(--text-subtle); }
+
+.trendInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.trendLabel {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.trendHero[data-color="green"]  .trendLabel { color: var(--green); }
+.trendHero[data-color="yellow"] .trendLabel { color: var(--yellow); }
+.trendHero[data-color="red"]    .trendLabel { color: var(--red); }
+.trendHero[data-color="muted"]  .trendLabel { color: var(--text-muted); }
+
+.trendSub {
+  font-size: 11.5px;
+  color: var(--text-subtle);
+}
+
+.trendSample {
+  font-size: 11px;
+  color: var(--text-subtle);
+  margin-top: 2px;
+}
+
+.trendSampleChip {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Confianza chip wrapper (no card) ────────────────────────── */
+.confianzaWrap {
+  display: flex;
+  justify-content: flex-start;
+  padding: 0 4px;
+}
+
+.confianzaChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 99px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Sección Survival gauge ──────────────────────────────────── */
+.gaugeRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.gaugeWrap {
+  flex-shrink: 0;
+}
+
+.gaugeRing {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeSlideIn 0.5s ease both;
+}
+
+.gaugeInner {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gaugeValue {
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--green);
+  letter-spacing: -0.03em;
+}
+
+.gaugeDesc {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gaugeDescTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.gaugeDescSub {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* ── Sección Aperturas/cierres ──────────────────────────────── */
+.ratioBar {
+  display: flex;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  gap: 2px;
+}
+
+.ratioSegmentGreen {
+  background: var(--green);
+  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+  animation: growRight 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.ratioSegmentRed {
+  background: var(--red);
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+}
+
+/* Raw counts row (replaces center badge when counts present) */
+.aperturaCierreRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.apertCount,
+.cierreCount {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.apertCount {
+  color: var(--green);
+}
+
+.cierreCount {
+  color: var(--red);
+}
+
+.countNum {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.countLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.ratioChipWrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.ratioChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: 99px;
+  border: 1px solid transparent;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* Legacy ratio-only legend (fallback) */
+.ratioLegend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.ratioLegendItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+}
+
+.ratioLegendItem[data-color="green"] { color: var(--green); }
+.ratioLegendItem[data-color="red"]   { color: var(--red); }
+
+.ratioLegendDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.ratioBadge {
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--text-muted);
+}
+
+.ratioBadge[data-positive="true"]  { color: var(--green); }
+.ratioBadge[data-positive="false"] { color: var(--red); }
+
+/* ── Sección Locales vacíos ─────────────────────────────────── */
+.vacantesHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vacantesBig {
+  font-size: 28px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.vacantesBig[data-color="green"]  { color: var(--green); }
+.vacantesBig[data-color="yellow"] { color: var(--yellow); }
+.vacantesBig[data-color="red"]    { color: var(--red); }
+
+.vacantesSub {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.vacantesBarTrack {
+  position: relative;
+  height: 8px;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.vacantesBarFill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  animation: growRight 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.vacantesBarFill[data-color="green"] {
+  background: linear-gradient(90deg, var(--green), rgba(16,185,129,0.55));
+}
+
+.vacantesBarFill[data-color="yellow"] {
+  background: linear-gradient(90deg, var(--yellow), rgba(245,158,11,0.55));
+}
+
+.vacantesBarFill[data-color="red"] {
+  background: linear-gradient(90deg, var(--red), rgba(239,68,68,0.55));
+}
+
+.vacantesAlert {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 4px 12px;
+  border-radius: 99px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Sección HHI ─────────────────────────────────────────────── */
+.hhiRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hhiSegments {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.hhiSeg {
+  flex: 1;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  position: relative;
+  transition: background 0.3s;
+}
+
+.hhiSegments .hhiSeg:nth-child(1).hhiSegActive { background: var(--green); }
+.hhiSegments .hhiSeg:nth-child(2).hhiSegActive { background: var(--yellow); }
+.hhiSegments .hhiSeg:nth-child(3).hhiSegActive { background: var(--red); }
+
+.hhiLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.hhiNote {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.hhiHint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-subtle);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* ── Sección Variación demográfica (renta + población) ──────── */
+.demoGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.demoGridSingle {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.demoCell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.demoBig {
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  animation: fadeSlideIn 0.4s ease both;
+}
+
+.demoBig[data-positive="true"]  { color: var(--green); }
+.demoBig[data-positive="false"] { color: var(--red); }
+
+.demoLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.demoDesc {
+  font-size: 10.5px;
+  color: var(--text-subtle);
+}
+
+@media (max-width: 480px) {
+  .demoGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Sección Tensión inmobiliaria ───────────────────────────── */
+.tensionRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tensionText {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.tensionVal {
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.tensionVal[data-positive="true"]  { color: var(--red); }
+.tensionVal[data-positive="false"] { color: var(--green); }
+
+.tensionAlert {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 4px 12px;
+  border-radius: 99px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Sección Señales detectadas ─────────────────────────────── */
+.signalTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.signalTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 11px;
+  border-radius: var(--radius-pill);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-muted);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  transition: border-color 0.2s;
+}
+
+.signalTag:hover {
+  border-color: var(--border-hover);
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .section {
+    padding: 12px 14px;
+  }
+  .trendArrow {
+    font-size: 32px;
+  }
+  .trendLabel {
+    font-size: 15px;
+  }
+  .gaugeRing {
+    width: 68px;
+    height: 68px;
+  }
+  .gaugeInner {
+    width: 50px;
+    height: 50px;
+  }
+  .gaugeValue {
+    font-size: 14px;
+  }
+  .vacantesBig {
+    font-size: 24px;
+  }
+  .countNum {
+    font-size: 18px;
+  }
+  .demoBig {
+    font-size: 19px;
+  }
+  .tensionVal {
+    font-size: 14px;
+  }
+}

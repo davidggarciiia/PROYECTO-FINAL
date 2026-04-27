@@ -83,7 +83,34 @@ class ZonaPreview(BaseModel):
 
 # ── Zona — detalle completo ───────────────────────────────────────────────────
 
+class ResenasResumen(BaseModel):
+    total:        int             = 0
+    positivas:    int             = 0
+    negativas:    int             = 0
+    neutras:      int             = 0
+    rating_medio: Optional[float] = None
+    temas_top:    list[str]       = Field(default_factory=list)
+    ultima_fecha: Optional[str]   = None
+
+
+class ResenaDestacada(BaseModel):
+    texto:       str
+    rating:      Optional[float] = None
+    fecha:       Optional[str]   = None
+    sentimiento: Optional[str]   = None
+    categoria:   Optional[str]   = None
+    fuente:      str             = "google_scrape"
+
+
+class ResenasCobertura(BaseModel):
+    negocios_total:       int   = 0
+    negocios_con_resenas: int   = 0
+    resenas_total:        int   = 0
+    cobertura_pct:        float = 0.0
+
+
 class CompetidorCercano(BaseModel):
+    id:                     Optional[str]   = None
     nombre:                 str
     sector:                 Optional[str]   = None
     subsector:              Optional[str]   = None  # taxonomía fina (scoring/taxonomia.py)
@@ -98,6 +125,8 @@ class CompetidorCercano(BaseModel):
     es_vulnerable:          bool            = False
     es_competencia_directa_subsector: bool  = False  # mismo subsector exacto
     amenaza_score:          Optional[float] = None   # 0-100, gravity model individual
+    resenas_resumen:        Optional[ResenasResumen] = None
+    resenas_destacadas:     list[ResenaDestacada] = Field(default_factory=list)
 
 
 class PrecioSegmento(BaseModel):
@@ -127,10 +156,11 @@ class CompetenciaDetalle(BaseModel):
     ratio_complementarios:  float           = 0.0
     # Análisis de precio
     precio_segmento:        Optional[PrecioSegmento] = None
+    resenas_cobertura:      Optional[ResenasCobertura] = None
     # Competidores clasificados en 3 grupos
-    amenaza:                list[CompetidorCercano] = []
-    oportunidad:            list[CompetidorCercano] = []
-    sinergicos:             list[CompetidorCercano] = []
+    amenaza:                list[CompetidorCercano] = Field(default_factory=list)
+    oportunidad:            list[CompetidorCercano] = Field(default_factory=list)
+    sinergicos:             list[CompetidorCercano] = Field(default_factory=list)
     # Metadatos
     fuente:                 str             = "google_places"
     datos_calculados:       bool            = True   # False si viene de BD precalculada
@@ -371,6 +401,25 @@ class ZonaDetalle(BaseModel):
     # rellenan cuando el agente refinador ha corrido con éxito.
     perfil_refinado:    Optional[PerfilRefinado] = None
     pesos_modulados:    Optional[dict[str, float]] = None
+
+    # Campos enriquecidos para los paneles de dimensión
+    vcity_flujo_peatonal:    Optional[float] = None
+    nivel_estudios_alto_pct: Optional[float] = None
+    delta_renta_3a:          Optional[float] = None
+    airbnb_density_500m:     Optional[float] = None
+    airbnb_occupancy_est:    Optional[float] = None
+    booking_hoteles_500m:    Optional[float] = None
+    precio_alquiler_m2:      Optional[float] = None
+    hhi_index:               Optional[float] = None
+    num_directos:            Optional[int]   = None
+    num_bicing_400m:         Optional[int]   = None
+    tendencia:               Optional[str]   = None
+    tasa_supervivencia_3a:   Optional[float] = None
+    ratio_apertura_cierre_1a: Optional[float] = None
+    hhi_sectorial:           Optional[float] = None
+    negocios_historico_count: Optional[int]  = None
+    renta_variacion_3a:      Optional[float] = None
+    dist_playa_m:            Optional[float] = None
 
 
 class LocalDetalle(BaseModel):

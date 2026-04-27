@@ -1,0 +1,546 @@
+/* TurismoPanel — perfil-driven redesign (Phase F3) */
+
+@keyframes growRight {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+
+/* ── Panel root ──────────────────────────────────────────── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Section card (shared shell) ────────────────────────── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius, 12px);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.sectionKicker {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+/* ── Hero card ───────────────────────────────────────────── */
+.heroCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 16px;
+  border-radius: var(--radius-lg, 16px);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+/* ── Section 1: Perfil hero ──────────────────────────────── */
+.perfilHero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.perfilLeft {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.perfilEmoji {
+  flex-shrink: 0;
+  font-size: 44px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+}
+
+.perfilCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.perfilLabel {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: var(--accent, #7C3AED);
+}
+
+.perfilDesc {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.perfilRight {
+  flex-shrink: 0;
+}
+
+/* ── Confianza chip ──────────────────────────────────────── */
+.confianzaChip {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  border-radius: 99px;
+  padding: 3px 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  border: 1px solid;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+.confianzaAlta {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--green, #10B981);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.confianzaMedia {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--yellow, #F59E0B);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.confianzaBaja {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-subtle);
+  border-color: var(--border);
+}
+
+/* ── Score ring ──────────────────────────────────────────── */
+.scoreRing {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.scoreRingInner {
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scoreRingNum {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Section 2: Sub-score breakdown ──────────────────────── */
+.subscoreList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.subscoreRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.subscoreLabel {
+  flex: 0 0 165px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.subscoreTrack {
+  flex: 1;
+  position: relative;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--surface-3, #231742);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.subscoreFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 99px;
+  animation: growRight 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  max-width: 100%;
+}
+
+.subscoreFillAirbnb {
+  background: linear-gradient(90deg, var(--accent, #7C3AED), var(--accent-light, #A855F7));
+}
+
+.subscoreFillHotel {
+  background: linear-gradient(90deg, var(--accent-light, #A855F7), rgba(168, 85, 247, 0.55));
+}
+
+.subscoreFillCult {
+  background: linear-gradient(90deg, var(--yellow, #F59E0B), rgba(245, 158, 11, 0.55));
+}
+
+.subscoreFillEmpty {
+  background: var(--surface-3, #231742);
+  opacity: 0.4;
+}
+
+.subscoreValue {
+  flex: 0 0 56px;
+  text-align: right;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Section 3: Airbnb density bar ───────────────────────── */
+.airbnbBarWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.airbnbBarTrack {
+  position: relative;
+  height: 10px;
+  border-radius: 99px;
+  background: var(--surface-3, #231742);
+  overflow: visible;
+}
+
+.airbnbBarFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 99px;
+  animation: growRight 0.6s ease forwards;
+  max-width: 100%;
+}
+
+.airbnbRefMarker {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 1px;
+  transform: translateX(-50%);
+}
+
+.airbnbMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.airbnbValue {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.airbnbChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.airbnbRef {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-subtle);
+  line-height: 1.4;
+}
+
+/* ── Season chip (verano boost) ──────────────────────────── */
+.seasonChip {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--yellow, #F59E0B);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+/* ── Chips ───────────────────────────────────────────────── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 99px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.chipGreen {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--green, #10B981);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.chipYellow {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--yellow, #F59E0B);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.chipRed {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--red, #EF4444);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.chipAccent {
+  background: rgba(124, 58, 237, 0.15);
+  color: var(--accent-light, #A855F7);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+}
+
+.chipMuted {
+  background: transparent;
+  color: var(--text-subtle);
+  border: 1px solid var(--border);
+}
+
+/* ── Section 4: Hotel badges ────────────────────────────── */
+.hotelBadgeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.hotelBadge {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.hotelCount {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.hotelRatingRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hotelRatingLabel {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-subtle);
+}
+
+/* ── Section 5: Cultural hero ────────────────────────────── */
+.culturalHero {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.culturalHeroNum {
+  font-size: 36px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  color: var(--text);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.culturalHeroLabel {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-subtle);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.3;
+}
+
+/* ── Landmark chips ──────────────────────────────────────── */
+.landmarkChip {
+  align-self: flex-start;
+}
+
+.landmarkChipNear {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--green, #10B981);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.landmarkChipMid {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--yellow, #F59E0B);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.landmarkChipFar {
+  background: transparent;
+  color: var(--text-subtle);
+  border: 1px solid var(--border);
+}
+
+/* ── Section 6: Tourist rate bar ─────────────────────────── */
+.touristRateBar {
+  position: relative;
+  height: 10px;
+  border-radius: 99px;
+  background: var(--surface-3, #231742);
+  overflow: visible;
+}
+
+.touristRateFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 99px;
+  animation: growRight 0.6s ease forwards;
+  max-width: 100%;
+}
+
+.touristRateMarker {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 1px;
+  transform: translateX(-50%);
+}
+
+.touristRateText {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.touristRateRef {
+  color: var(--text-subtle);
+  font-size: 11px;
+}
+
+/* ── Implicación box ─────────────────────────────────────── */
+.implicacionBox {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent, #7c3aed);
+}
+
+.implicacionText {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* ── Signal pills (bullets) ──────────────────────────────── */
+.pillList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.signalPill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 99px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  line-height: 1.5;
+}
+
+/* ── Empty state ─────────────────────────────────────────── */
+.emptyState {
+  padding: 18px;
+  border-radius: var(--radius-lg, 16px);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .heroCard {
+    padding: 14px;
+  }
+
+  .section {
+    padding: 12px 14px;
+  }
+
+  .perfilEmoji {
+    font-size: 36px;
+  }
+
+  .perfilLabel {
+    font-size: 14px;
+  }
+
+  .scoreRing {
+    width: 72px;
+    height: 72px;
+  }
+
+  .scoreRingInner {
+    width: 54px;
+    height: 54px;
+  }
+
+  .scoreRingNum {
+    font-size: 16px;
+  }
+
+  .subscoreLabel {
+    flex: 0 0 130px;
+    font-size: 11px;
+  }
+
+  .culturalHeroNum {
+    font-size: 28px;
+  }
+}

@@ -1,0 +1,381 @@
+/* CompetenciaDimPanel — market concentration ring + competitor list */
+
+@keyframes growRight {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+
+/* ── Layout ─────────────────────────────────────────────── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Empty state ────────────────────────────────────────── */
+.emptyState {
+  padding: 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ── Section card ───────────────────────────────────────── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.sectionKicker {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+/* ── Ring gauge ─────────────────────────────────────────── */
+.ringRow {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.ring {
+  flex-shrink: 0;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ringInner {
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.ringValue {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.ringUnit {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-subtle);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.ringMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ringLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ringChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+  width: fit-content;
+}
+
+.ringSubtext {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-subtle);
+  line-height: 1.5;
+}
+
+/* ── Competitor count hero ──────────────────────────────── */
+.heroRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.heroNumber {
+  flex-shrink: 0;
+  font-size: 48px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  color: var(--text);
+  line-height: 1;
+}
+
+.heroRight {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.heroChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+  width: fit-content;
+}
+
+.heroSubtext {
+  font-size: 11px;
+  color: var(--text-subtle);
+  line-height: 1.5;
+}
+
+/* ── Competitor list ────────────────────────────────────── */
+.compList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compRow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.compRowTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.compName {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.compBadges {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.badgeDirect {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: var(--red);
+  white-space: nowrap;
+}
+
+.badgeVuln {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: var(--yellow);
+  white-space: nowrap;
+}
+
+.badgeComp {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: var(--green);
+  white-space: nowrap;
+}
+
+.compRowMid {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.compSector {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compRating {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--yellow);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.compDistRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compDistTrack {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.compDistFill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-light));
+  animation: growRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.compDistLabel {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-subtle);
+  white-space: nowrap;
+  flex-shrink: 0;
+  width: 40px;
+  text-align: right;
+}
+
+/* ── Score ring (small) ─────────────────────────────────── */
+.scoreRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.scoreRing {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.scoreRingInner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scoreNumber {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.scoreLabel {
+  font-size: 13px;
+  color: var(--text-subtle);
+}
+
+/* ── Bullets ────────────────────────────────────────────── */
+.bulletRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bulletPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  line-height: 1.4;
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .section {
+    padding: 12px 14px;
+  }
+
+  .ring {
+    width: 76px;
+    height: 76px;
+  }
+
+  .ringInner {
+    width: 56px;
+    height: 56px;
+  }
+
+  .ringValue {
+    font-size: 13px;
+  }
+
+  .heroNumber {
+    font-size: 36px;
+  }
+}

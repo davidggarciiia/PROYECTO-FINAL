@@ -330,6 +330,33 @@ async def local_detalle(body: DetalleRequest) -> LocalDetalleResponse:
         num_lineas_transporte=zona.get("num_lineas_transporte"),
         num_paradas_transporte=zona.get("num_paradas_transporte"),
 
+        # Campos enriquecidos para paneles de dimensión
+        score_turismo=zona.get("score_turismo"),
+        vcity_flujo_peatonal=zona.get("vcity_flujo_peatonal"),
+        nivel_estudios_alto_pct=zona.get("nivel_estudios_alto_pct"),
+        delta_renta_3a=zona.get("delta_renta_3a"),
+        airbnb_density_500m=zona.get("airbnb_density_500m"),
+        airbnb_occupancy_est=zona.get("airbnb_occupancy_est"),
+        booking_hoteles_500m=zona.get("booking_hoteles_500m"),
+        precio_alquiler_m2=(
+            zona.get("precio_alquiler_m2")
+            or (
+                (zona.get("alquiler_mensual") / zona.get("m2"))
+                if zona.get("alquiler_mensual") and zona.get("m2")
+                else None
+            )
+        ),
+        hhi_index=zona.get("hhi_index"),
+        num_directos=zona.get("num_directos"),
+        num_bicing_400m=zona.get("num_bicing_400m"),
+        tendencia=zona.get("tendencia"),
+        tasa_supervivencia_3a=zona.get("tasa_supervivencia_3a"),
+        ratio_apertura_cierre_1a=zona.get("ratio_apertura_cierre_1a"),
+        hhi_sectorial=zona.get("hhi_sectorial"),
+        negocios_historico_count=zona.get("negocios_historico_count"),
+        renta_variacion_3a=zona.get("renta_variacion_3a"),
+        dist_playa_m=zona.get("dist_playa_m"),
+
         # Seguridad v7 — desglose granular
         seguridad_detalle=SeguridadDetalle(
             incidencias_por_1000hab=zona.get("incidencias_por_1000hab"),

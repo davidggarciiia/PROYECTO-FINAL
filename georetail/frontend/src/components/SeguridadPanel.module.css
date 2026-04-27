@@ -1,0 +1,305 @@
+/* SeguridadPanel — redesign with ring gauge, dual-ref bars, night split */
+
+@keyframes growRight {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+
+/* ── Layout ─────────────────────────────────────────────── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Empty state ────────────────────────────────────────── */
+.emptyState {
+  padding: 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ── Section card ───────────────────────────────────────── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.sectionKicker {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+/* ── Ring gauge ─────────────────────────────────────────── */
+.ringRow {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.ring {
+  flex-shrink: 0;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ringInner {
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0;
+}
+
+.ringScore {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.ringMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ringLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ringChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+  width: fit-content;
+}
+
+/* ── Incident bars ──────────────────────────────────────── */
+.incList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.incRow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.incLabelGroup {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.incLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.incValue {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.incTrack {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: visible;
+}
+
+.incFill {
+  height: 100%;
+  border-radius: 999px;
+  min-width: 4px;
+  animation: growRight 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Thin vertical tick showing BCN reference position */
+.incRefLine {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 1px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.incRefLabel {
+  font-size: 10px;
+  color: var(--text-subtle);
+  align-self: flex-end;
+  letter-spacing: 0.01em;
+}
+
+/* ── Night / day split ──────────────────────────────────── */
+.splitTrack {
+  display: flex;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.splitDia {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(59, 130, 246, 0.25);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  min-width: 0;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.splitNoche {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(245, 158, 11, 0.2);
+  min-width: 0;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.splitLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  padding: 0 6px;
+}
+
+.splitWarnChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  width: fit-content;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--yellow);
+}
+
+/* ── Police presence ────────────────────────────────────── */
+.policeRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.policeChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+  width: fit-content;
+}
+
+.policeDist {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Interpretation block ───────────────────────────────── */
+.interpretBlock {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.interpretFrase {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* ── Bullets ────────────────────────────────────────────── */
+.bulletRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bulletPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  line-height: 1.4;
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .section {
+    padding: 12px 14px;
+  }
+
+  .ringRow {
+    gap: 14px;
+  }
+
+  .ring {
+    width: 76px;
+    height: 76px;
+  }
+
+  .ringInner {
+    width: 56px;
+    height: 56px;
+  }
+
+  .ringScore {
+    font-size: 18px;
+  }
+}

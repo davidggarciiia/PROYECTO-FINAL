@@ -1,0 +1,298 @@
+/* DemografiaPanel — redesigned */
+
+@keyframes growRight {
+  from { width: 0%; }
+}
+
+/* ── Panel root ──────────────────────────────────────────────── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+}
+
+/* ── Section card ────────────────────────────────────────────── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+/* ── Section title (eyebrow) ────────────────────────────────── */
+.sectionTitle {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+/* ── Income hero number ─────────────────────────────────────── */
+.heroNum {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.heroNum[data-color="green"] { color: var(--green); }
+.heroNum[data-color="red"]   { color: var(--red); }
+
+/* ── Reference bar ──────────────────────────────────────────── */
+.refBarWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.refBarTrack {
+  position: relative;
+  height: 8px;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+  overflow: visible;
+}
+
+.refBarFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  animation: growRight 0.6s ease-out forwards;
+}
+
+.refBarFill[data-color="green"] {
+  background: linear-gradient(90deg, var(--green), rgba(16,185,129,0.45));
+}
+
+.refBarFill[data-color="red"] {
+  background: linear-gradient(90deg, var(--red), rgba(239,68,68,0.45));
+}
+
+.refBarMarker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  border: 2px solid var(--surface-2);
+  z-index: 2;
+}
+
+.refBarLabels {
+  position: relative;
+  height: 14px;
+  font-size: 10px;
+  color: var(--text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.refBarLabelLeft {
+  position: absolute;
+  left: 0;
+}
+
+.refBarLabelCenter {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* ── Stat grid 2×2 ──────────────────────────────────────────── */
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .statGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Stat card ───────────────────────────────────────────────── */
+.statCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.statValue {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.statLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-subtle);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.3;
+}
+
+/* ── Chips ───────────────────────────────────────────────────── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  border-radius: 99px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.chipGreen {
+  background: var(--green-dim);
+  color: var(--green);
+  border-color: var(--green-border);
+}
+
+.chipAmber {
+  background: var(--yellow-dim);
+  color: var(--yellow);
+  border-color: var(--yellow-border);
+}
+
+.chipRed {
+  background: var(--red-dim);
+  color: var(--red);
+  border-color: var(--red-border);
+}
+
+.chipNeutral {
+  background: var(--surface-3);
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+/* ── Consumption index ──────────────────────────────────────── */
+.potencialHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.potencialScore {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.potencialMax {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-subtle);
+  margin-left: 2px;
+}
+
+.potencialTrack {
+  height: 6px;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.potencialFill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--accent), var(--accent-light));
+  animation: growRight 0.6s ease-out forwards;
+}
+
+/* ── Interpretive summary ───────────────────────────────────── */
+.interpretacion {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+}
+
+.interpKicker {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-light);
+}
+
+.interpTexto {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* ── Signal pills ────────────────────────────────────────────── */
+.signalTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.signalTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 11px;
+  border-radius: var(--radius-pill);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-muted);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  transition: border-color 0.2s;
+}
+
+.signalTag:hover {
+  border-color: var(--border-hover);
+}
+
+@media (max-width: 640px) {
+  .panel {
+    padding: 14px;
+    gap: 14px;
+  }
+
+  .section,
+  .statCard,
+  .interpretacion {
+    padding: 12px 14px;
+  }
+
+  .heroNum {
+    font-size: 26px;
+  }
+}

@@ -22,6 +22,7 @@ import csv
 import gzip
 import io
 import logging
+import math
 import os
 from datetime import date
 from pathlib import Path
@@ -333,8 +334,13 @@ async def _actualizar_variables(
                     """,
                     zona_id,
                     fecha,
-                    # Normalizar count a score 0-100: 200 listings → 100
-                    round(min(100.0, data["count"] / 2.0), 2),
+                    # Normalizar count a score 0-100 con curva log saturada en
+                    # 1500 listings/500m. La calibración previa (count/2 con cap
+                    # 100) saturaba a 200 listings, lo que aplastaba el score
+                    # a 100 en cualquier zona céntrica de BCN (Born ~1400,
+                    # Gòtic ~1580). La curva log discrimina mejor el rango
+                    # útil 0–1500 que es donde está la dispersión real.
+                    round(100.0 * min(1.0, math.log1p(data["count"]) / math.log1p(1500)), 2),
                     data["count"],
                     round(data["avg_ocupacion"], 4),
                 )

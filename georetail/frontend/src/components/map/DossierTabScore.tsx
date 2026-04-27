@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useState, type CSSProperties } from "react";
 import type {
   ZonaPreview,
   LocalDetalleResponse,
   ScoresDimensiones,
   ExplicacionDimension,
+  SeguridadDetalle,
 } from "@/lib/types";
 import {
   DIMENSIONS,
@@ -14,6 +15,13 @@ import {
 } from "./dimensions";
 import styles from "./Dossier.module.css";
 import TransportePanel from "../TransportePanel";
+import FlujoPanel from "../FlujoPanel";
+import DemografiaPanel from "../DemografiaPanel";
+import SeguridadPanel from "../SeguridadPanel";
+import TurismoPanel from "../TurismoPanel";
+import DinamismoPanel from "../DinamismoPanel";
+import CompetenciaDimPanel from "../CompetenciaDimPanel";
+import PrecioAlquilerPanel from "../PrecioAlquilerPanel";
 
 interface Props {
   zone: ZonaPreview;
@@ -22,6 +30,20 @@ interface Props {
 }
 
 type Band = "hi" | "mid" | "lo" | "na";
+type DriverKind = "up" | "down" | "fact";
+
+interface DrawerProps {
+  dim: DimensionMeta;
+  value: number | null | undefined;
+  explicacion?: ExplicacionDimension;
+  pesoBase?: number;
+  pesoMod?: number;
+  sectorCodigo?: string;
+  zonaId?: string;
+  detalle?: LocalDetalleResponse | null;
+}
+
+const GRID_COLS = 2;
 
 function scoreBand(score?: number | null): Band {
   if (score == null) return "na";
@@ -33,31 +55,44 @@ function scoreBand(score?: number | null): Band {
 function bandLabel(band: Band): string {
   if (band === "hi") return "Punto fuerte";
   if (band === "mid") return "Aceptable";
-  if (band === "lo") return "Punto débil";
+  if (band === "lo") return "Punto debil";
   return "Sin datos";
 }
 
-/** Desktop grid has 2 columns (see Dossier.module.css :.dimGrid). */
-const GRID_COLS = 2;
-
-/* ──────────────────────────────────────────────────────────────
-   DimDrawer — layout espejo del prototype_v1/detail.jsx (133-190).
-   Se renderiza full-width debajo de la fila donde esté la celda
-   abierta. Consume explicaciones_dimensiones cuando existe.
-   ────────────────────────────────────────────────────────────── */
-interface DrawerProps {
-  dim: DimensionMeta;
-  value: number | null | undefined;
-  explicacion?: ExplicacionDimension;
-  peso?: number;           // 0-1, peso de esta dimensión para el sector
-  sectorCodigo?: string;   // sector clasificado ("restauracion", etc.)
-  zonaId?: string;         // para paneles ricos por dimensión (transporte, etc.)
+function clampScore(value?: number | null): number {
+  if (value == null || Number.isNaN(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-/**
- * Explica por qué una dimensión tiene el peso que tiene para este sector.
- * No viene del LLM — es heurística estable conocida por el modelo manual_v2.
- */
+function normalizeList(items?: string[] | null): string[] {
+  return (items ?? []).map((item) => item.trim()).filter(Boolean);
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function getExplicacion(
+  explicaciones: Record<string, ExplicacionDimension>,
+  key: DimensionKey,
+): ExplicacionDimension | undefined {
+  if (key === "dinamismo") {
+    return explicaciones.dinamismo ?? explicaciones.entorno_comercial;
+  }
+  return explicaciones[key];
+}
+
+function scoreNarrative(dimName: string, band: Band): string {
+  if (band === "hi") return `${dimName} esta empujando la recomendacion de esta zona.`;
+  if (band === "mid") return `${dimName} acompana, pero no decide por si sola.`;
+  if (band === "lo") return `${dimName} es uno de los frenos que conviene revisar antes de decidir.`;
+  return `Aun no hay datos suficientes para interpretar ${dimName}.`;
+}
+
 function razonPeso(
   dimKey: DimensionKey,
   sectorCodigo: string | undefined,
@@ -65,200 +100,395 @@ function razonPeso(
 ): string {
   const pct = Math.round(peso * 100);
   const sector = sectorCodigo ?? "tu negocio";
-  const altoBajo = peso >= 0.18 ? "alto" : peso >= 0.10 ? "medio" : "bajo";
-  const intros: Partial<Record<DimensionKey, string>> = {
-    flujo_peatonal: `El flujo peatonal pesa ${pct}% (${altoBajo}) para ${sector} porque el volumen de paso determina cuántos clientes ven el escaparate cada día.`,
-    demografia: `La demografía pesa ${pct}% (${altoBajo}) para ${sector} porque la renta, edad y nivel educativo marcan el público objetivo y el ticket medio posible.`,
-    competencia: `La competencia pesa ${pct}% (${altoBajo}) para ${sector} — demasiados negocios del mismo tipo cerca reducen tu cuota y presionan precios.`,
-    transporte: `El transporte pesa ${pct}% (${altoBajo}) para ${sector} porque amplía el radio de captación más allá del barrio inmediato.`,
-    seguridad: `La seguridad pesa ${pct}% (${altoBajo}) para ${sector} — importa más cuanto más dure el servicio en franja tarde-noche.`,
-    turismo: `El turismo pesa ${pct}% (${altoBajo}) para ${sector} porque el perfil estacional condiciona ingresos recurrentes vs picos.`,
-    dinamismo: `El dinamismo pesa ${pct}% (${altoBajo}) para ${sector} — una zona emergente puede hacer crecer tu local, una en declive lo hunde.`,
-    precio_alquiler: `El precio del alquiler pesa ${pct}% (${altoBajo}) para ${sector} como restricción financiera: determina el punto muerto de tu P&L.`,
+  const nivel = peso >= 0.18 ? "alto" : peso >= 0.10 ? "medio" : "bajo";
+  const textos: Partial<Record<DimensionKey, string>> = {
+    flujo_peatonal: `Pesa ${pct}% (${nivel}) porque el volumen de paso define cuanta demanda espontanea puede ver el local cada dia.`,
+    demografia: `Pesa ${pct}% (${nivel}) porque renta, edad y perfil residencial marcan si el barrio encaja con el ticket de ${sector}.`,
+    competencia: `Pesa ${pct}% (${nivel}) porque mide si el mercado cercano deja espacio real o exige una diferenciacion muy fuerte.`,
+    transporte: `Pesa ${pct}% (${nivel}) porque amplia el radio de captacion mas alla de la calle inmediata.`,
+    seguridad: `Pesa ${pct}% (${nivel}) porque afecta a horarios, percepcion y comodidad de visita, sobre todo en tarde-noche.`,
+    turismo: `Pesa ${pct}% (${nivel}) porque determina si el negocio depende de visitantes, picos estacionales o clientela local estable.`,
+    dinamismo: `Pesa ${pct}% (${nivel}) porque una zona que abre, retiene y atrae operadores reduce el riesgo de arrancar alli.`,
+    precio_alquiler: `Pesa ${pct}% (${nivel}) porque condiciona el punto muerto: cuanto mas caro el local, mas ventas hacen falta para sobrevivir.`,
   };
-  return intros[dimKey] ?? `Esta dimensión pesa ${pct}% para ${sector}.`;
+  return textos[dimKey] ?? `Esta dimension pesa ${pct}% en el score de ${sector}.`;
 }
 
-function DimDrawer({ dim, value, explicacion, peso, sectorCodigo, zonaId }: DrawerProps) {
+function WeightCard({
+  pesoBase,
+  pesoMod,
+  dim,
+  sectorCodigo,
+}: {
+  pesoBase?: number;
+  pesoMod?: number;
+  dim: DimensionMeta;
+  sectorCodigo?: string;
+}) {
+  const pesoActivo = pesoMod ?? pesoBase;
+  if (pesoActivo == null || pesoActivo <= 0) return null;
+
+  const basePct = pesoBase != null ? Math.round(pesoBase * 100) : null;
+  const modPct = pesoMod != null ? Math.round(pesoMod * 100) : null;
+  const activePct = Math.round(pesoActivo * 100);
+  const diff = basePct != null && modPct != null ? modPct - basePct : 0;
+  const hasModulation = basePct != null && modPct != null && diff !== 0;
+
+  return (
+    <section className={styles.weightStoryCard}>
+      <div className={styles.weightStoryTop}>
+        <span className={styles.metricKicker}>Peso en el score</span>
+        <span className={styles.weightStoryValue}>{activePct}%</span>
+      </div>
+      <div className={styles.weightTrack} aria-hidden="true">
+        <span style={{ width: `${Math.min(activePct, 100)}%` }} />
+      </div>
+      {hasModulation && (
+        <div className={styles.weightCompare}>
+          <span>Base {basePct}%</span>
+          <span className={diff > 0 ? styles.weightUp : styles.weightDown}>
+            {diff > 0 ? "+" : ""}
+            {diff} por perfil
+          </span>
+        </div>
+      )}
+      <p className={styles.metricBody}>{razonPeso(dim.key, sectorCodigo, pesoActivo)}</p>
+    </section>
+  );
+}
+
+function DriverList({
+  title,
+  items,
+  kind,
+}: {
+  title: string;
+  items: string[];
+  kind: DriverKind;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section className={`${styles.driverCard} ${styles[`driver_${kind}`]}`}>
+      <div className={styles.driverTitle}>{title}</div>
+      <ul className={styles.driverList}>
+        {items.map((item, index) => (
+          <li key={`${kind}-${index}`}>
+            <span className={styles.driverMark} aria-hidden="true">
+              {kind === "up" ? "+" : kind === "down" ? "-" : ""}
+            </span>
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function EvidencePanel({
+  hechos,
+  fuentes,
+  confianza,
+}: {
+  hechos: string[];
+  fuentes: string[];
+  confianza?: string;
+}) {
+  return (
+    <section className={styles.evidencePanel}>
+      <div className={styles.evidenceHeader}>
+        <span className={styles.drawerSectionLabel}>Datos reales</span>
+        {confianza && (
+          <span className={styles.confidencePill}>Confianza {confianza}</span>
+        )}
+      </div>
+      {hechos.length > 0 ? (
+        <div className={styles.factGrid}>
+          {hechos.map((hecho, index) => (
+            <div key={`fact-${index}`} className={styles.factCard}>
+              <span className={styles.factIndex}>{String(index + 1).padStart(2, "0")}</span>
+              <p>{hecho}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className={styles.drawerInterpText}>
+          Todavia no hay hechos trazables suficientes para esta dimension.
+        </p>
+      )}
+      {fuentes.length > 0 && (
+        <div className={styles.drawerSources}>
+          {fuentes.map((source) => (
+            <span key={source} className={styles.sourceChip}>
+              {source}
+            </span>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DimensionVisualPanel({
+  dim,
+  value,
+  detalle,
+  zonaId,
+  sectorCodigo,
+  hechos,
+}: {
+  dim: DimensionMeta;
+  value: number | null | undefined;
+  detalle?: LocalDetalleResponse | null;
+  zonaId?: string;
+  sectorCodigo?: string;
+  hechos: string[];
+}) {
+  const zona = detalle?.zona ?? null;
+  const zonaAny = (zona ?? {}) as Record<string, unknown>;
+  const directCount =
+    asNumber(zonaAny.num_directos) ??
+    zona?.competidores_cercanos?.filter((c) => c.es_competencia_directa).length ??
+    null;
+  const precioM2 =
+    asNumber(zonaAny.precio_alquiler_m2) ??
+    (zona?.alquiler_mensual != null && zona.m2 ? zona.alquiler_mensual / zona.m2 : null);
+
+  if (dim.key === "flujo_peatonal") {
+    return (
+      <FlujoPanel
+        flujo_dia={zona?.flujo_peatonal_dia}
+        vcity_peatones_dia={zona?.vcity_flujo_peatonal}
+        explicacion_bullets={hechos}
+      />
+    );
+  }
+
+  if (dim.key === "demografia") {
+    return (
+      <DemografiaPanel
+        renta_media_hogar={zona?.renta_media_hogar}
+        edad_media={zona?.edad_media}
+        pct_extranjeros={zona?.pct_extranjeros}
+        nivel_estudios_alto_pct={zona?.nivel_estudios_alto_pct}
+        delta_renta_3a={zona?.delta_renta_3a}
+        indice_potencial_consumo={asNumber(zonaAny.indice_potencial_consumo)}
+        explicacion_bullets={hechos}
+      />
+    );
+  }
+
+  if (dim.key === "competencia") {
+    return (
+      <CompetenciaDimPanel
+        hhi_index={asNumber(zonaAny.hhi_index)}
+        num_directos={directCount}
+        competidores_cercanos={zona?.competidores_cercanos}
+        score={value ?? undefined}
+        explicacion_bullets={hechos}
+      />
+    );
+  }
+
+  if (dim.key === "transporte" && zonaId) {
+    return (
+      <TransportePanel
+        zonaId={zonaId}
+        fallbackLineas={zona?.num_lineas_transporte}
+        fallbackParadas={zona?.num_paradas_transporte}
+        score={value ?? undefined}
+        numBicing={asNumber(zonaAny.num_bicing_400m) ?? undefined}
+      />
+    );
+  }
+
+  if (dim.key === "seguridad") {
+    return (
+      <SeguridadPanel
+        detalle={zona?.seguridad_detalle as SeguridadDetalle | null | undefined}
+        score={value ?? undefined}
+        explicacion_bullets={hechos}
+      />
+    );
+  }
+
+  if (dim.key === "turismo") {
+    return (
+      <TurismoPanel
+        score_turismo={zona?.score_turismo}
+        score_turismo_airbnb={asNumber(zonaAny.score_turismo_airbnb)}
+        score_turismo_hut={asNumber(zonaAny.score_turismo_hut)}
+        airbnb_density_500m={zona?.airbnb_density_500m}
+        airbnb_occupancy_est={zona?.airbnb_occupancy_est}
+        booking_hoteles_500m={zona?.booking_hoteles_500m}
+        booking_rating_medio={asNumber(zonaAny.booking_rating_medio)}
+        eventos_culturales_500m={asNumber(zonaAny.eventos_culturales_500m)}
+        venues_musicales_500m={asNumber(zonaAny.venues_musicales_500m)}
+        dist_playa_m={asNumber(zonaAny.dist_playa_m)}
+        dist_landmark_top3_m={asNumber(zonaAny.dist_landmark_top3_m)}
+        vcity_tourist_rate={asNumber(zonaAny.vcity_tourist_rate)}
+        seasonality_summer_lift={asNumber(zonaAny.seasonality_summer_lift)}
+        sector_codigo={sectorCodigo}
+        explicacion_bullets={hechos}
+      />
+    );
+  }
+
+  if (dim.key === "dinamismo") {
+    return (
+      <DinamismoPanel
+        tendencia={asString(zonaAny.tendencia)}
+        tasa_supervivencia_3a={asNumber(zonaAny.tasa_supervivencia_3a)}
+        ratio_apertura_cierre_1a={asNumber(zonaAny.ratio_apertura_cierre_1a)}
+        hhi_sectorial={asNumber(zonaAny.hhi_sectorial)}
+        negocios_historico_count={asNumber(zonaAny.negocios_historico_count)}
+        renta_variacion_3a={asNumber(zonaAny.renta_variacion_3a) ?? zona?.delta_renta_3a}
+        licencias_abiertas_1a={asNumber(zonaAny.licencias_abiertas_1a)}
+        licencias_cerradas_1a={asNumber(zonaAny.licencias_cerradas_1a)}
+        vacantes_ratio={asNumber(zonaAny.vacantes_ratio)}
+        poblacion_variacion_3a={asNumber(zonaAny.poblacion_variacion_3a)}
+        precio_alquiler_variacion_1a={asNumber(zonaAny.precio_alquiler_variacion_1a)}
+        score={value ?? undefined}
+        explicacion_bullets={hechos}
+      />
+    );
+  }
+
+  if (dim.key === "precio_alquiler") {
+    return (
+      <PrecioAlquilerPanel
+        alquiler_mensual={zona?.alquiler_mensual}
+        precio_m2={precioM2}
+        score={value ?? undefined}
+        explicacion_bullets={hechos}
+      />
+    );
+  }
+
+  return (
+    <div className={styles.emptyVisual}>
+      <span className={styles.drawerInterpMuted}>Sin visual especifico</span>
+    </div>
+  );
+}
+
+function DimDrawer({
+  dim,
+  value,
+  explicacion,
+  pesoBase,
+  pesoMod,
+  sectorCodigo,
+  zonaId,
+  detalle,
+}: DrawerProps) {
   const band = scoreBand(value ?? null);
   const label = bandLabel(band);
-
-  // Desglose real: solo mostramos hechos clave del backend. Sin invenciones.
-  const hechos = (explicacion?.hechos_clave ?? []).filter((t) => t && t.trim());
-
-  // Copy para "Para este local": usamos explicacion del API cuando la hay.
-  const interpTitular = explicacion?.titular?.trim();
-  const interpSubtitular = explicacion?.explicacion_corta?.trim();
-  const bullets: Array<{ kind: "up" | "down" | "fact"; text: string }> = [];
-  (explicacion?.porque_sube ?? []).forEach((t) =>
-    bullets.push({ kind: "up", text: t }),
-  );
-  (explicacion?.porque_baja ?? []).forEach((t) =>
-    bullets.push({ kind: "down", text: t }),
-  );
-  (explicacion?.hechos_clave ?? []).forEach((t) =>
-    bullets.push({ kind: "fact", text: t }),
-  );
-  const hasInterp = Boolean(interpTitular || interpSubtitular || bullets.length);
-
-  // Sources: si el API devuelve fuentes, las priorizamos, si no usamos las por defecto.
-  const sources =
-    explicacion?.fuentes && explicacion.fuentes.length > 0
-      ? explicacion.fuentes
-      : dim.sources;
+  const score = clampScore(value ?? null);
+  const hechos = normalizeList(explicacion?.hechos_clave);
+  const fuentes = normalizeList(explicacion?.fuentes).length > 0
+    ? normalizeList(explicacion?.fuentes)
+    : dim.sources;
+  const positivos = normalizeList(explicacion?.porque_sube);
+  const negativos = normalizeList(explicacion?.porque_baja);
+  const titulo =
+    explicacion?.titular?.trim() || scoreNarrative(dim.name, band);
+  const subtitulo =
+    explicacion?.explicacion_corta?.trim() || dim.what;
+  const impacto = explicacion?.impacto_modelo?.trim();
+  const pesoActivo = pesoMod ?? pesoBase;
 
   return (
     <div
-      className={`${styles.dimDrawerFull} ${styles[`drawer_${band}`]}`}
+      className={`${styles.dimDrawerFull} ${styles.dimensionStory} ${styles[`drawer_${band}`]}`}
       role="region"
-      aria-label={`Detalle dimensión ${dim.name}`}
+      aria-label={`Detalle dimension ${dim.name}`}
     >
-      {/* ── Header ─────────────────────────────────────── */}
-      <div className={styles.drawerHeader}>
-        <div className={styles.drawerHeaderLeft}>
+      <header className={styles.dimensionHero}>
+        <div className={styles.dimensionHeroCopy}>
           <div className={styles.drawerTitleRow}>
             <h3 className={styles.drawerTitle}>{dim.name}</h3>
             <span className={`${styles.drawerBand} ${styles[`drawerBand_${band}`]}`}>
               {label}
             </span>
-            {peso != null && peso > 0 && (
-              <span className={styles.drawerWeightPill} title="Peso de esta dimensión en el score global para tu idea">
-                {Math.round(peso * 100)}% peso
+            {pesoActivo != null && pesoActivo > 0 && (
+              <span className={styles.drawerWeightPill}>
+                {Math.round(pesoActivo * 100)}% peso
               </span>
             )}
           </div>
           <p className={styles.drawerSubtitleNew}>{dim.subtitle}</p>
         </div>
-        <div className={styles.drawerHeaderRight}>
-          <div className={styles.drawerScoreBig}>
-            {value != null ? Math.round(value) : "—"}
-            <sup>/100</sup>
+
+        <div className={styles.dimensionGaugeWrap}>
+          <div
+            className={styles.dimensionGauge}
+            style={{ "--score-pct": `${score}%` } as CSSProperties}
+            role="img"
+            aria-label={`${dim.name}: ${value != null ? score : "sin datos"} sobre 100`}
+          >
+            <div className={styles.dimensionGaugeInner}>
+              <span>{value != null ? score : "--"}</span>
+              <small>/100</small>
+            </div>
           </div>
-          <div className={styles.drawerScoreLabel}>{dim.name}</div>
         </div>
-      </div>
+      </header>
 
-      {/* ── Body 2 columnas ────────────────────────────── */}
-      <div className={styles.drawerBody}>
-        {/* Columna izquierda: Qué mide + Para este local + sources */}
-        <div className={styles.drawerBodyLeft}>
-          <div className={styles.drawerSectionLabel}>Qué mide</div>
-          <p className={styles.drawerWhatNew}>{dim.what}</p>
+      <div className={styles.dimensionInsightGrid}>
+        <div className={styles.dimensionNarrative}>
+          <section className={styles.conclusionCard}>
+            <span className={styles.metricKicker}>Conclusion</span>
+            <p className={styles.conclusionTitle}>{titulo}</p>
+            <p className={styles.conclusionText}>{subtitulo}</p>
+          </section>
 
-          <div className={styles.drawerSectionLabel}>Para este local</div>
-          {hasInterp ? (
-            <div className={styles.drawerInterp}>
-              {interpTitular && (
-                <p className={styles.drawerInterpLead}>
-                  <strong>{interpTitular}</strong>
-                </p>
+          <section className={styles.whatCard}>
+            <span className={styles.metricKicker}>Que mide</span>
+            <p>{dim.what}</p>
+          </section>
+
+          {(positivos.length > 0 || negativos.length > 0 || impacto) && (
+            <div className={styles.driverGrid}>
+              <DriverList title="A favor" items={positivos} kind="up" />
+              <DriverList title="Frenos" items={negativos} kind="down" />
+              {impacto && (
+                <section className={`${styles.driverCard} ${styles.driver_fact}`}>
+                  <div className={styles.driverTitle}>Modelo</div>
+                  <p className={styles.modelImpact}>{impacto}</p>
+                </section>
               )}
-              {interpSubtitular && (
-                <p className={styles.drawerInterpText}>{interpSubtitular}</p>
-              )}
-              {bullets.length > 0 && (
-                <ul className={styles.drawerInterpList}>
-                  {bullets.map((b, i) => (
-                    <li key={i} className={styles[`interpBullet_${b.kind}`]}>
-                      <span className={styles.interpBulletIcon} aria-hidden>
-                        {b.kind === "up" ? "▲" : b.kind === "down" ? "▼" : "·"}
-                      </span>
-                      <span>{b.text}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {explicacion?.confianza && (
-                <div className={styles.drawerConfidence}>
-                  Confianza del modelo: <strong>{explicacion.confianza}</strong>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className={styles.drawerInterp}>
-              <p className={styles.drawerInterpLead}>
-                <strong>
-                  {band === "hi"
-                    ? `${dim.name} es un punto fuerte en esta zona.`
-                    : band === "mid"
-                    ? `${dim.name} está en un nivel aceptable.`
-                    : band === "lo"
-                    ? `${dim.name} es un punto débil a vigilar.`
-                    : "Sin datos suficientes para evaluar esta dimensión."}
-                </strong>
-              </p>
-              <p className={styles.drawerInterpText}>{dim.what}</p>
-              {value != null && (
-                <p className={styles.drawerInterpText}>
-                  Score obtenido: <strong>{Math.round(value)}/100</strong>. El
-                  modelo agrega tus resultados según los pesos específicos de tu
-                  idea — revisa la sección <em>Por qué pesa así</em> para ver
-                  cuánto influye esta dimensión en el score global.
-                </p>
-              )}
-              <span className={styles.drawerInterpMuted}>
-                Interpretación IA específica no disponible — texto genérico.
-              </span>
             </div>
           )}
 
-          {/* ── Razonamiento del peso para esta idea ──────────────────── */}
-          {peso != null && peso > 0 && (
-            <div className={styles.drawerWeightExplain}>
-              <div className={styles.drawerSectionLabel}>Por qué pesa así</div>
-              <p className={styles.drawerInterpText}>
-                {razonPeso(dim.key, sectorCodigo, peso)}
-              </p>
-            </div>
-          )}
+          <WeightCard
+            pesoBase={pesoBase}
+            pesoMod={pesoMod}
+            dim={dim}
+            sectorCodigo={sectorCodigo}
+          />
 
-          <div className={styles.drawerSources}>
-            {sources.map((s) => (
-              <span key={s} className={styles.sourceChip}>
-                {s}
-              </span>
-            ))}
-          </div>
-
-          {dim.key === "transporte" && zonaId && (
-            <div style={{ marginTop: 18 }}>
-              <TransportePanel zonaId={zonaId} />
-            </div>
-          )}
+          <EvidencePanel
+            hechos={hechos}
+            fuentes={fuentes}
+            confianza={explicacion?.confianza}
+          />
         </div>
 
-        {/* Columna derecha: Hechos clave observados (datos crudos, sin score inventado) */}
-        <div className={styles.drawerBodyRight}>
-          <div className={styles.drawerSectionLabel}>Hechos observados</div>
-          {hechos.length > 0 ? (
-            <ul className={styles.drawerInterpList}>
-              {hechos.map((hecho, i) => (
-                <li key={i} className={styles.interpBullet_fact}>
-                  <span className={styles.interpBulletIcon} aria-hidden>
-                    ·
-                  </span>
-                  <span>{hecho}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className={styles.drawerInterpText}>
-              <span className={styles.drawerInterpMuted}>
-                Todavía no hay datos crudos validados por el backend para esta
-                dimensión. El score se calcula internamente pero no exponemos
-                un desglose numérico para evitar mostrar valores inventados.
-              </span>
-            </p>
-          )}
-        </div>
+        <aside className={styles.dimensionVisual}>
+          <DimensionVisualPanel
+            dim={dim}
+            value={value}
+            detalle={detalle}
+            zonaId={zonaId}
+            sectorCodigo={sectorCodigo}
+            hechos={hechos}
+          />
+        </aside>
       </div>
     </div>
   );
 }
 
-/* ──────────────────────────────────────────────────────────────
-   Tab principal
-   ────────────────────────────────────────────────────────────── */
 export default function DossierTabScore({ zone, detalle, loading }: Props) {
   const [openKey, setOpenKey] = useState<DimensionKey | null>(null);
 
@@ -268,14 +498,16 @@ export default function DossierTabScore({ zone, detalle, loading }: Props) {
     detalle?.zona.explicaciones_dimensiones ??
     detalle?.zona.analisis_ia?.explicaciones_dimensiones ??
     {};
-  const pesos = detalle?.zona.pesos_dimensiones ?? {};
+  const pesosBase = detalle?.zona.pesos_dimensiones ?? {};
+  const pesosMod = detalle?.zona.pesos_modulados ?? {};
+  const pesosActivos = Object.keys(pesosMod).length > 0 ? pesosMod : pesosBase;
   const sectorCodigo = detalle?.zona.sector_codigo;
 
   if (loading && !detalle) {
     return (
       <div className={styles.loading}>
         <div className="spinner" />
-        <span>Calculando análisis…</span>
+        <span>Calculando analisis...</span>
       </div>
     );
   }
@@ -286,8 +518,6 @@ export default function DossierTabScore({ zone, detalle, loading }: Props) {
   const openRow = openIdx >= 0 ? Math.floor(openIdx / GRID_COLS) : -1;
   const openDim = openIdx >= 0 ? DIMENSIONS[openIdx] : null;
 
-  // Agrupamos las celdas en "filas lógicas" para poder insertar la drawer
-  // inmediatamente después de la fila donde está abierta.
   const rows: DimensionMeta[][] = [];
   for (let i = 0; i < DIMENSIONS.length; i += GRID_COLS) {
     rows.push(DIMENSIONS.slice(i, i + GRID_COLS));
@@ -297,10 +527,15 @@ export default function DossierTabScore({ zone, detalle, loading }: Props) {
     <div className={styles.scoreTab}>
       {prob != null && (
         <div className={styles.probBanner}>
-          <div className={styles.probLabel}>PROBABILIDAD SUPERVIVENCIA 3 AÑOS</div>
-          <div className={styles.probValue}>
-            {Math.round(prob * 100)}
-            <span className={styles.probPct}>%</span>
+          <div className={styles.probHeaderRow}>
+            <div>
+              <div className={styles.probLabel}>Probabilidad supervivencia 3 anos</div>
+              <p className={styles.probHint}>Lectura global del modelo para este local.</p>
+            </div>
+            <div className={styles.probValue}>
+              {Math.round(prob * 100)}
+              <span className={styles.probPct}>%</span>
+            </div>
           </div>
           <div className={styles.probBarTrack}>
             <div
@@ -319,6 +554,7 @@ export default function DossierTabScore({ zone, detalle, loading }: Props) {
                 const val = dims[dim.key];
                 const band = scoreBand(val);
                 const isOpen = openKey === dim.key;
+                const peso = pesosActivos[dim.key];
                 return (
                   <button
                     key={dim.key}
@@ -332,7 +568,7 @@ export default function DossierTabScore({ zone, detalle, loading }: Props) {
                     <div className={styles.dimCellHead}>
                       <span className={styles.dimCellName}>{dim.name}</span>
                       <span className={styles.dimCellVal}>
-                        {val != null ? Math.round(val) : "—"}
+                        {val != null ? Math.round(val) : "--"}
                       </span>
                     </div>
                     <div className={styles.dimCellBarTrack}>
@@ -347,10 +583,10 @@ export default function DossierTabScore({ zone, detalle, loading }: Props) {
                       />
                     </div>
                     <div className={styles.dimCellFoot}>
-                      <span>{dim.short}</span>
-                      {pesos[dim.key] != null && pesos[dim.key] > 0 ? (
+                      <span>{bandLabel(band)}</span>
+                      {peso != null && peso > 0 ? (
                         <span className={styles.dimCellWeight}>
-                          {Math.round(pesos[dim.key] * 100)}% peso
+                          {Math.round(peso * 100)}% peso
                         </span>
                       ) : (
                         <span className={styles.dimCellHint}>{dim.hint}</span>
@@ -365,10 +601,12 @@ export default function DossierTabScore({ zone, detalle, loading }: Props) {
               <DimDrawer
                 dim={openDim}
                 value={dims[openDim.key]}
-                explicacion={explicaciones[openDim.key]}
-                peso={pesos[openDim.key]}
+                explicacion={getExplicacion(explicaciones, openDim.key)}
+                pesoBase={pesosBase[openDim.key]}
+                pesoMod={pesosMod[openDim.key]}
                 sectorCodigo={sectorCodigo}
                 zonaId={zone.zona_id}
+                detalle={detalle}
               />
             )}
           </Fragment>
@@ -378,7 +616,7 @@ export default function DossierTabScore({ zone, detalle, loading }: Props) {
       {detalle?.zona.analisis_ia?.resumen_global && (
         <div className={styles.summary}>
           <div className={styles.summaryEyebrow}>
-            <span className={styles.tick}>●</span>RESUMEN IA
+            <span className={styles.tick}>*</span>RESUMEN IA
           </div>
           <p className={styles.summaryText}>{detalle.zona.analisis_ia.resumen_global}</p>
         </div>

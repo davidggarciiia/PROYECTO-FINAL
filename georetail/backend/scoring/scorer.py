@@ -471,6 +471,11 @@ async def _get_datos_zona_completos(zona_id: str, sector: str, idea_tags: list[s
             SELECT
                 vz.flujo_peatonal_total, vz.flujo_popular_times_score,
                 vz.vcity_flujo_peatonal, vz.renta_media_hogar,
+                -- Resto de variables demográficas que el scorer necesita
+                -- (sin éstas, score_demografia cae al default y queda plano).
+                vz.densidad_hab_km2, vz.pct_poblacio_25_44,
+                vz.nivel_estudios_alto_pct, vz.delta_renta_3a,
+                vz.edad_media, vz.pct_extranjeros,
                 vz.score_turismo, vz.pct_locales_vacios, vz.tasa_rotacion_anual,
                 vz.incidencias_por_1000hab, vz.ratio_locales_comerciales,
                 vz.hurtos_por_1000hab, vz.robatoris_por_1000hab,

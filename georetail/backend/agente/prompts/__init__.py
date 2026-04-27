@@ -190,7 +190,18 @@ RESPUESTA JSON OBLIGATORIA:
 
 El sistema se encarga de rellenar `explicaciones_dimensiones` automáticamente
 desde variables observadas — déjalo en `{}` salvo que quieras aportar un
-matiz adicional validado por la evidencia."""
+matiz adicional validado por la evidencia.
+
+REGLA NUEVA DE PRIORIDAD:
+- Aunque el fallback determinista sigue existiendo, intenta rellenar
+  `explicaciones_dimensiones` para las claves presentes en el payload:
+  flujo_peatonal, demografia, competencia, precio_alquiler, transporte,
+  seguridad, turismo y dinamismo.
+- Cada dimension debe incluir titular, explicacion_corta, porque_sube,
+  porque_baja, hechos_clave, impacto_modelo, confianza y fuentes.
+- Interpreta el contexto del negocio, pero no inventes datos fuera del payload.
+- Si una dimension no tiene hechos trazables, omitela o deja listas vacias;
+  el sistema aplicara fallback determinista."""
 
 
 LEGAL_SISTEMA = """You are an expert in business-opening regulations in Catalonia and Barcelona.

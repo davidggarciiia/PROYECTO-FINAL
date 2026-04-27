@@ -4,37 +4,183 @@
   gap: 0;
   min-height: 100%;
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 8px;
   overflow: hidden;
   background: var(--surface-2);
 }
 
-.mapWrapper {
-  position: relative;
+.marketHeader {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.1fr) minmax(320px, 1fr);
+  gap: 16px;
+  padding: 18px;
+  border-bottom: 1px solid var(--border);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.05), transparent 52%),
+    var(--surface-2);
+}
+
+.scoreBlock {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.scoreRing {
+  width: 96px;
+  height: 96px;
+  flex: 0 0 96px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, var(--surface-2) 0 58%, transparent 59%),
+    conic-gradient(var(--score-color) var(--score-pct), rgba(255, 255, 255, 0.1) 0);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.scoreRing span {
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: 0;
+}
+
+.scoreText {
+  min-width: 0;
+}
+
+.scoreText strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 18px;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+.scoreText p {
+  margin: 7px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.scoreLabel,
+.sectionLabel {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.toneGood {
+  color: #1f8a6c;
+  background: rgba(31, 138, 108, 0.13);
+}
+
+.toneMid {
+  color: #a06f20;
+  background: rgba(160, 111, 32, 0.13);
+}
+
+.toneBad {
+  color: #a04d43;
+  background: rgba(160, 77, 67, 0.13);
+}
+
+.headerMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  min-height: 92px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.metric span,
+.metric small {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.metric strong {
+  margin: 5px 0 3px;
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.mapBand {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(280px, 0.9fr);
+  min-height: 310px;
   border-bottom: 1px solid var(--border);
 }
 
+.mapWrapper {
+  position: relative;
+  min-height: 310px;
+  border-right: 1px solid var(--border);
+}
+
 .miniMap {
-  height: 260px;
+  height: 100%;
+  min-height: 310px;
   overflow: hidden;
+}
+
+.mapFallback {
+  display: flex;
+  min-height: 310px;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 18px;
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--surface);
+}
+
+.mapFallback strong {
+  color: var(--text);
 }
 
 .mapLegend {
   position: absolute;
-  bottom: 8px;
-  left: 8px;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  background: rgba(15, 15, 25, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 11px;
-  color: #fff;
+  left: 10px;
+  bottom: 10px;
   z-index: 500;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: calc(100% - 20px);
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.86);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.25;
   pointer-events: none;
-  line-height: 1.4;
 }
 
 .mapLegend span {
@@ -44,436 +190,468 @@
 }
 
 .legendDot {
-  display: inline-block;
   width: 8px;
   height: 8px;
+  flex: 0 0 8px;
   border-radius: 999px;
 }
 
-.resumenMercado,
-.precioGap {
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--border);
-}
-
-.rmHeader,
-.rmBars,
-.rmBar,
-.precioBar,
-.competitorCard,
-.emptyState {
+.reading {
   display: flex;
   flex-direction: column;
-}
-
-.rmHeader {
-  gap: 12px;
-}
-
-.rmTitleRow,
-.rmScoreGlobal,
-.rmBarHeader,
-.competitorHeader,
-.amenazaBar {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
+  gap: 18px;
+  padding: 18px;
 }
 
-.rmTitle {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-subtle);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.hhiBadge {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 9px;
-  border-radius: 999px;
-}
-
-.hhiBadgeGreen {
-  background: rgba(40, 140, 115, 0.14);
-  color: #1f8a6c;
-}
-
-.hhiBadgeYellow {
-  background: rgba(188, 135, 62, 0.14);
-  color: #9b6b2a;
-}
-
-.hhiBadgeRed {
-  background: rgba(177, 83, 74, 0.14);
-  color: #a04d43;
-}
-
-.rmScoreGlobal {
-  align-items: flex-end;
-  gap: 12px;
-}
-
-.rmScoreNum {
-  font-size: 42px;
-  font-weight: 800;
-  line-height: 0.95;
-  letter-spacing: -0.05em;
-}
-
-.rmScoreInfo {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.rmScoreLabel {
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.rmScoreSub,
-.rmBarLabel,
-.rmBarSub,
-.precioBarLabel,
-.precioBarCount,
-.tabDesc,
-.competitorDist,
-.competitorResenas,
-.competitorPrecio,
-.amenazaBarLabel,
+.reading p,
+.priceCopy p,
+.tabContext,
+.noReviews,
 .emptyState p {
   color: var(--text-muted);
-}
-
-.rmScoreSub,
-.tabDesc,
-.competitorResenas,
-.competitorPrecio,
-.competitorDist,
-.emptyState p {
-  font-size: 12px;
-}
-
-.rmBars {
-  gap: 10px;
-}
-
-.rmBar {
-  gap: 5px;
-}
-
-.rmBarLabel,
-.rmBarVal {
-  font-size: 12px;
-}
-
-.rmBarVal {
-  font-weight: 700;
-}
-
-.rmBarTrack,
-.amenazaBarTrack {
-  height: 6px;
-  background: var(--surface);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.rmBarFill,
-.amenazaBarFill {
-  height: 100%;
-  border-radius: 999px;
-}
-
-.precioTitle {
-  margin: 0 0 12px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-subtle);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.precioBars {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  height: 70px;
-  margin-bottom: 10px;
-}
-
-.precioBar {
-  flex: 1;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  position: relative;
-  height: 100%;
-}
-
-.precioBarFill {
-  width: 100%;
-  background: var(--surface);
-  border-radius: 6px 6px 0 0;
-  transition: height 0.3s ease;
-}
-
-.precioBarDominant .precioBarFill {
-  background: var(--accent);
-}
-
-.precioBarGap .precioBarFill {
-  background: rgba(40, 140, 115, 0.18);
-  border: 1px dashed rgba(40, 140, 115, 0.55);
-}
-
-.precioBarLabel {
-  font-size: 12px;
-}
-
-.precioBarCount {
-  font-size: 11px;
-}
-
-.precioBarGapTag {
-  position: absolute;
-  top: -18px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: rgba(40, 140, 115, 0.14);
-  color: #1f8a6c;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.precioGapMsg {
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(40, 140, 115, 0.08);
-  border: 1px solid rgba(40, 140, 115, 0.16);
-  color: var(--text);
   font-size: 13px;
   line-height: 1.55;
 }
 
-.precioGapMsg strong {
-  color: #1f8a6c;
+.reading p,
+.priceCopy p,
+.emptyState p {
+  margin: 8px 0 0;
 }
 
-.compTabs {
+.sectionLabel {
+  color: var(--text-subtle);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.readingBars {
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.scoreBar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scoreBarTop,
+.reviewStripTop,
+.competitorHeader,
+.threatLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.scoreBarTop span,
+.reviewStripTop span,
+.threatLine span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.scoreBarTop strong,
+.reviewStripTop strong,
+.threatLine strong {
+  font-size: 12px;
+}
+
+.scoreBarTrack,
+.threatTrack,
+.sentimentTrack {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.scoreBarFill,
+.threatFill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.priceBand {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(280px, 1fr);
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.priceCopy strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--text);
+  font-size: 18px;
+}
+
+.priceBars {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+  min-height: 112px;
+}
+
+.priceBar {
+  display: grid;
+  grid-template-rows: 1fr auto auto;
+  gap: 4px;
+  min-width: 0;
+  text-align: center;
+}
+
+.priceTrack {
+  display: flex;
+  align-items: flex-end;
+  height: 82px;
+  overflow: hidden;
+  border-radius: 6px 6px 2px 2px;
+  background: var(--surface);
+}
+
+.priceFill {
+  width: 100%;
+  min-height: 8px;
+  background: rgba(59, 130, 246, 0.42);
+}
+
+.priceDominantFill {
+  background: rgba(31, 138, 108, 0.72);
+}
+
+.priceGapFill {
+  background: rgba(160, 111, 32, 0.28);
+  border: 1px dashed rgba(160, 111, 32, 0.7);
+}
+
+.priceBar span,
+.priceBar small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 
+.compTabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .compTab {
-  flex: 1;
-  padding: 12px 8px;
-  font-size: 12px;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   color: var(--text-muted);
-  border-bottom: 2px solid transparent;
+  background: var(--surface-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.compTab strong {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 22px;
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11px;
 }
 
 .compTabActive {
   color: var(--text);
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(59, 130, 246, 0.1);
 }
 
-.compTabAmenaza.compTabActive {
-  border-bottom-color: #a04d43;
-  color: #a04d43 !important;
+.sorter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
-.compTabOportunidad.compTabActive {
-  border-bottom-color: #1f8a6c;
-  color: #1f8a6c !important;
+.sorter select {
+  min-width: 136px;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface-2);
 }
 
-.compTabSinergicos.compTabActive {
-  border-bottom-color: #1f5f68;
-  color: #1f5f68 !important;
-}
-
-.tabDesc {
-  margin: 0;
+.tabContext {
   padding: 10px 18px;
   border-bottom: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.02);
-  line-height: 1.55;
 }
 
 .competitorList {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
   padding: 12px;
 }
 
 .competitorCard {
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
   padding: 14px;
-  border-radius: 14px;
   border: 1px solid var(--border);
+  border-radius: 8px;
   background: var(--surface);
-  text-decoration: none;
-  color: inherit;
-  cursor: pointer;
-  transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
 }
 
-.competitorCard:hover {
-  border-color: rgba(59, 130, 246, 0.55);
-  background: var(--surface-2);
-  transform: translateY(-1px);
-}
-
-.competitorHeaderRight {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.competitorExtLink {
-  font-size: 12px;
-  color: var(--text-subtle);
-  opacity: 0.7;
-}
-
-.competitorCard:hover .competitorExtLink {
-  color: #3b82f6;
-  opacity: 1;
+.competitorCard h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.25;
 }
 
 .competitorHeader {
   align-items: flex-start;
-  gap: 10px;
-}
-
-.competitorName {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.3;
-}
-
-.competitorDist {
-  flex-shrink: 0;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: var(--surface-2);
 }
 
 .competitorMeta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
+  gap: 6px 10px;
+  margin-top: 7px;
 }
 
-.competitorRating {
+.competitorMeta span,
+.badges span {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.mapLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: 8px;
+  color: #3b82f6;
+  text-decoration: none;
   font-size: 12px;
   font-weight: 700;
-  color: #9b6b2a;
 }
 
-.competitorPrecio,
-.competitorResenas,
-.competitorSector {
-  font-size: 12px;
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.competitorSector {
-  padding: 3px 8px;
+.badges span {
+  padding: 4px 7px;
   border-radius: 999px;
   background: var(--surface-2);
-  color: var(--text-muted);
 }
 
-.amenazaBar {
+.badges .badgeRisk {
+  color: #a04d43;
+  background: rgba(160, 77, 67, 0.13);
+}
+
+.badges .badgeOpportunity {
+  color: #1f8a6c;
+  background: rgba(31, 138, 108, 0.13);
+}
+
+.threatLine {
+  display: grid;
+  grid-template-columns: auto minmax(80px, 1fr) 32px;
+}
+
+.reviewStrip,
+.noReviews {
+  padding-top: 2px;
+}
+
+.sentimentTrack {
+  display: flex;
+  margin-top: 6px;
+}
+
+.sentimentTrack span {
+  min-width: 0;
+  height: 100%;
+}
+
+.sentimentPositive {
+  background: #1f8a6c;
+}
+
+.sentimentNeutral {
+  background: #a06f20;
+}
+
+.sentimentNegative {
+  background: #a04d43;
+}
+
+.snippets {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
-.amenazaBarLabel {
-  width: 56px;
+.snippets blockquote {
+  margin: 0;
+  padding: 9px 10px;
+  border-left: 3px solid rgba(59, 130, 246, 0.45);
+  border-radius: 0 8px 8px 0;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.snippets p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.snippets footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 7px;
+  color: var(--text-subtle);
   font-size: 11px;
-  flex-shrink: 0;
-}
-
-.amenazaBarTrack {
-  flex: 1;
-}
-
-.amenazaBarVal {
-  width: 30px;
-  text-align: right;
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .emptyState {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 42px 24px;
-  gap: 12px;
+  min-height: 160px;
+  padding: 28px 18px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
   text-align: center;
 }
 
-
-/* ─── FIFA-style links animados sobre el mini-mapa ─────────────────────── */
-/* Los `className` se aplican sobre los <path> SVG que crea Leaflet (polylines).
-   En leaflet 1.x los paths viven en el pane SVG dentro del contenedor del mapa.
-   CSS Modules no admite `:global(...)` como selector raíz — lo prefijamos con
-   la clase local `.miniMap` para que el selector sea "puro". */
+.emptyState strong {
+  color: var(--text);
+}
 
 .miniMap :global(.kp-zona-target) {
-  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.75));
+  filter: drop-shadow(0 0 8px rgba(37, 99, 235, 0.75));
   animation: kp-zona-pulse 2.2s ease-in-out infinite;
 }
 
 @keyframes kp-zona-pulse {
-  0%, 100% { filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.6)); }
-  50%      { filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.95)); }
-}
-
-.miniMap :global(.kp-fifa-direct) {
-  animation: kp-dash-forward 2.8s linear infinite;
-}
-@keyframes kp-dash-forward {
-  to { stroke-dashoffset: -40; }
-}
-
-.miniMap :global(.kp-fifa-compl) {
-  animation: kp-dash-back 3.6s linear infinite;
-}
-@keyframes kp-dash-back {
-  to { stroke-dashoffset: 40; }
-}
-
-/* Anillo rotante sobre cadenas dominantes (top 3 por reseñas). */
-.miniMap :global(.kp-dominant-ring) {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 2px dashed #ef4444;
-  box-shadow: 0 0 10px rgba(239, 68, 68, 0.45), inset 0 0 6px rgba(239, 68, 68, 0.35);
-  animation: kp-ring-rotate 6s linear infinite;
-  pointer-events: none;
-}
-
-@keyframes kp-ring-rotate {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(37, 99, 235, 0.6)); }
+  50% { filter: drop-shadow(0 0 12px rgba(37, 99, 235, 0.95)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .miniMap :global(.kp-zona-target),
-  .miniMap :global(.kp-fifa-direct),
-  .miniMap :global(.kp-fifa-compl),
-  .miniMap :global(.kp-dominant-ring) {
-    animation: none !important;
+  .miniMap :global(.kp-zona-target) {
+    animation: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .marketHeader,
+  .mapBand,
+  .priceBand {
+    grid-template-columns: 1fr;
+  }
+
+  .mapWrapper {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .headerMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .competitorList {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .marketHeader,
+  .reading,
+  .priceBand {
+    padding: 14px;
+  }
+
+  .scoreBlock {
+    align-items: flex-start;
+  }
+
+  .scoreRing {
+    width: 76px;
+    height: 76px;
+    flex-basis: 76px;
+  }
+
+  .scoreRing span {
+    font-size: 24px;
+  }
+
+  .headerMetrics,
+  .compTabs {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .sorter {
+    justify-content: space-between;
+  }
+
+  .sorter select {
+    flex: 1;
+  }
+
+  .miniMap,
+  .mapWrapper {
+    min-height: 260px;
+  }
+
+  .priceBars {
+    min-height: 98px;
   }
 }

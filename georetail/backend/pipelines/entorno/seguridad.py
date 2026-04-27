@@ -66,6 +66,62 @@ _TIPO_HURTO = {"furt", "hurl", "sostracció", "carterisme", "descuit"}
 _TIPO_ROBO = {"robatori", "atracament", "violència", "intimidació", "força"}
 _TIPO_DANY = {"dany", "vandalisme", "destrosses", "incendi"}
 
+# Alias: nombre oficial BCN en CSV Open Data (normalizado) → nombre en DB georetail (normalizado).
+# El CSV usa nombres administrativos oficiales; la DB usa nombres comerciales/populares.
+_BARRI_ALIAS: dict[str, str] = {
+    # Ciutat Vella
+    "el barri gotic":                        "el gotic",
+    "sant pere, santa caterina i la ribera": "el born",
+    "sant pere santa caterina i la ribera":  "el born",
+    # Eixample
+    "la dreta de l'eixample":                "dreta eixample",
+    "la dreta de leixample":                 "dreta eixample",
+    "l'esquerra de l'eixample":              "esquerra eixample",
+    "lesquerra de leixample":                "esquerra eixample",
+    "la sagrada familia":                    "sagrada familia",
+    # Gràcia
+    "la vila de gracia":                     "vila de gracia",
+    "el camp de gracia":                     "el camp de gracia",
+    # Sants-Montjuïc
+    "la bordeta":                            "la bordeta",
+    # Nou Barris
+    "la prosperitat":                        "prosperitat",
+    "nou barris":                            "nou barris nord",
+    # Sant Martí
+    "la vila olimpica del poblenou":                 "la vila olimpica",
+    "el parc i la llacuna del poblenou":             "el parc",
+    # Sarrià-Sant Gervasi
+    "sant gervasi - galvany":                        "sant gervasi",
+    "sant gervasi - la bonanova":                    "sant gervasi",
+    "sant gervasi galvany":                          "sant gervasi",
+    # Les Corts
+    "la maternitat i sant ramon":                    "la maternitat",
+    # Eixample (els dos subbarris oficials → agrupació DB)
+    "l'antiga esquerra de l'eixample":               "esquerra eixample",
+    "la nova esquerra de l'eixample":                "esquerra eixample",
+    "la nova esquerra de leixample":                 "esquerra eixample",
+    "lantiga esquerra de leixample":                 "esquerra eixample",
+    # Fort Pienc (CSV inclou article "el")
+    "el fort pienc":                                 "fort pienc",
+    # Gràcia (nom oficial BCN ≠ nom comercial DB)
+    "el camp d'en grassot i gracia nova":            "el camp de gracia",
+    "el camp den grassot i gracia nova":             "el camp de gracia",
+    # Nou Barris — diversos barris oficials → zona agrupada DB
+    "el turo de la peira":                           "nou barris nord",
+    "la guineueta":                                  "nou barris nord",
+    "canyelles":                                     "nou barris nord",
+    "les roquetes":                                  "nou barris nord",
+    "verdun":                                        "nou barris nord",
+    "porta":                                         "nou barris nord",
+    "vilapicina i la torre llobeta":                 "nou barris nord",
+    "can peguera":                                   "nou barris nord",
+    "torre baro":                                    "nou barris nord",
+    "ciudad meridiana":                              "nou barris nord",
+    "ciutat meridiana":                              "nou barris nord",
+    "vallbona":                                      "nou barris nord",
+    "baro de viver":                                 "nou barris nord",
+}
+
 
 async def ejecutar() -> dict:
     """Punto de entrada del pipeline. Llamado por scheduler o manualmente."""
@@ -128,8 +184,10 @@ async def _poblar_incidencias_gu() -> int:
                 barri_to_zonas[_normalize_barri(r["barrio_nombre"])].append(r["zona_id"])
 
             for barri_key, stats in stats_by_barri.items():
-                zona_ids = barri_to_zonas.get(barri_key, [])
+                barri_resolved = _BARRI_ALIAS.get(barri_key, barri_key)
+                zona_ids = barri_to_zonas.get(barri_resolved, [])
                 if not zona_ids:
+                    logger.debug("barri sin zona match: %r (resolved: %r)", barri_key, barri_resolved)
                     continue
 
                 # Normalizar por población (por 1000 hab)

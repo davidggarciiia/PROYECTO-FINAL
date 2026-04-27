@@ -324,6 +324,53 @@ class TestParsearDump:
 
 # ─── Tests de ejecutar() ──────────────────────────────────────────────────────
 
+class TestParsearReviewsDump:
+    def test_user_reviews_y_extended(self, tmp_path: Path):
+        path = tmp_path / "reviews.jsonl"
+        row = {
+            "place_id": "ChIJ123",
+            "title": "Tattoo Lab",
+            "latitude": 41.4,
+            "longitude": 2.16,
+            "rating": 4.8,
+            "review_count": 189,
+            "user_reviews_extended": [
+                {
+                    "text": "Muy buen trato y resultado impecable",
+                    "rating": 5,
+                    "date": "2026-03-01",
+                    "author": "Laura",
+                    "language": "es",
+                },
+            ],
+            "user_reviews": json.dumps([
+                {"text": "Muy buen trato y resultado impecable", "rating": 5, "date": "2026-03-01"},
+                {"text": "Tuve que esperar demasiado", "rating": 2, "date": "2026-02-10"},
+            ]),
+        }
+        path.write_text(json.dumps(row), encoding="utf-8")
+
+        out = list(gr.parsear_reviews_dump(path))
+        assert len(out) == 1
+        assert out[0]["source_id"] == "gs_ChIJ123"
+        assert out[0]["rating"] == 4.8
+        assert out[0]["num_resenas"] == 189
+        assert len(out[0]["reviews"]) == 2
+        assert out[0]["reviews"][0]["fuente"] == "google_scrape"
+        assert out[0]["reviews"][0]["autor"] == "Laura"
+
+    def test_extra_reviews_flag_en_comando(self, tmp_path: Path):
+        settings = _FakeSettings()
+        settings.GOSOM_MODE = "bin"
+        cmd = gr._construir_comando(
+            settings,
+            tmp_path / "queries.txt",
+            tmp_path / "out.jsonl",
+            extra_reviews=True,
+        )
+        assert "--extra-reviews" in cmd
+
+
 class TestEjecutar:
     def test_modo_disabled_no_lanza_proceso(self, tmp_path: Path):
         # En modo disabled no arranca nada y devuelve exit_code=-1 aunque no

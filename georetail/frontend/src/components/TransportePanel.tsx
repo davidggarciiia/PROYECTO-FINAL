@@ -10,6 +10,8 @@ interface Props {
   radioM?: number;
   fallbackLineas?: number;
   fallbackParadas?: number;
+  score?: number;
+  numBicing?: number;
 }
 
 const RADIO_DEFAULT = 500;
@@ -17,7 +19,9 @@ const TIPO_ORDER: TransporteTipo[] = ["metro", "tram", "fgc", "rodalies", "bus"]
 const TIPO_LABEL: Record<TransporteTipo, string> = {
   metro: "Metro", tram: "Tram", fgc: "FGC", rodalies: "Rodalies", bus: "Bus",
 };
-// Fallback de color si el backend no lo manda (colores corporativos TMB).
+const TIPO_ICON: Record<string, string> = {
+  metro: "🚇", tram: "🚊", fgc: "🚉", rodalies: "🚉", bus: "🚌",
+};
 const TIPO_COLOR_FALLBACK: Record<TransporteTipo, string> = {
   metro: "#D03324", bus: "#E3000F", tram: "#007F3B", fgc: "#9B2743", rodalies: "#9B2743",
 };
@@ -41,6 +45,7 @@ function colorForLinea(linea: LineaCercana): string {
 }
 
 const roundM = (n: number) => `${Math.round(n)} m`;
+const walkMin = (distM: number) => Math.round(distM / 80);
 
 function LineaPopover({ linea, onClose }: { linea: LineaCercana; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -52,7 +57,9 @@ function LineaPopover({ linea, onClose }: { linea: LineaCercana; onClose: () => 
   }, [onClose]);
   const bg = colorForLinea(linea);
   const fg = textColorFor(bg);
-  const topParadas = linea.paradas_cercanas.slice(0, 2);
+  const topParadas = [...linea.paradas_cercanas]
+    .sort((a, b) => a.distancia_m - b.distancia_m)
+    .slice(0, 3);
   return (
     <div ref={ref} className={styles.popover} role="dialog" aria-label={`Detalles línea ${linea.codigo}`} tabIndex={-1}>
       <div className={styles.popoverHead}>
@@ -65,7 +72,7 @@ function LineaPopover({ linea, onClose }: { linea: LineaCercana; onClose: () => 
           {topParadas.map((p, i) => (
             <li key={`${p.nombre}-${i}`} className={styles.popoverStop}>
               <span className={styles.popoverStopName}>{p.nombre}</span>
-              <span className={styles.popoverStopDist}>{roundM(p.distancia_m)}</span>
+              <span className={styles.popoverStopDist}>{roundM(p.distancia_m)} · ~{walkMin(p.distancia_m)} min</span>
             </li>
           ))}
         </ul>
@@ -77,8 +84,32 @@ function LineaPopover({ linea, onClose }: { linea: LineaCercana; onClose: () => 
   );
 }
 
+interface ScoreRingSmProps {
+  score: number;
+}
+
+function ScoreRingSm({ score }: ScoreRingSmProps) {
+  const pct = Math.max(0, Math.min(100, Math.round(score)));
+  const accent = "var(--accent, #7C3AED)";
+  const track = "var(--surface, #120C1C)";
+  return (
+    <div
+      className={styles.scoreRing}
+      style={{
+        background: `conic-gradient(${accent} ${pct * 3.6}deg, ${track} ${pct * 3.6}deg)`,
+      }}
+      aria-label={`Score transporte: ${pct} sobre 100`}
+    >
+      <div className={styles.scoreRingInner}>
+        <span className={styles.scoreRingNum}>{pct}</span>
+        <span className={styles.scoreRingLabel}>Transp.</span>
+      </div>
+    </div>
+  );
+}
+
 export default function TransportePanel({
-  zonaId, radioM = RADIO_DEFAULT, fallbackLineas, fallbackParadas,
+  zonaId, radioM = RADIO_DEFAULT, fallbackLineas, fallbackParadas, score, numBicing,
 }: Props) {
   const [data, setData] = useState<TransporteDetalleZona | null>(null);
   const [loading, setLoading] = useState(true);
@@ -111,7 +142,6 @@ export default function TransportePanel({
       const arr = buckets.get(t);
       if (arr && arr.length) ordered.push({ tipo: t, lineas: arr });
     });
-    // Extras no previstos (defensa contra contratos futuros): al final.
     buckets.forEach((arr, key) => {
       if (!TIPO_ORDER.includes(key as TransporteTipo) && arr.length) {
         ordered.push({ tipo: key, lineas: arr });
@@ -123,9 +153,14 @@ export default function TransportePanel({
   if (loading) {
     return (
       <div className={styles.panel}>
-        <div className={styles.loading}>
-          <div className="spinner" />
-          <span>Cargando líneas de transporte…</span>
+        <div className={styles.loadingSkeleton}>
+          <div className={styles.skeletonBar} style={{ width: "60%", height: 14 }} />
+          <div className={styles.skeletonBar} style={{ width: "40%", height: 10 }} />
+          <div className={styles.skeletonBadgeRow}>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className={styles.skeletonBadge} />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -152,7 +187,19 @@ export default function TransportePanel({
   if (!data || data.total_lineas === 0) {
     return (
       <div className={styles.panel}>
-        <div className={styles.emptyState}>No hay líneas de transporte en {radioM} m.</div>
+        <div className={styles.emptyState}>
+          {score != null && (
+            <div style={{ marginBottom: 8, fontWeight: 700, color: "var(--text)" }}>
+              Score transporte: {Math.round(score)}
+            </div>
+          )}
+          No hay líneas de transporte en {radioM} m.
+          {score != null && (
+            <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-subtle)" }}>
+              Movilidad calculada con datos del modelo — sin líneas detectadas en el radio actual.
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -163,26 +210,22 @@ export default function TransportePanel({
   return (
     <div className={styles.panel}>
       <header className={styles.header}>
-        <span className={styles.headerKicker}>Transporte cercano</span>
-        <p className={styles.headerCounter}>
-          <strong>{data.total_lineas}</strong> líneas · <strong>{data.total_paradas}</strong> paradas en {radioM} m
-        </p>
+        <div className={styles.headerRow}>
+          <div className={styles.headerMeta}>
+            <span className={styles.headerKicker}>Transporte cercano</span>
+            <p className={styles.headerCounter}>
+              <strong>{data.total_lineas}</strong> líneas · <strong>{data.total_paradas}</strong> paradas en {radioM} m
+              {numBicing != null && numBicing > 0 && (
+                <> · <strong>{numBicing}</strong> est. Bicing</>
+              )}
+            </p>
+          </div>
+          {score != null && <ScoreRingSm score={score} />}
+        </div>
       </header>
 
       {soloBus && (
-        <div
-          style={{
-            padding: "10px 12px",
-            margin: "0 0 12px 0",
-            borderRadius: 10,
-            background: "rgba(245, 158, 11, 0.08)",
-            border: "1px solid rgba(245, 158, 11, 0.28)",
-            color: "var(--text-muted)",
-            fontSize: 12,
-            lineHeight: 1.5,
-          }}
-          role="note"
-        >
+        <div className={styles.solosBusNote} role="note">
           Solo detectamos líneas de bus en esta zona. Si esperabas metro / tram / FGC,
           puede ser que el pipeline de TMB no haya cargado aún esos tipos — revísalo
           en <code>pipelines/transporte/transporte.py</code>.
@@ -192,10 +235,14 @@ export default function TransportePanel({
       <div className={styles.groups}>
         {grupos.map(({ tipo, lineas }) => {
           const label = TIPO_LABEL[tipo as TransporteTipo] ?? String(tipo);
+          const icon = TIPO_ICON[tipo] ?? "";
           return (
             <section key={tipo} className={styles.group}>
               <div className={styles.groupTitleRow}>
-                <h4 className={styles.groupTitle}>{label}</h4>
+                <h4 className={styles.groupTitle}>
+                  {icon && <span className={styles.groupIcon} aria-hidden="true">{icon}</span>}
+                  {label}
+                </h4>
                 <span className={styles.groupCount}>{lineas.length}</span>
               </div>
               <div className={styles.badgeGrid}>
@@ -205,6 +252,10 @@ export default function TransportePanel({
                   const bg = colorForLinea(linea);
                   const fg = textColorFor(bg);
                   const isBus = linea.tipo === "bus";
+                  const nearestStop = [...linea.paradas_cercanas].sort((a, b) => a.distancia_m - b.distancia_m)[0];
+                  const badgeTitle = nearestStop
+                    ? `Línea ${linea.codigo} · parada más cercana: ${nearestStop.nombre} (${roundM(nearestStop.distancia_m)})`
+                    : linea.nombre;
                   return (
                     <div key={key} className={styles.badgeWrap}>
                       <button
@@ -214,7 +265,7 @@ export default function TransportePanel({
                         onClick={() => setOpenKey(active ? null : key)}
                         aria-label={`${linea.tipo} línea ${linea.codigo}`}
                         aria-expanded={active}
-                        title={linea.nombre}
+                        title={badgeTitle}
                       >
                         {linea.codigo}
                       </button>
@@ -227,6 +278,19 @@ export default function TransportePanel({
           );
         })}
       </div>
+
+      {numBicing != null && numBicing > 0 && (
+        <div className={styles.bicingCard}>
+          <span className={styles.bicingIcon} aria-hidden="true">🚲</span>
+          <div className={styles.bicingBody}>
+            <span className={styles.bicingLabel}>Bicing</span>
+            <span className={styles.bicingText}>
+              <span className={styles.bicingCount}>{numBicing}</span> estaciones en {radioM} m
+            </span>
+          </div>
+          <span className={styles.bicingBadge}>{numBicing}</span>
+        </div>
+      )}
     </div>
   );
 }

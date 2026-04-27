@@ -65,6 +65,13 @@ def _zona_base() -> dict:
         "licencias_nuevas_1a": 5.0,
         "ratio_locales_comerciales": 0.31,
         "eventos_culturales_500m": 4.0,
+        "score_dinamismo": 72.0,
+        "tendencia": "emergente",
+        "ratio_apertura_cierre_1a": 1.2,
+        "tasa_supervivencia_3a": 0.74,
+        "hhi_sectorial": 0.22,
+        "negocios_historico_count": 190,
+        "renta_variacion_3a": 3.4,
     }
 
 
@@ -75,11 +82,13 @@ def test_group_shap_by_dimension_agrega_por_dimension():
             "seasonality_summer_lift": 0.10,
             "renta_media_hogar": -0.22,
             "num_lineas_transporte": 0.18,
+            "score_dinamismo_zona": 0.19,
         }
     )
     assert grouped["flujo_peatonal"]["tendencia"] == "empuja_a_favor"
     assert grouped["demografia"]["tendencia"] == "empuja_en_contra"
     assert grouped["transporte"]["tendencia"] == "empuja_a_favor"
+    assert grouped["dinamismo"]["tendencia"] == "empuja_a_favor"
 
 
 def test_build_llm_grounding_payload_incluye_evidencia_dimensiones():
@@ -96,7 +105,7 @@ def test_build_llm_grounding_payload_incluye_evidencia_dimensiones():
                 "transporte": 91.0,
                 "seguridad": 69.0,
                 "turismo": 76.0,
-                "entorno_comercial": 72.0,
+                "dinamismo": 72.0,
             },
             "shap_values": {
                 "flujo_peatonal_total": 0.28,
@@ -108,6 +117,7 @@ def test_build_llm_grounding_payload_incluye_evidencia_dimensiones():
     )
     assert "evidencia_dimensiones" in payload
     assert "flujo_peatonal" in payload["evidencia_dimensiones"]
+    assert "dinamismo" in payload["evidencia_dimensiones"]
     assert payload["impacto_modelo_por_dimension"]["flujo_peatonal"]["contribucion"] > 0
 
 
@@ -125,7 +135,7 @@ def test_build_fallback_analysis_devuelve_explicaciones_legibles():
                 "transporte": 91.0,
                 "seguridad": 69.0,
                 "turismo": 76.0,
-                "entorno_comercial": 72.0,
+                "dinamismo": 72.0,
             },
             "shap_values": {
                 "flujo_peatonal_total": 0.28,
@@ -139,4 +149,5 @@ def test_build_fallback_analysis_devuelve_explicaciones_legibles():
     assert fallback["resumen_global"]
     assert "explicaciones_dimensiones" in fallback
     assert "flujo_peatonal" in fallback["explicaciones_dimensiones"]
+    assert "dinamismo" in fallback["explicaciones_dimensiones"]
     assert fallback["explicaciones_dimensiones"]["transporte"]["titular"]

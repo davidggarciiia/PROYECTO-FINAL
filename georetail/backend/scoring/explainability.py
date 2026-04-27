@@ -23,7 +23,7 @@ DIMENSION_ORDER: tuple[str, ...] = (
     "transporte",
     "seguridad",
     "turismo",
-    "entorno_comercial",
+    "dinamismo",
 )
 
 DIMENSION_LABELS: dict[str, str] = {
@@ -34,7 +34,7 @@ DIMENSION_LABELS: dict[str, str] = {
     "transporte": "Transporte",
     "seguridad": "Seguridad",
     "turismo": "Turismo",
-    "entorno_comercial": "Entorno comercial",
+    "dinamismo": "Dinamismo",
 }
 
 # ─── Percentiles y medias de referencia Barcelona 2024-2025 ────────────────────
@@ -49,13 +49,13 @@ _BCN_REF: dict[str, float] = {
     "nivel_estudios_alto_p75":   0.45,
     "gini_p75":                  38.0,
     "weekend_lift_media":        1.08,
-    "vcity_flujo_p75":           32_000.0,   # peatones/día zona comercial
-    "vcity_flujo_p50":           14_000.0,
+    "vcity_flujo_p75":           39_000.0,   # peatones/día zona comercial (p75 BCN 86 zonas)
+    "vcity_flujo_p50":           31_000.0,   # (p50 BCN 86 zonas, actualizado 2026-04)
     "incidencias_media":         22.0,       # por 1.000 hab/año
     "hurtos_media":              8.0,
     "robatoris_media":           4.0,
     "incidencias_noche_p75":     0.35,
-    "airbnb_density_p75":        45.0,
+    "airbnb_density_p75":        1_168.0,   # listings en 500m (p75 BCN, actualizado 2026-04)
     "booking_hoteles_p75":       4.0,
     "pct_locales_vacios_p75":    0.18,
     "precio_m2_restauracion":    22.0,       # euros/m²/mes
@@ -103,6 +103,10 @@ _FEATURE_LABELS: dict[str, str] = {
     "pct_locales_vacios":           "% locales vacíos",
     "tasa_rotacion_anual":          "rotación comercial anual",
     "ratio_apertura_cierre_1a":     "ratio aperturas/cierres",
+    "score_dinamismo_zona":         "dinamismo comercial historico",
+    "tasa_supervivencia_3a":        "supervivencia comercial a 3 anos",
+    "hhi_sectorial":                "concentracion sectorial",
+    "renta_variacion_3a":           "variacion de renta a 3 anos",
     "score_equipamientos":          "equipamientos",
     "m2_zonas_verdes_cercanas":     "zonas verdes cercanas",
 }
@@ -173,20 +177,20 @@ FEATURE_TO_DIMENSION: dict[str, str] = {
     "booking_hoteles_500m": "turismo",
     "dist_playa_m": "turismo",
     # Entorno
-    "pct_locales_vacios": "entorno_comercial",
-    "tasa_rotacion_anual": "entorno_comercial",
-    "nivel_ruido_db": "entorno_comercial",
-    "score_equipamientos": "entorno_comercial",
-    "m2_zonas_verdes_cercanas": "entorno_comercial",
-    "ratio_locales_comerciales": "entorno_comercial",
-    "licencias_nuevas_1a": "entorno_comercial",
-    "eventos_culturales_500m": "entorno_comercial",
-    "mercados_municipales_1km": "entorno_comercial",
-    "score_dinamismo_zona": "entorno_comercial",
-    "ratio_apertura_cierre_1a": "entorno_comercial",
-    "tasa_supervivencia_3a": "entorno_comercial",
-    "renta_variacion_3a": "demografia",
-    "hhi_sectorial": "entorno_comercial",
+    "pct_locales_vacios": "dinamismo",
+    "tasa_rotacion_anual": "dinamismo",
+    "nivel_ruido_db": "dinamismo",
+    "score_equipamientos": "dinamismo",
+    "m2_zonas_verdes_cercanas": "dinamismo",
+    "ratio_locales_comerciales": "dinamismo",
+    "licencias_nuevas_1a": "dinamismo",
+    "eventos_culturales_500m": "dinamismo",
+    "mercados_municipales_1km": "dinamismo",
+    "score_dinamismo_zona": "dinamismo",
+    "ratio_apertura_cierre_1a": "dinamismo",
+    "tasa_supervivencia_3a": "dinamismo",
+    "renta_variacion_3a": "dinamismo",
+    "hhi_sectorial": "dinamismo",
 }
 
 
@@ -311,7 +315,12 @@ def build_dimension_evidence(
         "transporte": _build_transport_evidence(zona, scores_dimension.get("transporte"), impacto_modelo.get("transporte")),
         "seguridad": _build_security_evidence(zona, scores_dimension.get("seguridad"), perfil_negocio, impacto_modelo.get("seguridad")),
         "turismo": _build_tourism_evidence(zona, scores_dimension.get("turismo"), impacto_modelo.get("turismo")),
-        "entorno_comercial": _build_environment_evidence(zona, scores_dimension.get("entorno_comercial"), perfil_negocio, impacto_modelo.get("entorno_comercial")),
+        "dinamismo": _build_environment_evidence(
+            zona,
+            scores_dimension.get("dinamismo", scores_dimension.get("entorno_comercial")),
+            perfil_negocio,
+            impacto_modelo.get("dinamismo", impacto_modelo.get("entorno_comercial")),
+        ),
     }
 
 
@@ -730,6 +739,12 @@ def _build_security_evidence(
             f"si horario tarde-noche."
         )
 
+    if not hechos:
+        score_str = f"Score {float(score):.0f}/100. " if score is not None else ""
+        hechos.append(
+            f"{score_str}Datos de incidencias (Guardia Urbana) no disponibles para esta zona."
+        )
+
     return _pack_evidence(
         score=score,
         hechos_clave=hechos,
@@ -746,22 +761,30 @@ def _build_security_evidence(
         drivers_positivos=positivos[:3],
         drivers_negativos=negativos[:3],
         fuentes=["vz_entorno", "guardia_urbana", "iermb"],
-        confianza="alta",
+        confianza="media",
         impacto_modelo=impacto,
     )
 
 
 def _build_tourism_evidence(zona: Mapping[str, Any], score: Any, impacto: Mapping[str, Any] | None) -> dict[str, Any]:
-    hechos = [
-        f"Score turístico actual: {_fmt(zona.get('score_turismo'))}/100.",
-        f"Hoteles cercanos: {_fmt(zona.get('booking_hoteles_500m'))}.",
-    ]
+    hechos = []
+    if _f(zona.get("score_turismo")) is not None:
+        hechos.append(f"Score turístico: {_fmt(zona.get('score_turismo'))}/100.")
+    if _f(zona.get("booking_hoteles_500m")) is not None:
+        hechos.append(f"Hoteles en 500m: {_fmt(zona.get('booking_hoteles_500m'))}.")
+    if _f(zona.get("airbnb_density_500m")) is not None:
+        hechos.append(f"Airbnb en 500m: {int(zona['airbnb_density_500m']):,} listings.")
+    if not hechos:
+        score_str = f"Score {float(score):.0f}/100. " if score is not None else ""
+        hechos.append(
+            f"{score_str}Datos de hoteles y HUT no disponibles todavía para esta zona."
+        )
     positivos = []
     negativos = []
     if _f(zona.get("booking_hoteles_500m")) is not None and float(zona["booking_hoteles_500m"]) >= 4:
         positivos.append("La zona tiene apoyo claro de turismo alojado.")
-    if _f(zona.get("airbnb_density_500m")) is not None and float(zona["airbnb_density_500m"]) >= 40:
-        positivos.append("La presión turística informal también es relevante.")
+    if _f(zona.get("airbnb_density_500m")) is not None and float(zona["airbnb_density_500m"]) >= _BCN_REF["airbnb_density_p75"]:
+        positivos.append(f"Alta densidad Airbnb ({int(zona['airbnb_density_500m']):,} listings en 500m, p75 BCN {int(_BCN_REF['airbnb_density_p75']):,}): zona de alta presión turística informal.")
     if _f(zona.get("score_turismo")) is not None and float(zona["score_turismo"]) <= 35:
         negativos.append("El tirón turístico es limitado frente a otras zonas.")
 
@@ -789,12 +812,59 @@ def _build_environment_evidence(
     impacto: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     entorno = calcular_score_entorno(dict(zona), perfil_negocio=dict(perfil_negocio))
-    hechos = [
-        f"Locales vacíos: {_pct(zona.get('pct_locales_vacios'))}.",
-        f"Rotación anual: {_pct(zona.get('tasa_rotacion_anual'))}.",
-    ]
+    hechos = []
+    # `dinamismo_zonal.score_dinamismo` se persiste en escala 0-10. Para el
+    # bullet y las comparaciones de drivers usamos escala 0-100 (consistente
+    # con el resto de scores de la app).
+    score_dinamismo_raw = _f(zona.get("score_dinamismo"))
+    score_dinamismo = score_dinamismo_raw * 10.0 if score_dinamismo_raw is not None else None
+    tendencia = zona.get("tendencia")
+    ratio_apertura_cierre = _f(zona.get("ratio_apertura_cierre_1a"))
+    supervivencia = _f(zona.get("tasa_supervivencia_3a"))
+    hhi_sectorial = _f(zona.get("hhi_sectorial"))
+    # `renta_variacion_3a` se persiste como fracción decimal (0.04 = 4%).
+    renta_variacion = _f(zona.get("renta_variacion_3a"))
+
+    if score_dinamismo is not None:
+        hechos.append(f"Score dinamismo historico: {score_dinamismo:.0f}/100.")
+    if tendencia:
+        hechos.append(f"Tendencia comercial detectada: {tendencia}.")
+    if ratio_apertura_cierre is not None:
+        hechos.append(f"Ratio aperturas/cierres ultimo ano: x{ratio_apertura_cierre:.2f}.")
+    if supervivencia is not None:
+        hechos.append(f"Supervivencia comercial a 3 anos: {supervivencia * 100:.0f}%.")
+    if hhi_sectorial is not None:
+        hechos.append(f"Concentracion sectorial HHI: {hhi_sectorial:.2f}.")
+    if renta_variacion is not None:
+        hechos.append(f"Variacion de renta 3 anos: {renta_variacion * 100:+.1f}%.")
+    if _f(zona.get("pct_locales_vacios")) is not None:
+        hechos.append(f"Locales vacíos: {_pct(zona.get('pct_locales_vacios'))}.")
+    if _f(zona.get("tasa_rotacion_anual")) is not None:
+        hechos.append(f"Rotación anual: {_pct(zona.get('tasa_rotacion_anual'))}.")
+    if not hechos:
+        score_str = f"Score {float(score):.0f}/100. " if score is not None else ""
+        hechos.append(
+            f"{score_str}Datos de vacío comercial y rotación anual no disponibles "
+            f"en la base de datos municipal para esta zona."
+        )
     positivos = []
     negativos = []
+    if score_dinamismo is not None and score_dinamismo >= 70:
+        positivos.append("El dinamismo historico esta por encima del umbral fuerte.")
+    elif score_dinamismo is not None and score_dinamismo <= 40:
+        negativos.append("El dinamismo historico es bajo para un arranque comercial.")
+    if ratio_apertura_cierre is not None and ratio_apertura_cierre >= 1.15:
+        positivos.append(
+            f"Hay mas aperturas que cierres (x{ratio_apertura_cierre:.2f}): senal de traccion."
+        )
+    elif ratio_apertura_cierre is not None and ratio_apertura_cierre < 0.85:
+        negativos.append(
+            f"Hay mas cierres que aperturas (x{ratio_apertura_cierre:.2f}): senal de desgaste."
+        )
+    if supervivencia is not None and supervivencia >= 0.70:
+        positivos.append(f"Supervivencia a 3 anos del {supervivencia * 100:.0f}%: entorno resistente.")
+    elif supervivencia is not None and supervivencia < 0.50:
+        negativos.append(f"Supervivencia a 3 anos del {supervivencia * 100:.0f}%: riesgo de rotacion.")
     if _f(zona.get("score_equipamientos")) is not None and float(zona["score_equipamientos"]) >= 70:
         positivos.append("La dotación de equipamientos es fuerte.")
     if _f(zona.get("mercados_municipales_1km")) is not None and float(zona["mercados_municipales_1km"]) >= 1:
@@ -813,11 +883,18 @@ def _build_environment_evidence(
             "score_equipamientos": zona.get("score_equipamientos"),
             "m2_zonas_verdes_cercanas": zona.get("m2_zonas_verdes_cercanas"),
             "mercados_municipales_1km": zona.get("mercados_municipales_1km"),
+            "score_dinamismo": zona.get("score_dinamismo"),
+            "tendencia": zona.get("tendencia"),
+            "ratio_apertura_cierre_1a": zona.get("ratio_apertura_cierre_1a"),
+            "tasa_supervivencia_3a": zona.get("tasa_supervivencia_3a"),
+            "hhi_sectorial": zona.get("hhi_sectorial"),
+            "negocios_historico_count": zona.get("negocios_historico_count"),
+            "renta_variacion_3a": zona.get("renta_variacion_3a"),
             "subscores": entorno,
         },
         drivers_positivos=positivos[:3],
         drivers_negativos=negativos[:3],
-        fuentes=["vz_comercial", "vz_entorno", "open_data_bcn"],
+        fuentes=["v_dinamismo_zona", "vz_comercial", "vz_entorno", "open_data_bcn"],
         confianza="alta",
         impacto_modelo=impacto,
     )
@@ -911,8 +988,11 @@ def _build_short_dimension_explanation(
     negativos: list[str],
     hechos: list[str],
 ) -> str:
+    if score is None:
+        context = hechos[0] if hechos else "Sin datos suficientes para calcular esta dimensión."
+        return f"{label}: {context}"
     band = _score_band(score)
-    parts = [f"{label} {score if score is not None else 'N/A'}: nivel {band}."]
+    parts = [f"{label} {float(score):.0f}/100 ({band})."]
     if positivos:
         parts.append(positivos[0])
     elif negativos:
@@ -947,15 +1027,11 @@ def _score_band(score: Any) -> str:
     if score is None:
         return "sin dato"
     score = float(score)
-    if score >= 85:
-        return "muy alto"
-    if score >= 70:
-        return "alto"
+    if score >= 75:
+        return "punto fuerte"
     if score >= 55:
-        return "medio"
-    if score >= 40:
-        return "justo"
-    return "bajo"
+        return "aceptable"
+    return "mejorable"
 
 
 def _confidence_from_count(count: int | bool) -> str:

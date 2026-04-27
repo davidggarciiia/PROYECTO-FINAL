@@ -77,6 +77,22 @@ class Settings(BaseSettings):
     # Páginas por portal/zona (0 = sin límite)
     SCRAPING_MAX_PAGINAS: int = 0
 
+    # Google Maps scraping con gosom/google-maps-scraper.
+    # GOSOM_MODE: "disabled" | "bin" | "docker"
+    GOSOM_MODE: str = "disabled"
+    GOSOM_BIN_PATH: str = "google-maps-scraper"
+    GOSOM_DOCKER_IMAGE: str = "gosom/google-maps-scraper:latest"
+    GOSOM_OUTPUT_DIR: str = "/data/gosom"
+    GOSOM_CONCURRENCY: int = 1
+    GOSOM_DEPTH: int = 5
+    GOSOM_TIMEOUT_S: int = 0
+    COMPETENCIA_CACHE_TTL_S: int = 86400
+
+    # Backfill de resenas scrapeadas. max_negocios=0 significa todos.
+    RESENAS_SCRAPE_BATCH_SIZE: int = 50
+    RESENAS_SCRAPE_MAX_NEGOCIOS: int = 0
+    RESENAS_SCRAPE_PAUSA_S: float = 2.0
+
     # ── Transporte ────────────────────────────────────────────────────────────
     TMB_APP_ID: str = ""
     TMB_APP_KEY: str = ""

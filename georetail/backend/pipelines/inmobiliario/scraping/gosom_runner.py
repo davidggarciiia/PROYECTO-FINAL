@@ -19,6 +19,7 @@ La lógica de ingesta (upsert en `negocios_activos`, recálculo de
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -125,7 +126,9 @@ class GosomResult:
 
 
 async def ejecutar(queries_file: Path,
-                    output_file: Optional[Path] = None) -> GosomResult:
+                    output_file: Optional[Path] = None,
+                    *,
+                    extra_reviews: bool = False) -> GosomResult:
     """
     Lanza gosom y bloquea hasta que termine.
 
@@ -142,7 +145,7 @@ async def ejecutar(queries_file: Path,
     output_file = output_file or (Path(s.GOSOM_OUTPUT_DIR) / "out.jsonl")
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    cmd = _construir_comando(s, queries_file, output_file)
+    cmd = _construir_comando(s, queries_file, output_file, extra_reviews=extra_reviews)
     logger.info("gosom: lanzando: %s", " ".join(shlex.quote(c) for c in cmd))
 
     try:
@@ -180,7 +183,13 @@ async def ejecutar(queries_file: Path,
     )
 
 
-def _construir_comando(s, queries_file: Path, output_file: Path) -> list[str]:
+def _construir_comando(
+    s,
+    queries_file: Path,
+    output_file: Path,
+    *,
+    extra_reviews: bool = False,
+) -> list[str]:
     """Arma la línea de comando según GOSOM_MODE. Los flags son los documentados
     en el README del proyecto gosom/google-maps-scraper."""
     flags = [
@@ -192,6 +201,8 @@ def _construir_comando(s, queries_file: Path, output_file: Path) -> list[str]:
         "--lang", "es",
         "--exit-on-inactivity", "3m",
     ]
+    if extra_reviews:
+        flags.append("--extra-reviews")
     if s.GOSOM_MODE == "bin":
         return [s.GOSOM_BIN_PATH, *flags]
     if s.GOSOM_MODE == "docker":
@@ -244,6 +255,140 @@ def parsear_dump(output_file: Path,
             if sectores_set and normalizado["sector_codigo"] not in sectores_set:
                 continue
             yield normalizado
+
+
+def parsear_reviews_dump(output_file: Path) -> Iterator[dict]:
+    """
+    Itera un JSONL de gosom con `user_reviews` / `user_reviews_extended`.
+
+    Devuelve una fila por negocio scrapeado:
+      source_id, place_id, nombre, lat, lng, rating, num_resenas, reviews[].
+    `reviews[]` queda normalizado para poder insertarlo en `resenas`.
+    """
+    if not output_file.exists():
+        logger.warning("gosom: dump de reseÃ±as %s no existe", output_file)
+        return
+
+    with output_file.open("r", encoding="utf-8") as fh:
+        for n_linea, linea in enumerate(fh, start=1):
+            linea = linea.strip()
+            if not linea:
+                continue
+            try:
+                row = json.loads(linea)
+            except json.JSONDecodeError as e:
+                logger.warning("gosom: lÃ­nea %d JSON invÃ¡lido: %s", n_linea, e)
+                continue
+
+            normalizado = normalizar_reviews_row(row)
+            if normalizado is not None:
+                yield normalizado
+
+
+def normalizar_reviews_row(row: dict) -> Optional[dict]:
+    """Normaliza la parte de reseÃ±as de una fila cruda de gosom."""
+    place_id = row.get("place_id") or row.get("cid") or row.get("data_id") or row.get("id")
+    nombre = (row.get("title") or row.get("name") or "").strip()
+    reviews = _extract_reviews(row)
+    if not place_id and not nombre and not reviews:
+        return None
+
+    return {
+        "source_id": f"gs_{place_id}" if place_id else None,
+        "place_id": place_id,
+        "cid": row.get("cid"),
+        "data_id": row.get("data_id"),
+        "nombre": nombre,
+        "lat": _safe_float(row.get("latitude") or row.get("lat") or row.get("location", {}).get("lat")),
+        "lng": _safe_float(row.get("longitude") or row.get("longtitude") or row.get("lng") or row.get("location", {}).get("lng")),
+        "rating": _safe_float(row.get("rating") or row.get("review_rating")),
+        "num_resenas": _safe_int(row.get("review_count") or row.get("reviews")),
+        "reviews": reviews,
+    }
+
+
+def review_stable_id(negocio_id: str, review: dict) -> str:
+    """ID estable de reseÃ±a dentro de los 50 chars de `resenas.id`."""
+    base = "|".join([
+        negocio_id,
+        str(review.get("texto") or ""),
+        str(review.get("rating") or ""),
+        str(review.get("fecha") or ""),
+        str(review.get("autor") or ""),
+    ])
+    return "gsr_" + hashlib.sha1(base.encode("utf-8")).hexdigest()[:32]
+
+
+def _extract_reviews(row: dict) -> list[dict]:
+    raw_items: list = []
+    for key in ("user_reviews_extended", "user_reviews", "reviews"):
+        value = row.get(key)
+        if isinstance(value, str) and value.strip():
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                value = []
+        if isinstance(value, dict):
+            value = value.get("reviews") or value.get("items") or []
+        if isinstance(value, list):
+            raw_items.extend(value)
+
+    seen: set[tuple[str, str, str]] = set()
+    reviews: list[dict] = []
+    for raw in raw_items:
+        review = _normalizar_review(raw)
+        if review is None:
+            continue
+        key = (
+            str(review.get("texto") or ""),
+            str(review.get("rating") or ""),
+            str(review.get("fecha") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        reviews.append(review)
+    return reviews
+
+
+def _normalizar_review(raw: object) -> Optional[dict]:
+    if isinstance(raw, str):
+        texto = raw.strip()
+        return {"texto": texto, "fuente": "google_scrape"} if texto else None
+    if not isinstance(raw, dict):
+        return None
+
+    texto = (
+        raw.get("text")
+        or raw.get("texto")
+        or raw.get("review_text")
+        or raw.get("snippet")
+        or raw.get("comment")
+        or ""
+    )
+    texto = str(texto).strip()
+    if not texto:
+        return None
+
+    user = raw.get("user") if isinstance(raw.get("user"), dict) else {}
+    autor = raw.get("author") or raw.get("author_name") or raw.get("user_name") or user.get("name")
+    fecha = raw.get("date") or raw.get("fecha") or raw.get("published_at") or raw.get("time") or raw.get("timestamp")
+    url = raw.get("url") or raw.get("link") or raw.get("review_url")
+
+    return {
+        "texto": texto,
+        "rating": _safe_float(raw.get("rating") or raw.get("stars")),
+        "fecha": str(fecha)[:10] if fecha else None,
+        "idioma": raw.get("language") or raw.get("idioma") or raw.get("language_code"),
+        "autor": str(autor).strip()[:200] if autor else None,
+        "url": str(url).strip() if url else None,
+        "fuente": "google_scrape",
+        "metadata": {
+            k: v
+            for k, v in raw.items()
+            if k not in {"text", "texto", "review_text", "snippet", "comment"}
+        },
+    }
 
 
 def _normalizar_row(row: dict) -> Optional[dict]:
