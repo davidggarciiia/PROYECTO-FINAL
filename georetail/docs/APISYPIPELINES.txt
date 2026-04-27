@@ -1,0 +1,339 @@
+================================================================================
+GEORETAIL — APIs, KEYS Y PIPELINES
+================================================================================
+Última actualización: 2026-04-27
+Rama activa: feat/cuestionario-panels-v2
+
+Convenciones:
+  [VALOR]       = variable configurada en .env
+  [VACÍA]       = variable sin valor en .env
+  [NO NECESITA] = fuente pública, sin key requerida
+  [OPCIONAL]    = mejora rate-limit pero funciona sin ella
+================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BLOQUE 1 — VARIABLES DE ENTORNO (todas las keys del sistema)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+── INFRAESTRUCTURA ────────────────────────────────────────────────────────────
+
+  DATABASE_URL        [VALOR]   postgresql://georetail:georetail@postgres:5432/georetail
+                                → Pool asyncpg min=5 max=20 (db/conexion.py)
+
+  REDIS_URL           [VALOR]   redis://redis:6379
+                                → Cache + cola Celery (db/redis_client.py)
+
+  CELERY_BROKER_URL   [VALOR]   redis://redis:6379/1
+  CELERY_RESULT_BACKEND [VALOR] redis://redis:6379/2
+                                → Workers asíncronos (workers/celery_app.py)
+
+
+── LLM (modelos de lenguaje) ──────────────────────────────────────────────────
+  Router: DeepSeek V3 → GPT-4o-mini  (routers/llm_router.py)
+  Con una sola key ya funciona — el router hace fallback automático.
+
+  DEEPSEEK_API_KEY    [VALOR]   sk-...
+                                → Modelo: deepseek-chat (DeepSeek V3)
+                                → Coste: $0.27/M input, $1.10/M output (cache miss)
+                                → Registro: https://platform.deepseek.com
+                                → Usado en: TODOS los endpoints con análisis LLM
+                                   (agente/analizador.py, agente/validador.py,
+                                    agente/refinamiento.py, agente/cuestionario.py,
+                                    api/legal.py roadmap, api/financiero.py)
+
+  OPENAI_API_KEY     [VER .env]
+                                → Modelo: gpt-4o-mini (fallback si DeepSeek cae)
+                                → Coste: $0.15/M input, $0.60/M output
+                                → Registro: https://platform.openai.com/api-keys
+                                → Agotado: 1h si 429 / 15min si 5xx o timeout
+
+
+── MAPAS Y PLACES ─────────────────────────────────────────────────────────────
+  Router places: Google → Foursquare → Yelp → Overpass OSM  (routers/places_router.py)
+  Router geocoding: Caché PG → Google → Nominatim → OpenCage (routers/geocoding_router.py)
+
+  GOOGLE_MAPS_API_KEY [VALOR] GOOGLE MAPS = AIzaSyAHubWcbFX7lToIe0DKRLwRgJo8sGplhEY
+
+                                → Cubre 3 APIs con la misma key:
+                                   1. Places New API (searchNearby) → competencia
+                                   2. Geocoding API → routers/geocoding_router.py
+                                   3. Static Maps API → exportar/generador.py (PDF)
+                                → Activar en: https://console.cloud.google.com
+                                   → APIs & Services → Credenciales → Crear clave
+                                   → Habilitar: Places API (New), Geocoding API,
+                                                Maps Static API
+                                → Usado en: places_router.py, geocoding_router.py,
+                                            exportar/generador.py,
+                                            pipelines/entorno/google_maps.py,
+                                            pipelines/entorno/resenas.py
+
+  FOURSQUARE_API_KEY [VALOR] = ILVOHKZ35VHLATHSUHBAHGOE3O4IYM5ONSZRCUVHUMIDJ3QN
+                                → Places fallback 2ª línea
+                                → Registro: https://developer.foursquare.com
+                                → Endpoint: api.foursquare.com/v3/places/search
+                                → Usado en: places_router.py, pipelines/entorno/resenas.py
+
+  YELP_API_KEY        [Quitala]
+                                → Places fallback 3ª línea
+                                → Registro: https://www.yelp.com/developers
+                                → Endpoint: api.yelp.com/v3/businesses/search
+                                → Usado en: places_router.py, pipelines/entorno/resenas.py
+
+
+  MAPBOX_PUBLIC_TOKEN [VER .env]
+  (en frontend: NEXT_PUBLIC_MAPBOX_TOKEN)
+                                → Mapa frontend Leaflet (tiles opcionales)
+                                → Mapa estático en PDF exportado (WeasyPrint)
+                                → Registro: https://account.mapbox.com → Tokens
+                                → Warning activo en consola frontend si falta
+                                → Usado en: frontend/ + exportar/generador.py
+
+
+── OPEN DATA BCN ──────────────────────────────────────────────────────────────
+
+  OPEN_DATA_BCN_API_KEY [VACÍA]  [OPCIONAL]
+                                → API CKAN Ajuntament de Barcelona
+                                → Sin key: ~1.000 req/día por IP
+                                → Con key: ~10.000 req/día
+                                → Registro: https://opendata-ajuntament.barcelona.cat
+                                   → Mi cuenta → API Key
+                                → Header: Authorization: <key>
+                                → Usado en:
+                                   pipelines/peatonal/aforaments.py
+                                   pipelines/peatonal/vianants.py
+                                   pipelines/demografia/demografia.py
+                                   pipelines/comercio/llicencies.py
+                                   pipelines/entorno/seguridad.py
+                                   pipelines/entorno/venues_ocio.py
+                                   pipelines/comercio/entorno_comercial.py
+
+
+── INMOBILIARIO ───────────────────────────────────────────────────────────────
+
+  IDEALISTA_API_KEY   [VACÍA]
+  IDEALISTA_SECRET    [VACÍA]
+                                → Precios alquiler comercial (fuente primaria)
+                                → Requiere solicitud manual de acceso a Idealista
+                                → https://developers.idealista.com/access-request
+                                → Usado en:
+                                   pipelines/inmobiliario/precios.py
+                                   pipelines/inmobiliario/mercado_inmobiliario.py
+                                   pipelines/inmobiliario/scraping/idealista_scraper.py
+
+
+── TRANSPORTE ─────────────────────────────────────────────────────────────────
+
+TMB_APP_ID=9572a739
+TMB_APP_KEY=cfaea8fd10f68944261ab38553009f09
+                                → API pública TMB (Transport Metropolità de Barcelona)
+                                → Sin estas keys: score_transporte = 0.0 (sin datos)
+                                → Registro: https://developer.tmb.cat
+                                → Endpoints usados:
+                                   /api/transit/linies/bus
+                                   /api/transit/linies/metro
+                                   /api/transit/parades
+                                → Usado en: pipelines/transporte/transporte.py
+
+
+── APP Y MONITORIZACIÓN ───────────────────────────────────────────────────────
+
+  ADMIN_API_KEY       [VACÍA]
+                                → Obligatorio en producción para /api/admin/*
+                                → Permite trigger manual de pipelines vía API
+                                → Generar: openssl rand -hex 32
+                                → Usado en: api/admin.py
+
+  SENTRY_DSN          [VACÍA]
+                                → Error tracking y alertas en producción
+                                → Registro: https://sentry.io
+                                → Vacío = desactivado (no rompe nada)
+
+  ENVIRONMENT         [VALOR]   "development"
+  PORT                [VALOR]   8000
+  EXPORTS_DIR         [VALOR]   /data/exports
+  OPTUNA_DIR          [VALOR]   /data/optuna
+  MODELS_DIR          [VALOR]   /data/models
+  STREETVIEW_DIR      [VALOR]   /data/streetview
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BLOQUE 2 — FUENTES PÚBLICAS (sin API key, solo ejecutar pipelines)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  FUENTE                    URL BASE                                       PIPELINE
+  ─────────────────────────────────────────────────────────────────────────────
+  VCity BSC (flujo GPS/móvil) vcity.bsc.es  (tileserver Martin)           peatonal/vcity.py
+  Aforaments vianants BCN   opendata-ajuntament.barcelona.cat (CKAN)      peatonal/vianants.py
+  Aforaments trànsit BCN    opendata-ajuntament.barcelona.cat (CSVs)      peatonal/aforaments.py
+  Padró municipal BCN       opendata-ajuntament.barcelona.cat (CKAN)      demografia/demografia.py
+  Renda neta per càpita BCN opendata-ajuntament.barcelona.cat (CKAN)      demografia/demografia.py
+  Llicències d'activitat BCN opendata-ajuntament.barcelona.cat (CKAN)     comercio/llicencies.py
+  Incidències Guardia Urbana opendata-ajuntament.barcelona.cat (CKAN)     entorno/seguridad.py
+  Equipaments culturals BCN opendata-ajuntament.barcelona.cat (CKAN)      entorno/venues_ocio.py
+  Mercats municipals BCN    opendata-ajuntament.barcelona.cat (CKAN)      comercio/entorno_comercial.py
+  Cens Comercial BCN        opendata-ajuntament.barcelona.cat (CKAN)      comercio/cens_comercial.py
+  Registre Mercantil        datos.gob.es                                  comercio/registre_mercantil.py
+  Inside Airbnb listings    insideairbnb.com/get-the-data (CSV.gz)        turismo/airbnb.py
+  HUT Generalitat           analisi.turisme.gencat.cat                    turismo/hut.py
+  GBFS Bicing (BSMSA)       api.bsmsa.eu/ext/api/bsmsa/bicingOpenData     transporte/bicing.py
+  Parques AMB               opendata.amb.cat                              entorno/parques.py
+  Overpass OSM              overpass-api.de/api/interpreter               entorno/overpass.py
+  Nominatim OSM geocoding   nominatim.openstreetmap.org/search            geocoding_router.py
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BLOQUE 3 — PIPELINES (todos, con frecuencia y dependencias)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  PIPELINE               ARCHIVO                                    FRECUENCIA            KEY NECESARIA
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────
+  resenas                pipelines/entorno/resenas.py               Diario 03:00          GOOGLE_MAPS_API_KEY
+                                                                                          FOURSQUARE_API_KEY
+                         → Reseñas Google Places + Foursquare → tabla resenas (IVFFLAT)
+                         → NLP: sentence-transformers → perfiles_zona_embedding
+
+  aforaments             pipelines/peatonal/aforaments.py           Diario 04:00          [ESTO QUITALO] OPEN_DATA_BCN_API_KEY
+                         → Trànsit rodat BCN (CSVs locales) → variables_zona.flujo_peatonal_total
+                         → Ponderación distancia inversa al cuadrado ST_DWithin 200m
+                         → NOTA: mide vehículos, NO personas a pie
+
+  vianants               pipelines/peatonal/vianants.py             Mensual día 10 05:00  [ESTO QUITALO] OPEN_DATA_BCN_API_KEY
+                         → Comptadors vianants BCN (sensor peatones reales)
+                         → Sobreescribe aforaments cuando hay datos disponibles
+                         → variables_zona.fuente = 'vianants_bcn'
+
+  vcity                  pipelines/peatonal/vcity.py                Mensual día 12 04:00  [NO NECESITA]
+                         → VCity BSC — flujo peatonal GPS+móvil, promedio diario anual
+                         → Escribe variables_zona.vcity_flujo_peatonal (columna dedicada)
+                         → VCITY_MAX_BARCELONA = 50.000 personas/día
+                         → Jerarquía: vcity_bsc > vianants_bcn > aforadors_csv_2025
+
+  temporalidad           pipelines/peatonal/temporalidad.py         Mensual día 13 05:00  [NO NECESITA]
+                         → Capa temporal BCN: fines de semana, dayparts, estacionalidad
+                         → Depende de: aforaments + vianants + vcity ya actualizados
+
+  airbnb                 pipelines/turismo/airbnb.py                Mensual día 3 05:00   [NO NECESITA]
+                         → Inside Airbnb listings.csv.gz → airbnb_density_500m,
+                           airbnb_occupancy_est (peso 40% en score_turismo)
+
+  parques                pipelines/entorno/parques.py               Mensual día 2 06:00   [NO NECESITA]
+                         → AMB opendata → tabla parques_amb + m2_zonas_verdes_cercanas
+
+  seguridad              pipelines/entorno/seguridad.py             Mensual día 1 07:30   [OPCIONAL] OPEN_DATA_BCN_API_KEY
+                         → GU incidents CKAN + comisarías + IERMB → dimensión seguridad
+                         → Variables: incidencias_por_1000hab, hurtos, robos, daños,
+                           incidencias_noche_pct, comisarias_1km, nivel_ruido_db
+
+  demografia             pipelines/demografia/demografia.py          Mensual día 1 07:00   [OPCIONAL] OPEN_DATA_BCN_API_KEY
+                         → Padró + Renda BCN → variables_zona demográficas
+                         → Variables: densidad_hab_km2, pct_extranjero, renta_media,
+                           mediana_edad, pct_universitarios, tasa_desempleo, consumo_estimado
+
+  registre_mercantil     pipelines/comercio/registre_mercantil.py   Mensual día 1 08:00   [NO NECESITA]
+                         → datos.gob.es → negocios_historico (labels para XGBoost)
+                         → Label: 1 si sobrevivió ≥3 años, 0 si cerró antes
+
+  entorno_comercial      pipelines/comercio/entorno_comercial.py    Mensual día 4 06:00   [OPCIONAL] OPEN_DATA_BCN_API_KEY
+                         → Mercats municipals + equipaments + datos soroll BCN
+                         → Actualiza dimensión entorno: mercados_municipales,
+                           locales_vacios_pct, rotacion_comercial
+
+  llicencies             pipelines/comercio/llicencies.py            Mensual día 5 06:00   [OPCIONAL] OPEN_DATA_BCN_API_KEY
+                         → Open Data BCN CKAN → licencias_actividad + licencias_nuevas_1a
+                         → Necesario antes de: dinamismo_comercial (día 6)
+
+  dinamismo_comercial    pipelines/comercio/dinamismo.py             Mensual día 6 03:00   [NO NECESITA]
+                         → negocios_historico + llicencies + variables_zona
+                         → Tabla: dinamismo_zonal → score_dinamismo, tendencia
+                         → Depende de: llicencies (día 5) ya ejecutado
+
+  venues_ocio            pipelines/entorno/venues_ocio.py            Mensual día 7 07:00   [NO NECESITA]
+                         → OSM Overpass + Agenda BCN → tabla venues_ocio
+                         → Variable: eventos_culturales_500m
+
+  transporte             pipelines/transporte/transporte.py          Semanal sábado 01:00  TMB_APP_ID + TMB_APP_KEY
+                         → TMB API → lineas_transporte, paradas_transporte,
+                           frecuencias_transporte
+                         → Sin keys: score_transporte = 0.0
+
+  bicing                 pipelines/transporte/bicing.py              Semanal sábado 02:00  [NO NECESITA]
+                         → BSMSA GBFS API → estaciones_bicing, carriles_bici
+
+  google_maps            pipelines/entorno/google_maps.py            Semanal miércoles 02:00 GOOGLE_MAPS_API_KEY
+                         → Google Places via gosom scraper (Go)
+                         → Enriquece negocios_activos: review_count, google_place_id
+
+  booking                pipelines/turismo/booking.py                Semanal jueves 03:00  [NO NECESITA] (scraping)
+                         → Booking.com + HUT Generalitat (fallback)
+                         → Tabla: alojamientos_turisticos + booking_hoteles_500m
+                         → Peso 35% en score_turismo
+
+  mercado_locales_alq    pipelines/inmobiliario/mercado_inmobiliario.py  Cada 3 días 02:00  IDEALISTA_API_KEY
+                         → Idealista, Fotocasa, Habitaclia, Milanuncios, Pisos.com
+                         → Modo: locales_alquiler → precios_alquiler_zona
+
+  mercado_locales_vta    pipelines/inmobiliario/mercado_inmobiliario.py  Semanal mié 02:30  IDEALISTA_API_KEY
+                         → Mismos portales, modo: locales_venta
+
+  mercado_viviendas      pipelines/inmobiliario/mercado_inmobiliario.py  Cada 14 días 01:00 IDEALISTA_API_KEY
+                         → Mismos portales, modo: viviendas
+
+  precios                pipelines/inmobiliario/precios.py            Semanal lunes 05:00   IDEALISTA_API_KEY=en principio no tenemos nada de idealista, dejalo ahi pero hasta que no se haga un scrapper no podemos
+                         → Precio alquiler comercial (fuente primaria: Idealista)
+                         → Columna clave: variables_zona.ratio_locales_comerciales
+                           (diferencia calles comerciales de residenciales)
+
+  params_fin             pipelines/parametros_financieros.py          Semanal domingo 03:00 [NO NECESITA]
+                         → Pre-cálculo parámetros financieros zonas × sectores
+                         → ticket_medio, clientes_dia, alquiler_mensual, etc.
+
+  scores                 pipelines/scores.py                          Semanal martes 06:00  [NO NECESITA]
+                         → Recálculo XGBoost todas las zonas → scores_zona
+
+  cens_comercial         pipelines/comercio/cens_comercial.py         One-time              [NO NECESITA]
+                         → Cens Comercial BCN → negocios_historico (labels iniciales)
+                         → Solo necesario al inicializar la BD
+
+  purgar_portales        BD SQL (función PG)                           Mensual día 15 00:00  [NO NECESITA]
+                         → Elimina registros inmobiliarios obsoletos de portales
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  RESUMEN: CLASIFICACIÓN POR PRIORIDAD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  IMPRESCINDIBLES (primera línea, el sistema degrada sin ellas):
+  ──────────────────────────────────────────────────────────────
+  DEEPSEEK_API_KEY        ✅  LLM primario (todos los análisis IA)
+  OPENAI_API_KEY          ❌  LLM fallback (si DeepSeek falla)
+  GOOGLE_MAPS_API_KEY     ❌  Places + Geocoding + Static Maps (PDF)
+  NEXT_PUBLIC_MAPBOX_TOKEN ❌  Mapa frontend (warning activo)
+  TMB_APP_ID=c9253015 + TMB_APP_KEY=493efce17ad90e1633cc356720fd9547 ❌  score_transporte = 0.0 sin estos
+  
+
+  FALLBACKS (datos públicos, sin key, solo ejecutar pipelines):
+  ─────────────────────────────────────────────────────────────
+  Inside Airbnb           —   turismo/airbnb.py          (≥80% de datos turismo)
+  HUT Generalitat         —   turismo/hut.py
+  GBFS Bicing             —   transporte/bicing.py
+  Padró + Renda BCN       —   demografia/demografia.py   (≥70% de datos demografía)
+  Llicències BCN          —   comercio/llicencies.py     (dinamismo, entorno)
+  GU incidents BCN        —   entorno/seguridad.py       (seguridad)
+  AMB opendata (parques)  —   entorno/parques.py
+  Overpass OSM            —   entorno/overpass.py + geocoding fallback
+  Nominatim OSM           —   geocoding_router.py        (geocoding gratuito)
+  VCity BSC               —   peatonal/vcity.py          (flujo peatonal premium)
+
+  OPCIONALES (mejoran precisión pero no bloquean):
+  ────────────────────────────────────────────────
+  OPEN_DATA_BCN_API_KEY   —   Multiplica rate limit ×10 (1K→10K req/día)
+  FOURSQUARE_API_KEY      —   Places fallback 2ª línea
+  YELP_API_KEY            —   Places fallback 3ª línea
+  OPENCAGE_API_KEY        —   Geocoding fallback 3ª línea
+  IDEALISTA_API_KEY       —   Precios alquiler comercial (sin ella: valores estimados)
+  SCRAPINGBEE_API_KEY     —   Solo si SCRAPING_SERVICE="scrapingbee"
+  ZENROWS_API_KEY         —   Solo si SCRAPING_SERVICE="zenrows"
+  ADMIN_API_KEY           —   Obligatorio solo en producción (/api/admin/*)
+  SENTRY_DSN              —   Monitorización errores producción
+================================================================================

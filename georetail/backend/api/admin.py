@@ -48,10 +48,12 @@ _PIPELINES: dict[str, str] = {
     "mercado_inmobiliario":   "pipelines.inmobiliario.mercado_inmobiliario",
     "competencia":            "pipelines.comercio.competencia",
     "google_maps":            "pipelines.entorno.google_maps",
+    "poblar_negocios":        "pipelines.comercio.poblar_negocios_activos",
 }
 
 # Orden recomendado para poblar la BD desde cero
 _ORDEN_RECOMENDADO = [
+    "poblar_negocios",
     "transporte",
     "aforaments",
     "demografia",
