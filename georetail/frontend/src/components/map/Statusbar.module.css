@@ -1,15 +1,15 @@
 .statusbar {
-  height: 40px;
+  height: 52px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
   display: grid;
   grid-template-columns: auto 1fr auto auto;
   align-items: center;
-  gap: 16px;
-  padding: 0 18px;
+  gap: 20px;
+  padding: 0 20px;
   font-family: var(--font-sans);
-  font-size: 10.5px;
-  letter-spacing: 0.1em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   color: var(--text-muted);
   text-transform: uppercase;
   z-index: 40;
@@ -40,9 +40,9 @@
 
 .query {
   color: var(--text-muted);
-  font-size: 10.5px;
+  font-size: 13px;
   text-transform: none;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -50,9 +50,19 @@
   min-width: 0;
 }
 
+.queryPrefix {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  margin-right: 6px;
+}
+
 .query em {
-  color: var(--accent-light);
+  color: var(--text);
   font-style: normal;
+  font-weight: 500;
 }
 
 .meta {
@@ -95,10 +105,15 @@
 
 @media (max-width: 900px) {
   .statusbar {
+    height: 48px;
     grid-template-columns: auto 1fr auto;
     padding: 0 12px;
+    gap: 12px;
   }
   .meta {
     display: none;
+  }
+  .query {
+    font-size: 12px;
   }
 }

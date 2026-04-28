@@ -34,7 +34,7 @@ export default function AppPage() {
   const [loadingDetalle, setLoadingDetalle] = useState(false);
   const [dossierOpen, setDossierOpen]     = useState(false);
 
-  const [basemap, setBasemap]             = useState<BasemapId>("dark");
+  const [basemap, setBasemap]             = useState<BasemapId>("voya");
   const [coords, setCoords]               = useState(BCN_CENTER);
 
   const activeZone = useMemo(

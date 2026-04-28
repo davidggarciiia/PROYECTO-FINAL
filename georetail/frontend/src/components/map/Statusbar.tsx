@@ -35,7 +35,8 @@ export default function Statusbar({
       </div>
 
       <div className={styles.query} title={displayQuery}>
-        PROMPT · <em>&ldquo;{displayQuery}&rdquo;</em>
+        <span className={styles.queryPrefix}>PROMPT</span>
+        <em>&ldquo;{displayQuery}&rdquo;</em>
       </div>
 
       <div className={styles.meta}>

@@ -22,6 +22,7 @@ function band(score?: number | null): "hi" | "mid" | "lo" {
 
 export default function ZoneIndex({ zonas, activeId, onPick, fecha }: Props) {
   const [filter, setFilter] = useState<Filter>("all");
+  const [collapsed, setCollapsed] = useState(false);
 
   const counts = useMemo(
     () => ({
@@ -42,90 +43,117 @@ export default function ZoneIndex({ zonas, activeId, onPick, fecha }: Props) {
   }, [zonas, filter]);
 
   return (
-    <aside className={styles.index}>
+    <aside className={`${styles.index} ${collapsed ? styles.collapsed : ""}`}>
       <div className={styles.head}>
         <div className={styles.eyebrow}>
           <span className={styles.tick}>●</span>
           RANKING · {zonas.length} ZONAS
         </div>
-        <span className={styles.live}>LIVE</span>
-      </div>
-
-      <div className={styles.filters}>
-        {(
-          [
-            ["all", "Todas"],
-            ["hi", "Viables"],
-            ["mid", "Mixtas"],
-            ["lo", "Descart."],
-          ] as [Filter, string][]
-        ).map(([k, l]) => (
+        <div className={styles.headRight}>
+          <span className={styles.live}>LIVE</span>
           <button
-            key={k}
-            className={`${styles.filter} ${filter === k ? styles.filterOn : ""}`}
-            onClick={() => setFilter(k)}
+            className={styles.collapseBtn}
+            onClick={() => setCollapsed((v) => !v)}
+            title={collapsed ? "Expandir lista de zonas" : "Colapsar lista de zonas"}
+            type="button"
           >
-            {l} · {counts[k]}
-          </button>
-        ))}
-      </div>
-
-      <div className={styles.list}>
-        {filtered.length === 0 && (
-          <div className={styles.empty}>
-            Ninguna zona en este tramo. Prueba otro filtro o refina la búsqueda.
-          </div>
-        )}
-        {filtered.map((z, i) => {
-          const b = band(z.score_global);
-          const isActive = z.zona_id === activeId;
-          return (
-            <div
-              key={z.zona_id}
-              className={`${styles.zone} ${styles[b]} ${isActive ? styles.isActive : ""}`}
-              onClick={() => onPick(z.zona_id)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onPick(z.zona_id);
-                }
-              }}
+            <svg
+              className={`${styles.collapseIcon} ${collapsed ? styles.collapseIconClosed : ""}`}
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              fill="none"
+              aria-hidden
             >
-              <div className={styles.num}>{String(i + 1).padStart(2, "0")}</div>
-              <div className={styles.body}>
-                <div className={styles.name}>{z.nombre}</div>
-                <div className={styles.district}>
-                  {z.barrio ? `${z.barrio} · ` : ""}
-                  {z.distrito}
-                </div>
-                <div className={styles.stats}>
-                  {z.alquiler_mensual != null ? (
-                    <span>{Math.round(z.alquiler_mensual).toLocaleString("es-ES")}€</span>
-                  ) : (
-                    <span>— €</span>
-                  )}
-                  <span>·</span>
-                  {z.m2 != null ? <span>{z.m2} m²</span> : <span>— m²</span>}
-                </div>
-              </div>
-              <div className={styles.score}>
-                <div className={styles.scoreN}>
-                  {z.score_global != null ? Math.round(z.score_global) : "—"}
-                </div>
-                <div className={styles.scoreL}>score</div>
-              </div>
-            </div>
-          );
-        })}
+              <path
+                d="M2.5 4.5L6 8L9.5 4.5"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      <div className={styles.foot}>
-        <span>8 DIMENSIONES</span>
-        <span className={styles.footTick}>
-          <span className={styles.tick}>●</span> ACTUALIZADO {fecha ?? "HOY"}
-        </span>
+      <div className={styles.body}>
+        <div className={styles.filters}>
+          {(
+            [
+              ["all", "Todas"],
+              ["hi", "Viables"],
+              ["mid", "Mixtas"],
+              ["lo", "Descart."],
+            ] as [Filter, string][]
+          ).map(([k, l]) => (
+            <button
+              key={k}
+              className={`${styles.filter} ${filter === k ? styles.filterOn : ""}`}
+              onClick={() => setFilter(k)}
+            >
+              {l} · {counts[k]}
+            </button>
+          ))}
+        </div>
+
+        <div className={styles.list}>
+          {filtered.length === 0 && (
+            <div className={styles.empty}>
+              Ninguna zona en este tramo. Prueba otro filtro o refina la búsqueda.
+            </div>
+          )}
+          {filtered.map((z, i) => {
+            const b = band(z.score_global);
+            const isActive = z.zona_id === activeId;
+            return (
+              <div
+                key={z.zona_id}
+                className={`${styles.zone} ${styles[b]} ${isActive ? styles.isActive : ""}`}
+                onClick={() => onPick(z.zona_id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onPick(z.zona_id);
+                  }
+                }}
+              >
+                <div className={styles.num}>{String(i + 1).padStart(2, "0")}</div>
+                <div className={styles.body2}>
+                  <div className={styles.name}>{z.nombre}</div>
+                  <div className={styles.district}>
+                    {z.barrio ? `${z.barrio} · ` : ""}
+                    {z.distrito}
+                  </div>
+                  <div className={styles.stats}>
+                    {z.alquiler_mensual != null ? (
+                      <span>{Math.round(z.alquiler_mensual).toLocaleString("es-ES")}€</span>
+                    ) : (
+                      <span>— €</span>
+                    )}
+                    <span>·</span>
+                    {z.m2 != null ? <span>{z.m2} m²</span> : <span>— m²</span>}
+                  </div>
+                </div>
+                <div className={styles.score}>
+                  <div className={styles.scoreN}>
+                    {z.score_global != null ? Math.round(z.score_global) : "—"}
+                  </div>
+                  <div className={styles.scoreL}>score</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className={styles.foot}>
+          <span>8 DIMENSIONES</span>
+          <span className={styles.footTick}>
+            <span className={styles.tick}>●</span> ACTUALIZADO {fecha ?? "HOY"}
+          </span>
+        </div>
       </div>
     </aside>
   );
