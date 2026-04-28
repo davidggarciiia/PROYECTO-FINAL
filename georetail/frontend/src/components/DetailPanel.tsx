@@ -236,7 +236,6 @@ export default function DetailPanel({ zona, detalle, loading, sessionId, onClose
   }, [competencia, loadingComp, sessionId, zona.zona_id]);
 
   useEffect(() => {
-    if (tab === "financiero") void loadFinanciero();
     if (tab === "competencia") void loadCompetencia();
   }, [tab, loadCompetencia, loadFinanciero]);
 

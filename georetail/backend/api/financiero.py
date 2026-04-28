@@ -31,6 +31,8 @@ from schemas.models import (
 )
 from agente.validador_financiero import validar_financiero
 from financiero.validador_pipeline import run_pipeline, BusinessInput as PipelineInput
+from financiero.gatekeeper import run_gatekeeper, GatekeeperInput
+from scoring.concepto.taxonomy import SECTOR_PROFILE_DEFAULTS, NEUTRAL_PROFILE
 from financiero.estimador import estimar_parametros, ParametrosEstimados, PE
 from financiero.calculadora import calcular_proyeccion, MAX_OCCUPANCY
 from db.sesiones import get_sesion
@@ -43,9 +45,7 @@ from db.financiero import (
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["financiero"])
 
-_UMBRAL_ALQUILER_VENTAS   = 0.10   # 10% s/ingresos conservadores para decisión "sí"
-_UMBRAL_ALQUILER_DISPLAY  = 0.15   # umbral visual de alerta (sobre ingresos base)
-_CAPITAL_ESTIMADO_DEFAULT = 50_000.0
+_UMBRAL_ALQUILER_VENTAS   = 0.10   # base para decisión "sí" (dinámico por perfil_negocio)
 
 # Tasa de captación máxima realista por sector
 # Para negocios de paso: footfall × tasa = clientes potenciales
@@ -180,13 +180,28 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
     sector  = sesion.get("perfil", {}).get("sector", "desconocido")
     perfil  = sesion.get("perfil", {})
 
+    # Dimensiones del perfil de negocio desde taxonomía (fallback: defaults del sector)
+    _pn = perfil.get("perfil_negocio") or {}
+    _sector_defaults = SECTOR_PROFILE_DEFAULTS.get(sector, NEUTRAL_PROFILE)
+    dependencia_flujo     = float(_pn.get("dependencia_flujo",     _sector_defaults.get("dependencia_flujo",     0.5)))
+    sensibilidad_alquiler = float(_pn.get("sensibilidad_alquiler", _sector_defaults.get("sensibilidad_alquiler", 0.5)))
+    # Umbral de alquiler dinámico: negocios menos sensibles al alquiler toleran una ratio mayor
+    _umbral_alquiler_decision = round(0.10 + (1.0 - sensibilidad_alquiler) * 0.08, 4)
+    _umbral_alquiler_display  = round(_umbral_alquiler_decision + 0.05, 4)
+
     bc           = body.business_context
     tipo_negocio = bc.tipo if bc else "nuevo"
-    capital      = float(
+
+    _capital_raw = (
         (bc.capital_inicial if bc and bc.capital_inicial else None)
         or perfil.get("capital_disponible")
-        or _CAPITAL_ESTIMADO_DEFAULT
     )
+    if not _capital_raw:
+        raise HTTPException(
+            status_code=422,
+            detail="capital_inicial es obligatorio. Indica el capital disponible para iniciar la actividad.",
+        )
+    capital = float(_capital_raw)
     capacidad_operativa = bc.capacidad_operativa if bc else None
 
     # ── Estimar parámetros ────────────────────────────────────────────────────
@@ -251,6 +266,41 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         for c in _pipeline_result.corrections
     ]
 
+    # ── Gatekeeper: stream decomposition + hard physical constraints ──────────
+    _gk_result = run_gatekeeper(GatekeeperInput(
+        sector=sector,
+        total_m2=float(perfil.get("m2_aprox", 60.0)),
+        hours_open_per_day=float(benchmarks.get("horas_apertura_dia", 9.0)),
+        total_staff=v["num_empleados"],
+        avg_ticket=v["ticket_medio"],
+        flujo_peatonal_dia=flujo_peatonal,
+        conversion_rate=float(_CAPTURE_RATE_POR_SECTOR.get(sector, _CAPTURE_RATE_POR_SECTOR["_default"])),
+        service_duration_min=float(_dur) if _dur else None,
+        seats_or_capacity=float(perfil.get("aforo", 0.0)) or None,
+        avg_stay_min=float(benchmarks.get("duracion_media_visita_min", 0.0)) or None,
+    ))
+    # Cap clients_per_day with gatekeeper's max_capacity (sólo si más restrictivo)
+    _gk_max = _gk_result.constraints["max_capacity"]
+    if _gk_max > 0 and v["clients_per_day"] > _gk_max:
+        _gk_corrections: list[dict] = [{
+            "parametro":       "clientes_dia",
+            "valor_original":  v["clients_per_day"],
+            "valor_corregido": round(_gk_max, 1),
+            "motivo":          f"Gatekeeper: demanda supera la capacidad física del stream principal ({round(_gk_max, 1)} clientes/día).",
+        }]
+        v["clients_per_day"] = round(_gk_max, 1)
+    else:
+        _gk_corrections = []
+    _gk_corrections += [
+        {
+            "parametro":       c["field"],
+            "valor_original":  float(c["original"]),
+            "valor_corregido": float(c["corrected"]),
+            "motivo":          c["reason"],
+        }
+        for c in _gk_result.corrections
+    ]
+
     # ── Correcciones hard (CRÍTICO — antes de la calculadora) ─────────────────
     correcciones_raw = _aplicar_correcciones_demanda(
         v=v,
@@ -258,8 +308,9 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         business_model_type=business_model_type,
         capacidad_operativa=capacidad_operativa,
         sector=sector,
+        dependencia_flujo=dependencia_flujo,
     )
-    correcciones_raw = _pipeline_corrections + correcciones_raw
+    correcciones_raw = _pipeline_corrections + _gk_corrections + correcciones_raw
 
     # ── Modelo de capacidad ───────────────────────────────────────────────────
     capacity_model = _build_capacity_model(
@@ -327,7 +378,8 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
 
     decision = DecisionBlock(
         # alquiler_pct ya usa ingresos conservadores (corregido auditoría)
-        recomendacion=_calcular_recomendacion(roi_b, pb_b, alquiler_pct, roi_c),
+        recomendacion=_calcular_recomendacion(roi_b, pb_b, alquiler_pct, roi_c,
+                                               umbral_alquiler=_umbral_alquiler_decision),
         beneficio_mensual=ben_mes,
         payback=pb_b,
         capital_necesario=resultado["inversion_total"],
@@ -385,6 +437,7 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         cf_mes=v["alquiler_mensual"] + v["salarios_mensual"] + v["otros_fijos_mensual"],
         ing_estable=ing_estable,
         margen_bruto=margen_bruto,
+        umbral_alquiler=_umbral_alquiler_decision,
     )
 
     # ── Enriquecer riesgos con problemas de alto impacto detectados por LLM ──
@@ -448,8 +501,8 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         margen_sector_tipico=margen_sector,
         # Display: alquiler sobre ingresos BASE (informativo)
         alquiler_sobre_ventas_pct=round(alquiler_pct_base, 3),
-        # Alerta visual: umbral 15% sobre ingresos base
-        alerta_alquiler=alquiler_pct_base > _UMBRAL_ALQUILER_DISPLAY,
+        # Alerta visual: umbral dinámico sobre ingresos base (ajustado por sensibilidad_alquiler)
+        alerta_alquiler=alquiler_pct_base > _umbral_alquiler_display,
         decision=decision,
         economia_base=economia_base,
         estructura_costes=estructura_costes,
@@ -480,20 +533,23 @@ def _aplicar_correcciones_demanda(
     business_model_type: str,
     capacidad_operativa: Optional[int],
     sector: str = "_default",
+    dependencia_flujo: float = 0.5,
 ) -> list[dict]:
     """
     Aplica límites duros a clients_per_day en v (in-place).
     Devuelve lista de correcciones para mostrar al usuario.
 
     Reglas:
-      1. Retail/restaurant: clients_per_day ≤ flujo_peatonal × tasa_sector (no universal 15%)
+      1. Retail/restaurant: clients_per_day ≤ flujo_peatonal × tasa_sector × factor_perfil
       2. Todos: clients_per_day ≤ max_capacity (del modelo)
       3. Todos: clients_per_day ≤ capacidad_operativa (input usuario, si existe)
     """
     correcciones: list[dict] = []
 
-    # Regla 1: cap por capture_rate según sector (corregido auditoría: no universal 15%)
-    sector_rate = _CAPTURE_RATE_POR_SECTOR.get(sector, _CAPTURE_RATE_POR_SECTOR["_default"])
+    # Regla 1: cap por capture_rate según sector, escalado por dependencia_flujo del perfil
+    # Negocios muy dependientes del paso (flujo alto) pueden captar algo más; los de cita menos.
+    sector_rate_base = _CAPTURE_RATE_POR_SECTOR.get(sector, _CAPTURE_RATE_POR_SECTOR["_default"])
+    sector_rate = min(sector_rate_base * (0.75 + dependencia_flujo * 0.50), 0.20)
     if flujo_peatonal > 0 and business_model_type not in ("appointment_based",):
         max_realistic = flujo_peatonal * sector_rate
         if v["clients_per_day"] > max_realistic and max_realistic > 0:
@@ -506,7 +562,8 @@ def _aplicar_correcciones_demanda(
                 "valor_corregido": v["clients_per_day"],
                 "motivo": (
                     f"Captación estimada ({tasa_original}% del flujo peatonal) superaba el "
-                    f"{round(sector_rate*100)}% máximo realista para el sector '{sector}'. "
+                    f"{round(sector_rate*100, 1)}% máximo para el sector '{sector}' "
+                    f"(dependencia de paso: {round(dependencia_flujo*100)}%). "
                     f"Ajuste aplicado: {original} → {v['clients_per_day']} clientes/día."
                 ),
             })
@@ -573,18 +630,19 @@ def _build_capacity_model(
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _calcular_recomendacion(
-    roi_b: float, payback_b: int, alquiler_pct: float, roi_c: float = 0.0
+    roi_b: float, payback_b: int, alquiler_pct: float, roi_c: float = 0.0,
+    umbral_alquiler: float = _UMBRAL_ALQUILER_VENTAS,
 ) -> str:
     """
     Umbrales corregidos (auditoría v4):
     - ROI base ≥ 40% (≈ 12% anual, por encima del coste de oportunidad)
     - Payback ≤ 18 meses (no 24)
-    - Alquiler ≤ 10% de ingresos conservadores (no base)
+    - Alquiler ≤ umbral dinámico de ingresos conservadores (ajustado por sensibilidad_alquiler)
     - El escenario conservador no puede tener ROI negativo para dar "sí"
     """
     if (roi_b >= 0.40
             and payback_b <= 18
-            and alquiler_pct <= _UMBRAL_ALQUILER_VENTAS
+            and alquiler_pct <= umbral_alquiler
             and roi_c >= 0.0):
         return "si"
     if roi_b >= 0.0 and payback_b <= 30:
@@ -605,6 +663,7 @@ def _generar_riesgos(
     cf_mes: float = 0.0,
     ing_estable: float = 0.0,
     margen_bruto: float = 0.65,
+    umbral_alquiler: float = _UMBRAL_ALQUILER_VENTAS,
 ) -> list[Riesgo]:
     riesgos: list[Riesgo] = []
     flags = validation_flags or []
@@ -627,11 +686,11 @@ def _generar_riesgos(
                     f"coste de oportunidad de invertir el capital en otras opciones."))
 
     # ── Advertencias críticas ─────────────────────────────────────────────────
-    if alquiler_pct > _UMBRAL_ALQUILER_VENTAS:
+    if alquiler_pct > umbral_alquiler:
         riesgos.append(Riesgo(tipo="warning",
             mensaje=f"Alquiler: {round(alquiler_pct * 100)}% sobre ventas — "
-                    f"supera el umbral del 15%. Con ventas por debajo de lo esperado, "
-                    f"el alquiler puede absorber todo el margen."))
+                    f"supera el umbral del {round(umbral_alquiler * 100)}% para este tipo de negocio. "
+                    f"Con ventas por debajo de lo esperado, el alquiler puede absorber todo el margen."))
 
     if any(c["parametro"] == "clientes_dia" for c in correcciones):
         riesgos.append(Riesgo(tipo="warning",

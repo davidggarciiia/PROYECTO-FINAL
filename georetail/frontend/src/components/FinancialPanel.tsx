@@ -1701,8 +1701,8 @@ function SliderParam({ label, unit, value, min, max, fuente, color, onChange }: 
 
 export default function FinancialPanel({ financiero, loading, zonaId, sessionId, onUpdate }: Props) {
   const [overrides, setOverrides]             = useState<Record<string, number>>({});
-  const [modoConfig, setModoConfig]           = useState<"auto" | "manual">("auto");
   const [businessContext, setBusinessContext] = useState<BusinessContext>({ tipo: "nuevo" });
+  const [capitalInput, setCapitalInput]       = useState<string>("");
   const [recalculating, setRecalculating]     = useState(false);
 
   const refetch = useCallback(async (
@@ -1749,14 +1749,71 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
   }
 
   if (!financiero) {
+    const capitalVal = Number(capitalInput);
+    const capitalOk  = capitalVal > 0;
+    const handleSubmit = () => {
+      if (!capitalOk) return;
+      const bc = { ...businessContext, capital_inicial: capitalVal };
+      setBusinessContext(bc);
+      refetch(overrides, bc);
+    };
     return (
-      <div className={styles.emptyState}>
-        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-          <rect x="4"    y="20" width="5" height="8"  rx="2" fill="var(--accent)" opacity="0.4" />
-          <rect x="13.5" y="12" width="5" height="16" rx="2" fill="var(--accent)" opacity="0.6" />
-          <rect x="23"   y="6"  width="5" height="22" rx="2" fill="var(--accent)" />
-        </svg>
-        <span>Datos financieros no disponibles</span>
+      <div className={styles.capitalGate}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }}>
+          Capital inicial disponible
+        </div>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 16, lineHeight: 1.55 }}>
+          Indica el capital que tienes disponible para abrir el negocio. Es necesario para calcular el análisis.
+        </div>
+
+        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+          {(["nuevo", "traspaso"] as const).map(t => (
+            <button key={t} onClick={() => setBusinessContext(prev => ({ ...prev, tipo: t }))} style={{
+              all: "unset", cursor: "pointer", fontSize: 11, fontWeight: 600,
+              padding: "4px 14px", borderRadius: 6, textTransform: "capitalize",
+              background: businessContext.tipo === t ? "rgba(16,185,129,0.15)" : C.surface,
+              border: `1px solid ${businessContext.tipo === t ? "rgba(16,185,129,0.4)" : C.border}`,
+              color: businessContext.tipo === t ? C.green : C.muted,
+              transition: "all 0.15s",
+            }}>{t}</button>
+          ))}
+        </div>
+
+        <div style={{ position: "relative", marginBottom: 12 }}>
+          <input
+            type="number" min={1000} placeholder="ej. 30000"
+            value={capitalInput}
+            onChange={e => setCapitalInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleSubmit()}
+            autoFocus
+            style={{
+              width: "100%", boxSizing: "border-box",
+              background: C.surface, border: `1px solid ${capitalInput && !capitalOk ? C.red : C.border}`,
+              borderRadius: 8, color: C.text, fontSize: 14, fontWeight: 600,
+              padding: "10px 52px 10px 12px",
+            }}
+          />
+          <span style={{
+            position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+            fontSize: 11, color: C.muted, pointerEvents: "none",
+          }}>€</span>
+        </div>
+
+        <button
+          onClick={handleSubmit}
+          disabled={!capitalOk || recalculating}
+          style={{
+            all: "unset", cursor: capitalOk && !recalculating ? "pointer" : "not-allowed",
+            width: "100%", boxSizing: "border-box", textAlign: "center",
+            padding: "10px 0", borderRadius: 8, fontWeight: 700, fontSize: 13,
+            background: capitalOk ? C.green : C.surface2,
+            color: capitalOk ? "#0F1923" : C.subtle,
+            opacity: recalculating ? 0.6 : 1,
+            transition: "all 0.15s",
+          }}
+        >
+          {recalculating ? "Calculando…" : "Calcular análisis"}
+        </button>
       </div>
     );
   }
@@ -1767,71 +1824,36 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
   return (
     <div className={styles.container}>
 
-      {/* ── Selector Auto / Manual ── */}
+      {/* ── Contexto del negocio (siempre visible) ── */}
       <section className={styles.section} style={{ paddingBottom: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {(["auto", "manual"] as const).map(m => (
-            <button key={m} onClick={() => setModoConfig(m)} style={{
-              all: "unset", cursor: "pointer", fontSize: 11, fontWeight: 700,
-              letterSpacing: "0.06em", textTransform: "uppercase",
-              padding: "4px 12px", borderRadius: 6,
-              background: modoConfig === m ? C.surface2 : C.surface,
-              border: `1px solid ${modoConfig === m ? "rgba(255,255,255,0.12)" : C.border}`,
-              color: modoConfig === m ? C.text : C.muted,
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {(["nuevo", "traspaso"] as const).map(t => (
+            <button key={t} onClick={() => handleBusinessContext({ ...businessContext, tipo: t })} style={{
+              all: "unset", cursor: "pointer", fontSize: 11, fontWeight: 600,
+              padding: "4px 12px", borderRadius: 6, textTransform: "capitalize",
+              background: businessContext.tipo === t ? "rgba(16,185,129,0.15)" : C.surface,
+              border: `1px solid ${businessContext.tipo === t ? "rgba(16,185,129,0.4)" : C.border}`,
+              color: businessContext.tipo === t ? C.green : C.muted,
               transition: "all 0.15s",
-            }}>{m}</button>
+            }}>{t}</button>
           ))}
-        </div>
-
-        {/* Contexto negocio (modo manual) */}
-        {modoConfig === "manual" && (
-          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              Contexto del negocio
-            </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              {(["nuevo", "traspaso"] as const).map(t => (
-                <button key={t} onClick={() => handleBusinessContext({ ...businessContext, tipo: t })} style={{
-                  all: "unset", cursor: "pointer", fontSize: 11, fontWeight: 600,
-                  padding: "4px 12px", borderRadius: 6, textTransform: "capitalize",
-                  background: businessContext.tipo === t ? "rgba(16,185,129,0.15)" : C.surface,
-                  border: `1px solid ${businessContext.tipo === t ? "rgba(16,185,129,0.4)" : C.border}`,
-                  color: businessContext.tipo === t ? C.green : C.muted,
-                }}>{t}</button>
-              ))}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-              <div>
-                <div style={{ fontSize: 10, color: C.muted, marginBottom: 3 }}>Capital inicial (€)</div>
-                <input type="number" min={0} placeholder="ej. 50000"
-                  value={businessContext.capital_inicial ?? ""}
-                  onChange={e => {
-                    const val = e.target.value ? Number(e.target.value) : undefined;
-                    handleBusinessContext({ ...businessContext, capital_inicial: val });
-                  }}
-                  style={{
-                    background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6,
-                    color: C.text, fontSize: 12, padding: "5px 8px", width: "100%", boxSizing: "border-box",
-                  }}
-                />
-              </div>
-              <div>
-                <div style={{ fontSize: 10, color: C.muted, marginBottom: 3 }}>Cap. operativa (clientes/día)</div>
-                <input type="number" min={1} placeholder="ej. 8"
-                  value={businessContext.capacidad_operativa ?? ""}
-                  onChange={e => {
-                    const val = e.target.value ? Number(e.target.value) : undefined;
-                    handleBusinessContext({ ...businessContext, capacidad_operativa: val });
-                  }}
-                  style={{
-                    background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6,
-                    color: C.text, fontSize: 12, padding: "5px 8px", width: "100%", boxSizing: "border-box",
-                  }}
-                />
-              </div>
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: "auto" }}>
+            <span style={{ fontSize: 10, color: C.muted }}>Capital:</span>
+            <input
+              type="number" min={1000}
+              value={businessContext.capital_inicial ?? ""}
+              onChange={e => {
+                const val = e.target.value ? Number(e.target.value) : undefined;
+                handleBusinessContext({ ...businessContext, capital_inicial: val });
+              }}
+              style={{
+                background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6,
+                color: C.text, fontSize: 12, padding: "3px 6px", width: 90, textAlign: "right",
+              }}
+            />
+            <span style={{ fontSize: 10, color: C.muted }}>€</span>
           </div>
-        )}
+        </div>
       </section>
 
       {/* ── BLOQUE 1: Decisión rápida ── */}

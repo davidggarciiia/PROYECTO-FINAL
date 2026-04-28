@@ -26,6 +26,14 @@
   font-size: 13px;
 }
 
+.capitalGate {
+  display: flex;
+  flex-direction: column;
+  padding: 28px 20px;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
 /* ── KPIs ── */
 .kpiGrid {
   display: grid;
