@@ -16,8 +16,17 @@ import LoadingOverlay from "@/components/map/LoadingOverlay";
 import styles from "./page.module.css";
 import type { ZonaPreview, LocalDetalleResponse, PerfilEstructurado } from "@/lib/types";
 import { api } from "@/lib/api";
+import { getBackendSector, inferStreams, type StreamType } from "@/lib/sectorMap";
+import { buildBusinessContext } from "@/lib/buildBusinessContext";
 
 type View = "onboarding" | "wizard" | "map";
+
+interface WizardPreFill {
+  backendSector:  string;
+  subsectorLabel: string;
+  matices:        string;       // contexto enriquecido → PerfilEstructurado.matices
+  streamTypes:    StreamType[]; // modelo económico inferido (para uso futuro)
+}
 
 const BCN_CENTER = { lat: 41.3851, lng: 2.1734, zoom: 13 };
 
@@ -37,61 +46,14 @@ export default function AppPage() {
   const [basemap, setBasemap]             = useState<BasemapId>("dark");
   const [coords, setCoords]               = useState(BCN_CENTER);
 
+  // Sector/subsector/matices collected during Onboarding, passed to the wizard
+  const [wizardPreFill, setWizardPreFill] = useState<WizardPreFill | null>(null);
+
   const activeZone = useMemo(
     () => zonas.find((z) => z.zona_id === activeId) ?? null,
     [zonas, activeId],
   );
 
-  const fetchZonas = useCallback(
-    async (query: string) => {
-      if (!query.trim()) return;
-      setLoading(true);
-      setErrorMsg(null);
-      try {
-        const res = await api.buscar({ descripcion: query, session_id: sessionId || undefined });
-        if (res.estado === "ok" && Array.isArray(res.zonas)) {
-          // API returns ZonaResumen (alquiler_estimado/m2_disponibles); HUD expects ZonaPreview (alquiler_mensual/m2)
-          const adapted: ZonaPreview[] = res.zonas.map((z) => ({
-            zona_id: z.zona_id,
-            nombre: z.nombre,
-            barrio: z.barrio,
-            distrito: z.distrito,
-            lat: z.lat,
-            lng: z.lng,
-            score_global: z.score_global,
-            m2: z.m2_disponibles,
-            alquiler_mensual: z.alquiler_estimado,
-            color: z.color,
-          }));
-          setZonas(adapted);
-          if (res.session_id) setSessionId(res.session_id);
-          if (adapted.length > 0) setActiveId(adapted[0].zona_id);
-        } else if (res.estado === "cuestionario") {
-          setErrorMsg("El motor necesita más contexto. Por ahora, añade detalles a tu prompt.");
-        } else if (res.estado === "error_tipo_negocio") {
-          setErrorMsg("No reconocemos el tipo de negocio. Intenta con una descripción distinta.");
-        } else if (res.estado === "inviable_legal") {
-          setErrorMsg("La combinación negocio + zona no es viable legalmente.");
-        }
-      } catch (e) {
-        console.error("api.buscar error:", e);
-        const msg = e instanceof Error ? e.message : String(e);
-        if (/422/.test(msg)) {
-          setErrorMsg("Describe tu negocio con al menos 10 caracteres.");
-        } else if (/Failed to fetch|NetworkError/i.test(msg)) {
-          setErrorMsg("Error conectando con el motor. ¿Backend corriendo en :8000?");
-        } else {
-          setErrorMsg(`Error del motor: ${msg}`);
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [sessionId],
-  );
-
-  // Búsqueda estructurada desde el wizard — equivalente a fetchZonas pero
-  // mandando `perfil_estructurado` en vez de descripción libre.
   const fetchZonasStructured = useCallback(
     async (pe: PerfilEstructurado) => {
       setLoading(true);
@@ -138,22 +100,22 @@ export default function AppPage() {
     [sessionId],
   );
 
-  // Onboarding submit (texto libre) -> mapa + primera búsqueda
-  const handleOnboardingSubmit = useCallback(
-    (q: string) => {
-      setSearchQuery(q);
-      setView("map");
-      void fetchZonas(q);
+  // Onboarding new flow: recibe valores raw, construye contexto enriquecido
+  const handleOnboardingGoWizard = useCallback(
+    (sectorCodigo: string, subsectorLabel: string, descripcionUsuario: string) => {
+      const ctx = buildBusinessContext(sectorCodigo, subsectorLabel, descripcionUsuario);
+      setWizardPreFill({
+        backendSector: getBackendSector(sectorCodigo, subsectorLabel),
+        subsectorLabel,
+        matices:       ctx.matices_enriquecidos,
+        streamTypes:   inferStreams(sectorCodigo),
+      });
+      setView("wizard");
     },
-    [fetchZonas],
+    [],
   );
 
-  // Onboarding -> "Cuestionario guiado": wizard full-screen
-  const handleOnboardingQuestionnaire = useCallback(() => {
-    setView("wizard");
-  }, []);
-
-  // Wizard completado: entra al mapa con la búsqueda estructurada
+  // Wizard completed: go to map with structured search
   const handleWizardComplete = useCallback(
     (pe: PerfilEstructurado) => {
       setSearchQuery(pe.subsector || pe.sector);
@@ -163,9 +125,10 @@ export default function AppPage() {
     [fetchZonasStructured],
   );
 
-  // Wizard "Volver" en el primer paso: regresa al Onboarding
+  // Wizard back: return to onboarding, clear pre-fill
   const handleWizardBack = useCallback(() => {
     setView("onboarding");
+    setWizardPreFill(null);
   }, []);
 
   const handleRestart = useCallback(() => {
@@ -176,6 +139,7 @@ export default function AppPage() {
     setDetalle(null);
     setDossierOpen(false);
     setErrorMsg(null);
+    setWizardPreFill(null);
   }, []);
 
   // Dock navigation (prev / next)
@@ -189,8 +153,6 @@ export default function AppPage() {
     [zonas, activeId],
   );
 
-  // Fetch detalle cuando cambia la zona activa. Lo hacemos en background para que
-  // las barras por dimensión (HUD abajo-izq) estén disponibles sin abrir el dossier.
   useEffect(() => {
     if (!activeId || !sessionId) return;
     if (detalle?.zona.zona_id === activeId) return;
@@ -214,25 +176,25 @@ export default function AppPage() {
   }, [activeId, sessionId, detalle]);
 
   const dimsActive = detalle?.zona.zona_id === activeId ? detalle?.zona.scores_dimensiones ?? null : null;
-
-  void dimsActive;  // se pasa a ActiveDock para las barras del dock
+  void dimsActive;
 
   // Onboarding stage
   if (view === "onboarding") {
     return (
       <Onboarding
-        onSubmit={handleOnboardingSubmit}
-        onStartQuestionnaire={handleOnboardingQuestionnaire}
+        onGoToWizard={handleOnboardingGoWizard}
       />
     );
   }
 
-  // Wizard stage — pantalla principal cuando se elige "Cuestionario guiado"
+  // Wizard stage — starts from public/zone/budget (sector already set in Onboarding)
   if (view === "wizard") {
     return (
       <QuickQuestionnaire
         onComplete={handleWizardComplete}
         onBack={handleWizardBack}
+        initialSector={wizardPreFill?.backendSector}
+        initialMatices={wizardPreFill?.matices}
       />
     );
   }
