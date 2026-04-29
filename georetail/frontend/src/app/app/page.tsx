@@ -34,7 +34,7 @@ export default function AppPage() {
   const [loadingDetalle, setLoadingDetalle] = useState(false);
   const [dossierOpen, setDossierOpen]     = useState(false);
 
-  const [basemap, setBasemap]             = useState<BasemapId>("dark");
+  const [basemap, setBasemap]             = useState<BasemapId>("voya");
   const [coords, setCoords]               = useState(BCN_CENTER);
 
   const activeZone = useMemo(
@@ -256,19 +256,21 @@ export default function AppPage() {
 
         <HudCoord lat={coords.lat} lng={coords.lng} zoom={coords.zoom} label="BARCELONA" />
 
-        <ZoneIndex
-          zonas={zonas}
-          activeId={activeId}
-          onPick={(id) => setActiveId(id)}
-        />
-
-        <BasemapSwitcher value={basemap} onChange={setBasemap} />
+        <div className={styles.rightColumn}>
+          <BasemapSwitcher value={basemap} onChange={setBasemap} />
+          <ZoneIndex
+            zonas={zonas}
+            activeId={activeId}
+            onPick={(id) => setActiveId(id)}
+          />
+        </div>
 
         <ActiveDock
           zone={activeZone}
           zones={zonas}
           dims={dimsActive}
           loading={loading}
+          loadingDims={loadingDetalle}
           onExpand={() => setDossierOpen(true)}
           onNav={handleNav}
         />

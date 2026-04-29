@@ -16,10 +16,9 @@
 
 .hero {
   position: relative;
-  min-height: 100vh;
-  padding: calc(var(--nav-height) + 80px) 24px 120px;
+  padding: calc(var(--nav-height) + 80px) 24px 100px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   overflow: hidden;
   isolation: isolate;
 }
@@ -79,7 +78,6 @@
 }
 
 .heroLeft > * {
-  opacity: 0;
   animation: kp-fade-up 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -133,7 +131,6 @@
   justify-content: flex-end;
   align-items: center;
   min-height: 360px;
-  opacity: 0;
   animation: kp-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.35s both;
 }
 

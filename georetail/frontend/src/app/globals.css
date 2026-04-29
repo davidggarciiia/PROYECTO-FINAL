@@ -115,7 +115,7 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   position: absolute;
   top: -6px;
   left: 50%;
-  transform: translateX(-50%);
+  margin-left: -24px;
   width: 48px; height: 48px;
   border-radius: 50%;
   border: 2px solid var(--accent);
