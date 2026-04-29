@@ -97,7 +97,7 @@
 }
 
 .header {
-  max-width: 620px;
+  max-width: 860px;
   width: 100%;
   text-align: center;
   margin-bottom: 28px;
@@ -119,7 +119,7 @@
 
 .body {
   width: 100%;
-  max-width: 620px;
+  max-width: 860px;
   overflow: visible;
   animation: kp-fade-up 0.4s 0.08s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -127,22 +127,22 @@
 /* ── Tiles ────────────────────────────────────────────────────────────────── */
 .tileGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
   overflow: visible;
 }
-@media (max-width: 480px) {
+@media (max-width: 540px) {
   .tileGrid { grid-template-columns: 1fr; }
 }
 
 .tile {
   position: relative;
   text-align: left;
-  padding: 16px 18px;
-  min-height: 56px;
+  padding: 22px 24px;
+  min-height: 80px;
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 12px;
+  border-radius: 14px;
   color: var(--text);
   cursor: pointer;
   display: flex;
@@ -169,11 +169,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
 }
 
 .tileLabel {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
   letter-spacing: 0.005em;
   line-height: 1.3;
@@ -313,10 +313,10 @@
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 13px;
-  padding: 9px 16px;
-  min-height: 44px;
-  border-radius: 9px;
+  font-size: 14px;
+  padding: 11px 22px;
+  min-height: 48px;
+  border-radius: 10px;
   cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease;
 }
@@ -327,12 +327,12 @@
 .btnGhost:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .btnNext {
-  min-width: 180px;
-  padding: 10px 20px;
-  min-height: 44px;
-  font-size: 14px;
+  min-width: 200px;
+  padding: 12px 28px;
+  min-height: 48px;
+  font-size: 15px;
   font-weight: 600;
-  border-radius: 9px;
+  border-radius: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
