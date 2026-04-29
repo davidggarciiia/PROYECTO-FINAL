@@ -14,6 +14,7 @@ import {
   SECTORES,
   getSubsectorList,
   getBackendSector,
+  getBackendSubsector,
   getSubsectorPlaceholder,
 } from "@/lib/sectorMap";
 import { buildBusinessContext } from "@/lib/buildBusinessContext";
@@ -138,12 +139,14 @@ export default function QuickQuestionnaire({ onComplete, onBack }: Props) {
     if (submitting) return;
     setSubmitting(true);
 
-    const ctx          = buildBusinessContext(sectorUI, subsectorLabel, descripcion);
-    const backendSector = getBackendSector(sectorUI, subsectorLabel);
+    const ctx             = buildBusinessContext(sectorUI, subsectorLabel, descripcion);
+    const backendSector   = getBackendSector(sectorUI, subsectorLabel);
+    const backendSubsector = getBackendSubsector(sectorUI, subsectorLabel);
 
     const pe: PerfilEstructurado = {
-      sector:  backendSector,
-      matices: ctx.matices_enriquecidos,
+      sector:    backendSector,
+      subsector: backendSubsector || undefined,
+      matices:   ctx.matices_enriquecidos,
     };
 
     if (publico) {

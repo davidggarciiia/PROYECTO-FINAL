@@ -21,6 +21,8 @@ export interface SectorDef {
 export interface SubsectorDef {
   label:       string;
   placeholder: string;
+  /** Código canónico en scoring/taxonomia.py SUBSECTORES. undefined si no hay equivalente exacto. */
+  backendCode?: string;
 }
 
 export const SECTORES: SectorDef[] = [
@@ -96,15 +98,17 @@ export const SECTORES: SectorDef[] = [
   },
 ];
 
-// Subsectores con placeholder dinámico por tipo de negocio
+// Subsectores con placeholder dinámico por tipo de negocio.
+// backendCode mapea al código canónico de scoring/taxonomia.py SUBSECTORES.
+// undefined significa que no hay equivalente exacto en la taxonomía cerrada.
 export const SUBSECTORES: Record<string, SubsectorDef[]> = {
   hosteleria: [
     { label: "Restaurante",  placeholder: "japonés, de tapas, vegano, de autor, italiano..." },
-    { label: "Cafetería",    placeholder: "café de especialidad, brunch, pastelería artesanal..." },
-    { label: "Fast food",    placeholder: "burger, pizza, kebab, poke bowl, pollo..." },
-    { label: "Takeaway",     placeholder: "asiático, sushi, bocadillos gourmet, wraps..." },
-    { label: "Panadería",    placeholder: "artesana, ecológica, con obrador, masa madre..." },
-    { label: "Dark kitchen", placeholder: "delivery italiano, asiático, hamburguesas premium..." },
+    { label: "Cafetería",    placeholder: "café de especialidad, brunch, pastelería artesanal...", backendCode: "cafeteria" },
+    { label: "Fast food",    placeholder: "burger, pizza, kebab, poke bowl, pollo...",            backendCode: "fast_food" },
+    { label: "Takeaway",     placeholder: "asiático, sushi, bocadillos gourmet, wraps...",         backendCode: "fast_food" },
+    { label: "Panadería",    placeholder: "artesana, ecológica, con obrador, masa madre...",       backendCode: "panaderia" },
+    { label: "Dark kitchen", placeholder: "delivery italiano, asiático, hamburguesas premium...",  backendCode: "fast_food" },
     { label: "Buffet",       placeholder: "asiático, mediterráneo, all-you-can-eat, precio fijo..." },
   ],
   retail: [
@@ -113,17 +117,17 @@ export const SUBSECTORES: Record<string, SubsectorDef[]> = {
     { label: "Electrónica",   placeholder: "gaming, Apple reseller, reparación, segunda mano..." },
     { label: "Hogar",         placeholder: "decoración nórdica, vintage, sostenible, interiorismo..." },
     { label: "Especializado", placeholder: "deporte, mascotas, papelería premium, instrumentos..." },
-    { label: "Segunda mano",  placeholder: "ropa, muebles, tecnología, libros, coleccionismo..." },
+    { label: "Segunda mano",  placeholder: "ropa, muebles, tecnología, libros, coleccionismo...",  backendCode: "vintage" },
     { label: "Farmacia",      placeholder: "con parafarmacia, nutrición deportiva, homeopatía..." },
     { label: "Nicho",         placeholder: "magic cards, discos de vinilo, figuras, comics..." },
   ],
   servicios_personales: [
-    { label: "Peluquería / barbería", placeholder: "premium, masculina, afro, extensiones, coloristas..." },
+    { label: "Peluquería / barbería", placeholder: "premium, masculina, afro, extensiones, coloristas...", backendCode: "peluqueria" },
     { label: "Estética y belleza",    placeholder: "micropigmentación, láser, uñas, spa, lashes..." },
     { label: "Fisioterapia",          placeholder: "deportiva, neurológica, osteopatía, pilates terapéutico..." },
     { label: "Psicología",            placeholder: "cognitiva, infantil, de pareja, EMDR, online..." },
     { label: "Clínica dental",        placeholder: "estética, ortodoncia invisible, implantes, infantil..." },
-    { label: "Yoga / pilates",        placeholder: "hot yoga, reformer, meditación, pre-natal, ashtanga..." },
+    { label: "Yoga / pilates",        placeholder: "hot yoga, reformer, meditación, pre-natal, ashtanga...", backendCode: "spa" },
     { label: "Otro",                  placeholder: "describe el servicio personalizado que ofreces..." },
   ],
   servicios_b2b: [
@@ -217,4 +221,13 @@ export function getSubsectorPlaceholder(sectorCodigo: string, subsectorLabel: st
     subs.find((s) => s.label === subsectorLabel)?.placeholder ??
     "Ej: restaurante japonés, bar de tapas, tienda de informática gaming..."
   );
+}
+
+/**
+ * Devuelve el código canónico de taxonomia.py para el subsector seleccionado.
+ * undefined si no hay equivalente exacto en la taxonomía cerrada del backend.
+ */
+export function getBackendSubsector(sectorCodigo: string, subsectorLabel: string): string | undefined {
+  const subs = SUBSECTORES[sectorCodigo] ?? [];
+  return subs.find((s) => s.label === subsectorLabel)?.backendCode;
 }
