@@ -171,7 +171,10 @@ export default function QuickQuestionnaire({ onComplete, onBack }: Props) {
           className={`${styles.tile} ${selected === t.codigo ? styles.tileActive : ""}`}
           onClick={() => onPick(t.codigo)}
         >
-          <div className={styles.tileLabel}>{t.label}</div>
+          <div className={styles.tileTop}>
+            <div className={styles.tileLabel}>{t.label}</div>
+            {t.desc && <span className={styles.tileInfoIcon}>i</span>}
+          </div>
           {t.desc && <div className={styles.tileDesc}>{t.desc}</div>}
         </button>
       ))}
@@ -181,7 +184,7 @@ export default function QuickQuestionnaire({ onComplete, onBack }: Props) {
   const TITLES: Record<number, { h: string; sub?: string }> = {
     0: { h: "¿En qué sector está tu negocio?",        sub: "Elige la categoría que mejor lo describe." },
     1: { h: `¿Qué tipo de ${sectorDef?.label.toLowerCase() ?? "negocio"} exactamente?`, sub: "Elige el que más se parezca a tu idea." },
-    2: { h: "¿Quieres especificar más tu negocio?",   sub: "Campo opcional — cuanto más detalles, más preciso el análisis." },
+    2: { h: "¿Quieres especificar más tu negocio?",   sub: "Cuanto más detalles des, más preciso será el análisis." },
     3: { h: "¿Quién es tu cliente ideal?",             sub: "El público al que apunta tu negocio." },
     4: { h: "¿Qué zona de Barcelona te encaja?",       sub: `Si no sabes, elige "Sin preferencia".` },
     5: { h: "¿Alquiler mensual que puedes asumir?",    sub: "Filtramos zonas dentro de ese rango." },
@@ -214,7 +217,10 @@ export default function QuickQuestionnaire({ onComplete, onBack }: Props) {
 
       <main className={styles.main}>
         <div className={styles.header}>
-          <h1 className={styles.question}>{currentTitle.h}</h1>
+          <h1 className={styles.question}>
+            {currentTitle.h}
+            {step === 2 && <span className={styles.badgeOpcional}>Opcional</span>}
+          </h1>
           {currentTitle.sub && <p className={styles.lede}>{currentTitle.sub}</p>}
         </div>
 

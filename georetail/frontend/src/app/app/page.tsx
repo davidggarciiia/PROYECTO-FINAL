@@ -16,17 +16,7 @@ import LoadingOverlay from "@/components/map/LoadingOverlay";
 import styles from "./page.module.css";
 import type { ZonaPreview, LocalDetalleResponse, PerfilEstructurado } from "@/lib/types";
 import { api } from "@/lib/api";
-import { getBackendSector, inferStreams, type StreamType } from "@/lib/sectorMap";
-import { buildBusinessContext } from "@/lib/buildBusinessContext";
-
 type View = "onboarding" | "wizard" | "map";
-
-interface WizardPreFill {
-  backendSector:  string;
-  subsectorLabel: string;
-  matices:        string;       // contexto enriquecido → PerfilEstructurado.matices
-  streamTypes:    StreamType[]; // modelo económico inferido (para uso futuro)
-}
 
 const BCN_CENTER = { lat: 41.3851, lng: 2.1734, zoom: 13 };
 
@@ -46,8 +36,6 @@ export default function AppPage() {
   const [basemap, setBasemap]             = useState<BasemapId>("dark");
   const [coords, setCoords]               = useState(BCN_CENTER);
 
-  // Sector/subsector/matices collected during Onboarding, passed to the wizard
-  const [wizardPreFill, setWizardPreFill] = useState<WizardPreFill | null>(null);
 
   const activeZone = useMemo(
     () => zonas.find((z) => z.zona_id === activeId) ?? null,
@@ -100,21 +88,6 @@ export default function AppPage() {
     [sessionId],
   );
 
-  // Onboarding new flow: recibe valores raw, construye contexto enriquecido
-  const handleOnboardingGoWizard = useCallback(
-    (sectorCodigo: string, subsectorLabel: string, descripcionUsuario: string) => {
-      const ctx = buildBusinessContext(sectorCodigo, subsectorLabel, descripcionUsuario);
-      setWizardPreFill({
-        backendSector: getBackendSector(sectorCodigo, subsectorLabel),
-        subsectorLabel,
-        matices:       ctx.matices_enriquecidos,
-        streamTypes:   inferStreams(sectorCodigo),
-      });
-      setView("wizard");
-    },
-    [],
-  );
-
   // Wizard completed: go to map with structured search
   const handleWizardComplete = useCallback(
     (pe: PerfilEstructurado) => {
@@ -125,10 +98,8 @@ export default function AppPage() {
     [fetchZonasStructured],
   );
 
-  // Wizard back: return to onboarding, clear pre-fill
   const handleWizardBack = useCallback(() => {
     setView("onboarding");
-    setWizardPreFill(null);
   }, []);
 
   const handleRestart = useCallback(() => {
@@ -139,7 +110,6 @@ export default function AppPage() {
     setDetalle(null);
     setDossierOpen(false);
     setErrorMsg(null);
-    setWizardPreFill(null);
   }, []);
 
   // Dock navigation (prev / next)
@@ -178,23 +148,15 @@ export default function AppPage() {
   const dimsActive = detalle?.zona.zona_id === activeId ? detalle?.zona.scores_dimensiones ?? null : null;
   void dimsActive;
 
-  // Onboarding stage
   if (view === "onboarding") {
-    return (
-      <Onboarding
-        onGoToWizard={handleOnboardingGoWizard}
-      />
-    );
+    return <Onboarding onStart={() => setView("wizard")} />;
   }
 
-  // Wizard stage — starts from public/zone/budget (sector already set in Onboarding)
   if (view === "wizard") {
     return (
       <QuickQuestionnaire
         onComplete={handleWizardComplete}
         onBack={handleWizardBack}
-        initialSector={wizardPreFill?.backendSector}
-        initialMatices={wizardPreFill?.matices}
       />
     );
   }
