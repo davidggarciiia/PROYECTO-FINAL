@@ -32,6 +32,7 @@ from schemas.models import (
 )
 from api._utils import score_to_color
 from agente.validador import validar_negocio
+from scoring.taxonomia import subsector_valido
 from agente.refinador import generar_pregunta_senal, refinar
 from agente.traductor import traducir
 from scoring.motor import calcular_scores_batch
@@ -112,18 +113,29 @@ def _validacion_desde_perfil_estructurado(pe: PerfilEstructurado) -> dict:
     """
     Construye el `dict validacion` que normalmente devuelve `validar_negocio` a
     partir del cuestionario estructurado. No llama al LLM: todos los campos se
-    derivan del formulario. El subsector, si viene, se añade como un idea_tag.
+    derivan del formulario.
+
+    El subsector se valida contra taxonomia.py antes de usarlo. Si no pertenece
+    al sector declarado se descarta silenciosamente para no contaminar el scoring.
     """
+    sector = pe.sector or "desconocido"
+    # Validar que el subsector pertenezca al sector declarado (taxonomia.py es la fuente de verdad)
+    subsector_validado = (
+        pe.subsector
+        if (pe.subsector and subsector_valido(sector, pe.subsector))
+        else None
+    )
     idea_tags: list[str] = []
-    if pe.subsector:
-        idea_tags.append(pe.subsector)
+    if subsector_validado:
+        idea_tags.append(subsector_validado)
     return {
         "es_retail":              True,
         "inviable_legal":         False,
         "motivo_legal":           None,
         "motivo":                 None,
         "informacion_suficiente": True,
-        "sector_detectado":       pe.sector or "desconocido",
+        "sector_detectado":       sector,
+        "subsector_detectado":    subsector_validado,
         "idea_tags":              idea_tags,
         "perfil_negocio":         {},
         "concepto_negocio":       {},
@@ -297,8 +309,10 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
             perfil["flags_legales"] = pe.flags_legales.model_dump(exclude_none=True)
         if pe.overrides_financieros is not None:
             perfil["overrides_financieros"] = pe.overrides_financieros.model_dump(exclude_none=True)
-        if pe.subsector:
-            perfil["subsector"] = pe.subsector
+        # Usar el subsector ya validado contra taxonomia.py (puede ser None si era inválido)
+        subsector_validado = validacion.get("subsector_detectado")
+        if subsector_validado:
+            perfil["subsector"] = subsector_validado
 
     # ── 3c-bis. Construir PerfilRefinado ────────────────────────────────────
     # Dos caminos posibles:
@@ -314,7 +328,7 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
                 perfil_matices = await refinar(
                     descripcion=pe.matices.strip(),
                     sector_detectado=pe.sector,
-                    tags_previos=[pe.subsector] if pe.subsector else [],
+                    tags_previos=[validacion["subsector_detectado"]] if validacion.get("subsector_detectado") else [],
                     session_id=session_id,
                 )
                 # Fusionar nuances_detected y rellenar campos vacíos del form.

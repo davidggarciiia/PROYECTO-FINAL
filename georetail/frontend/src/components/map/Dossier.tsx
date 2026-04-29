@@ -106,7 +106,6 @@ export default function Dossier({ zone, detalle, loading, onClose, sessionId }: 
 
   useEffect(() => {
     if (tab === "competencia") void loadCompetencia();
-    if (tab === "financiero") void loadFinanciero();
   }, [tab, loadCompetencia, loadFinanciero]);
 
   const score = zone.score_global ?? 0;

@@ -32,6 +32,7 @@ from routers.llm_router import close_llm_clients
 from api.buscar       import router as router_buscar
 from api.cuestionario import router as router_cuestionario
 from api.opciones     import router as router_opciones
+from api.taxonomia    import router as router_taxonomia
 from api.local        import router as router_local
 from api.locales      import router as router_locales
 from api.legal        import router as router_legal
@@ -145,3 +146,4 @@ app.include_router(router_admin,        prefix="/api", tags=["admin"])
 app.include_router(router_competencia,  prefix="/api", tags=["competencia"])
 app.include_router(router_transporte,    prefix="/api", tags=["transporte"])
 app.include_router(router_dimension,     prefix="/api", tags=["dimension"])
+app.include_router(router_taxonomia,     prefix="/api", tags=["taxonomia"])

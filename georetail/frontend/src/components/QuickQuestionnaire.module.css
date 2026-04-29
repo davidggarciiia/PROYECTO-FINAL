@@ -1,5 +1,4 @@
-/* QuickQuestionnaire — wizard full-screen de 5 preguntas
- * Estética coherente con Onboarding (grid púrpura + topbar KnowPoints). */
+/* QuickQuestionnaire — premium SaaS wizard, Linear/Stripe style */
 
 .wizard {
   position: fixed;
@@ -10,83 +9,81 @@
   flex-direction: column;
   overflow: hidden;
   z-index: 100;
-  animation: kp-fade-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: kp-fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .wizard.isLeaving {
-  animation: wizLeave 0.26s ease both;
+  animation: wizLeave 0.22s ease both;
 }
 @keyframes wizLeave {
-  to { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 0; transform: translateY(-8px); }
 }
 
-/* Grid texture */
+/* Grid texture — more subtle */
 .grid {
   position: absolute;
   inset: 0;
   background-image:
     linear-gradient(var(--border) 1px, transparent 1px),
     linear-gradient(90deg, var(--border) 1px, transparent 1px);
-  background-size: 42px 42px;
-  mask-image: radial-gradient(circle at 50% 40%, #000 30%, transparent 70%);
-  -webkit-mask-image: radial-gradient(circle at 50% 40%, #000 30%, transparent 70%);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, #000 20%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, #000 20%, transparent 70%);
   pointer-events: none;
-  opacity: 0.55;
+  opacity: 0.35;
 }
 
-/* Topbar — copia del Onboarding para coherencia visual. */
+/* Topbar */
 .topbar {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 20px 32px;
+  gap: 12px;
+  padding: 16px 28px;
   border-bottom: 1px solid var(--border);
   z-index: 1;
 }
 .mark {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   font-weight: 600;
+  font-size: 14px;
   letter-spacing: 0.01em;
 }
 .markDot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 10px var(--accent);
+  box-shadow: 0 0 8px var(--accent);
 }
 .chip {
-  font-size: 10px;
-  letter-spacing: 0.22em;
-  color: var(--accent-light);
-  padding: 4px 10px;
+  font-size: 9px;
+  letter-spacing: 0.20em;
+  color: var(--text-subtle);
+  padding: 3px 9px;
   border: 1px solid var(--border);
   border-radius: 100px;
   text-transform: uppercase;
-  background: rgba(124, 58, 237, 0.08);
 }
 .spacer { flex: 1; }
 
-/* Progress bar fina debajo del topbar. */
+/* Progress bar */
 .progressTrack {
   position: relative;
   z-index: 1;
-  height: 3px;
+  height: 2px;
   background: var(--border);
   overflow: hidden;
 }
 .progressFill {
   height: 100%;
-  width: 20%;
   background: linear-gradient(90deg, var(--accent-light), var(--accent));
-  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 0 8px rgba(124, 58, 237, 0.6);
+  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Main centrado. */
+/* Main centrado */
 .main {
   flex: 1;
   position: relative;
@@ -95,41 +92,44 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 24px 120px;
+  padding: 36px 20px 100px;
   overflow-y: auto;
 }
 
 .header {
-  max-width: 720px;
+  max-width: 860px;
+  width: 100%;
   text-align: center;
-  margin-bottom: 36px;
-  animation: kp-fade-up 0.5s 0.05s cubic-bezier(0.16, 1, 0.3, 1) both;
+  margin-bottom: 28px;
+  animation: kp-fade-up 0.4s 0.04s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .question {
-  font-size: clamp(28px, 4vw, 44px);
-  line-height: 1.1;
+  font-size: clamp(22px, 3.2vw, 34px);
+  line-height: 1.15;
   font-weight: 700;
   letter-spacing: -0.02em;
-  margin: 0 0 14px;
+  margin: 0 0 10px;
 }
 .lede {
   margin: 0;
-  font-size: 15px;
-  line-height: 1.55;
+  font-size: 14px;
+  line-height: 1.6;
   color: var(--text-muted);
 }
 
 .body {
   width: 100%;
-  max-width: 900px;
-  animation: kp-fade-up 0.5s 0.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+  max-width: 860px;
+  overflow: visible;
+  animation: kp-fade-up 0.4s 0.08s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Tiles */
+/* ── Tiles ────────────────────────────────────────────────────────────────── */
 .tileGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  overflow: visible;
 }
 @media (max-width: 540px) {
   .tileGrid { grid-template-columns: 1fr; }
@@ -138,47 +138,160 @@
 .tile {
   position: relative;
   text-align: left;
-  padding: 20px 22px;
-  min-height: 130px;
-  background: linear-gradient(180deg, rgba(124, 58, 237, 0.06), rgba(124, 58, 237, 0.015));
-  border: 1px solid var(--border);
+  padding: 22px 24px;
+  min-height: 80px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 14px;
   color: var(--text);
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  justify-content: center;
   transition:
-    transform 0.18s ease,
-    border-color 0.18s ease,
-    background 0.18s ease,
-    box-shadow 0.18s ease;
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
 }
 .tile:hover {
-  transform: translateY(-2px);
-  border-color: var(--accent);
-  background: linear-gradient(180deg, rgba(124, 58, 237, 0.14), rgba(124, 58, 237, 0.04));
-  box-shadow: 0 10px 24px -14px rgba(124, 58, 237, 0.55);
+  border-color: rgba(124, 58, 237, 0.4);
+  background: rgba(124, 58, 237, 0.04);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
 }
 .tileActive {
   border-color: var(--accent);
-  background: linear-gradient(180deg, rgba(124, 58, 237, 0.22), rgba(124, 58, 237, 0.06));
-  box-shadow:
-    0 0 0 1px var(--accent) inset,
-    0 10px 24px -12px rgba(124, 58, 237, 0.7);
-}
-.tileLabel {
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-.tileDesc {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-muted);
+  background: rgba(124, 58, 237, 0.08);
+  box-shadow: 0 0 0 1px var(--accent) inset;
 }
 
-/* Footer fijo */
+/* Row inside the tile: label + info icon */
+.tileTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tileLabel {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  line-height: 1.3;
+}
+
+/* The ⓘ badge */
+.tileInfoIcon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-subtle);
+  font-size: 10px;
+  font-style: italic;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s ease, color 0.15s ease;
+  pointer-events: none;
+  user-select: none;
+}
+.tile:hover .tileInfoIcon {
+  border-color: rgba(124, 58, 237, 0.6);
+  color: var(--accent-light);
+}
+
+/* Tooltip — appears ABOVE the tile on hover */
+.tileDesc {
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  bottom: calc(100% + 6px);
+  z-index: 30;
+  background: rgba(10, 7, 18, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  border-radius: 10px;
+  padding: 9px 13px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(3px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.tile:hover .tileDesc {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── Badge opcional ───────────────────────────────────────────────────── */
+.badgeOpcional {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 2px 8px;
+  margin-left: 10px;
+  vertical-align: middle;
+}
+
+/* ── Paso de input libre (step 2) ──────────────────────────────────────── */
+.inputStep {
+  max-width: 620px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.promptShell {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 18px 20px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.promptShell:focus-within {
+  border-color: rgba(124, 58, 237, 0.5);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.08);
+}
+.promptTextarea {
+  width: 100%;
+  min-height: 88px;
+  background: transparent;
+  border: none !important;
+  padding: 0 !important;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+  resize: none;
+  outline: none !important;
+  box-shadow: none !important;
+}
+.promptTextarea::placeholder {
+  color: var(--text-subtle);
+}
+.promptFoot {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.promptMeta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+/* ── Footer fijo ──────────────────────────────────────────────────────── */
 .footer {
   position: fixed;
   left: 0;
@@ -187,12 +300,13 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
-  padding: 16px 32px;
-  background: linear-gradient(180deg, transparent, rgba(9, 6, 15, 0.92) 40%);
+  gap: 12px;
+  padding: 14px 28px;
+  background: rgba(9, 6, 15, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   z-index: 2;
   border-top: 1px solid var(--border);
-  backdrop-filter: blur(8px);
 }
 
 .btnGhost {
@@ -200,26 +314,28 @@
   border: 1px solid var(--border);
   color: var(--text-muted);
   font-size: 14px;
-  padding: 10px 18px;
+  padding: 11px 22px;
+  min-height: 48px;
   border-radius: 10px;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition: border-color 0.15s ease, color 0.15s ease;
 }
 .btnGhost:hover:not(:disabled) {
   color: var(--text);
-  border-color: var(--accent);
+  border-color: rgba(255, 255, 255, 0.2);
 }
-.btnGhost:disabled { opacity: 0.5; cursor: not-allowed; }
+.btnGhost:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .btnNext {
   min-width: 200px;
-  padding: 12px 22px;
-  font-size: 14px;
+  padding: 12px 28px;
+  min-height: 48px;
+  font-size: 15px;
   font-weight: 600;
   border-radius: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
 }
-.btnNext:disabled { opacity: 0.55; cursor: not-allowed; }
+.btnNext:disabled { opacity: 0.45; cursor: not-allowed; }
