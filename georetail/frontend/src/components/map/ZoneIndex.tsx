@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { ZonaPreview } from "@/lib/types";
 import styles from "./ZoneIndex.module.css";
 
-type Filter = "all" | "hi" | "mid" | "lo";
+type Sort = "score" | "price_m2" | "alquiler";
 
 interface Props {
   zonas: ZonaPreview[];
@@ -20,27 +20,42 @@ function band(score?: number | null): "hi" | "mid" | "lo" {
   return "lo";
 }
 
+const DEFAULT_DIR: Record<Sort, "asc" | "desc"> = {
+  score:    "desc",
+  price_m2: "asc",
+  alquiler: "asc",
+};
+
 export default function ZoneIndex({ zonas, activeId, onPick, fecha }: Props) {
-  const [filter, setFilter] = useState<Filter>("all");
+  const [sort, setSort] = useState<Sort>("score");
+  const [dir, setDir]   = useState<"asc" | "desc">("desc");
   const [collapsed, setCollapsed] = useState(false);
 
-  const counts = useMemo(
-    () => ({
-      all: zonas.length,
-      hi: zonas.filter((z) => (z.score_global ?? 0) >= 75).length,
-      mid: zonas.filter((z) => {
-        const s = z.score_global ?? 0;
-        return s >= 55 && s < 75;
-      }).length,
-      lo: zonas.filter((z) => (z.score_global ?? 0) < 55).length,
-    }),
-    [zonas],
-  );
+  function handleSort(k: Sort) {
+    if (k === sort) {
+      setDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSort(k);
+      setDir(DEFAULT_DIR[k]);
+    }
+  }
 
-  const filtered = useMemo(() => {
-    if (filter === "all") return zonas;
-    return zonas.filter((z) => band(z.score_global) === filter);
-  }, [zonas, filter]);
+  const sorted = useMemo(() => {
+    const arr = [...zonas];
+    const sign = dir === "asc" ? 1 : -1;
+    if (sort === "score") {
+      arr.sort((a, b) => sign * ((a.score_global ?? 0) - (b.score_global ?? 0)));
+    } else if (sort === "price_m2") {
+      arr.sort((a, b) => {
+        const pa = a.m2 ? (a.alquiler_mensual ?? 0) / a.m2 : Infinity;
+        const pb = b.m2 ? (b.alquiler_mensual ?? 0) / b.m2 : Infinity;
+        return sign * (pa - pb);
+      });
+    } else {
+      arr.sort((a, b) => sign * ((a.alquiler_mensual ?? Infinity) - (b.alquiler_mensual ?? Infinity)));
+    }
+    return arr;
+  }, [zonas, sort, dir]);
 
   return (
     <aside className={`${styles.index} ${collapsed ? styles.collapsed : ""}`}>
@@ -81,29 +96,28 @@ export default function ZoneIndex({ zonas, activeId, onPick, fecha }: Props) {
         <div className={styles.filters}>
           {(
             [
-              ["all", "Todas"],
-              ["hi", "Viables"],
-              ["mid", "Mixtas"],
-              ["lo", "Descart."],
-            ] as [Filter, string][]
+              ["score",    "Score"],
+              ["price_m2", "€/m²"],
+              ["alquiler", "Alquiler"],
+            ] as [Sort, string][]
           ).map(([k, l]) => (
             <button
               key={k}
-              className={`${styles.filter} ${filter === k ? styles.filterOn : ""}`}
-              onClick={() => setFilter(k)}
+              className={`${styles.filter} ${sort === k ? styles.filterOn : ""}`}
+              onClick={() => handleSort(k)}
             >
-              {l} · {counts[k]}
+              {l}{sort === k ? (dir === "asc" ? " ↑" : " ↓") : ""}
             </button>
           ))}
         </div>
 
         <div className={styles.list}>
-          {filtered.length === 0 && (
+          {sorted.length === 0 && (
             <div className={styles.empty}>
-              Ninguna zona en este tramo. Prueba otro filtro o refina la búsqueda.
+              Sin zonas. Refina la búsqueda para ver resultados.
             </div>
           )}
-          {filtered.map((z, i) => {
+          {sorted.map((z, i) => {
             const b = band(z.score_global);
             const isActive = z.zona_id === activeId;
             return (

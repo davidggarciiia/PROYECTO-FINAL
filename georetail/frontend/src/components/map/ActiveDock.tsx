@@ -9,6 +9,7 @@ interface Props {
   zones: ZonaPreview[];
   dims?: ScoresDimensiones | null;
   loading?: boolean;
+  loadingDims?: boolean;
   onExpand: () => void;
   onNav: (dir: -1 | 1) => void;
 }
@@ -25,6 +26,7 @@ export default function ActiveDock({
   zones,
   dims,
   loading,
+  loadingDims,
   onExpand,
   onNav,
 }: Props) {
@@ -62,8 +64,13 @@ export default function ActiveDock({
         </div>
       </div>
 
-      <div className={styles.bars}>
-        {DIMENSIONS.map((d) => {
+      <div className={`${styles.bars} ${loadingDims ? styles.barsLoading : ""}`}>
+        {loadingDims && (
+          <div className={styles.barsLoadingLabel}>
+            <span className={styles.tick}>●</span> Analizando dimensiones…
+          </div>
+        )}
+        {DIMENSIONS.map((d, i) => {
           const v = dims?.[d.key as DimensionKey];
           const hasV = typeof v === "number";
           const barB = hasV ? band(v) : "lo";
@@ -71,14 +78,21 @@ export default function ActiveDock({
           return (
             <div
               key={d.key}
-              className={`${styles.bar} ${hasV ? styles[barB] : styles.empty}`}
-              title={`${d.name}: ${hasV ? Math.round(v as number) : "—"}`}
+              className={`${styles.bar} ${loadingDims ? styles.barSkeleton : hasV ? styles[barB] : styles.empty}`}
+              title={loadingDims ? d.name : `${d.name}: ${hasV ? Math.round(v as number) : "—"}`}
             >
               <div className={styles.track}>
-                <div className={styles.fill} style={{ height: `${barPct}%` }} />
+                {loadingDims ? (
+                  <div
+                    className={styles.fillBounce}
+                    style={{ animationDelay: `${i * 0.12}s` }}
+                  />
+                ) : (
+                  <div className={styles.fill} style={{ height: `${barPct}%` }} />
+                )}
               </div>
               <div className={styles.barLabel}>{d.short}</div>
-              <div className={styles.barN}>{hasV ? Math.round(v as number) : "—"}</div>
+              <div className={styles.barN}>{loadingDims ? "…" : hasV ? Math.round(v as number) : "—"}</div>
             </div>
           );
         })}
