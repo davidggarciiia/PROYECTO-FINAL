@@ -3,7 +3,7 @@
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto auto;
   align-items: center;
   gap: 20px;
   padding: 0 20px;
@@ -81,6 +81,31 @@
   margin-right: 4px;
 }
 
+.help {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.help:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+  background: var(--surface-2);
+}
+
 .restart {
   height: 28px;
   padding: 0 12px;
@@ -107,7 +132,7 @@
 @media (max-width: 900px) {
   .statusbar {
     height: 48px;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto 1fr auto auto;
     padding: 0 12px;
     gap: 12px;
   }

@@ -8,6 +8,7 @@ interface Props {
   numFuentes?: number;
   fecha?: string;
   onRestart: () => void;
+  onTutorial: () => void;
 }
 
 function formatFecha(d: Date = new Date()): string {
@@ -23,6 +24,7 @@ export default function Statusbar({
   numFuentes = 12,
   fecha,
   onRestart,
+  onTutorial,
 }: Props) {
   const displayDate = fecha ?? formatFecha();
   const displayQuery = query || "cafetería de especialidad para público joven";
@@ -53,6 +55,15 @@ export default function Statusbar({
           {displayDate}
         </span>
       </div>
+
+      <button
+        className={styles.help}
+        onClick={onTutorial}
+        aria-label="Abrir tutorial"
+        title="Ver tutorial"
+      >
+        ?
+      </button>
 
       <button className={styles.restart} onClick={onRestart}>
         + Nuevo análisis

@@ -1,0 +1,253 @@
+/* TutorialOverlay — modal de tutorial por pasos superpuesto al mapa */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(9, 6, 15, 0.82);
+  backdrop-filter: blur(8px);
+  padding: 20px;
+  animation: fadeIn 0.25s ease both;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.modal {
+  width: 100%;
+  max-width: 640px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(124, 58, 237, 0.10);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes modalIn {
+  from { transform: scale(0.96) translateY(14px); opacity: 0; }
+  to   { transform: scale(1)    translateY(0);    opacity: 1; }
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px 0;
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--accent-light);
+}
+
+.skipBtn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.skipBtn:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+/* ── Progress pills ──────────────────────────────────────────── */
+.progressRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 14px 22px 0;
+}
+
+.dot {
+  width: 26px;
+  height: 4px;
+  border-radius: 100px;
+  background: var(--border);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.dot:hover:not(.dotActive) {
+  background: var(--border-hover);
+}
+
+.dotActive {
+  background: var(--accent);
+  transform: scaleY(1.25);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.dotDone {
+  background: var(--accent-weak);
+  border: 1px solid var(--accent-border);
+}
+
+/* ── Screenshot placeholder ──────────────────────────────────── */
+.screenshotWrap {
+  padding: 16px 22px 0;
+  animation: stepIn 0.28s ease both;
+}
+
+.screenshot {
+  width: 100%;
+  aspect-ratio: 16 / 7;
+  background: var(--surface-2);
+  border: 1.5px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-subtle);
+}
+
+.screenshotIcon {
+  width: 34px;
+  height: 34px;
+  opacity: 0.35;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.screenshotCaption {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.screenshotHighlight {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  max-width: 72%;
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* ── Content ─────────────────────────────────────────────────── */
+.content {
+  padding: 18px 22px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: stepIn 0.28s ease both;
+}
+
+@keyframes stepIn {
+  from { opacity: 0; transform: translateY(7px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  line-height: 1.25;
+  margin: 0;
+}
+
+.description {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ── Navigation ──────────────────────────────────────────────── */
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 22px;
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.btnSecondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 8px;
+  padding: 9px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.btnSecondary:hover:not(:disabled) {
+  border-color: var(--border-hover);
+  color: var(--text);
+  background: var(--surface-2);
+}
+.btnSecondary:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
+.btnPrimary {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  padding: 9px 26px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.btnPrimary:hover {
+  background: var(--accent-light);
+  box-shadow: 0 0 20px var(--accent-glow);
+  transform: translateY(-1px);
+}
+.btnPrimary:active {
+  transform: translateY(0);
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 680px) {
+  .modal {
+    border-radius: 14px;
+  }
+  .screenshot {
+    aspect-ratio: 4 / 3;
+  }
+  .header,
+  .screenshotWrap,
+  .content,
+  .nav {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}

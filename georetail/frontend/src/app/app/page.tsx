@@ -13,6 +13,7 @@ import ZoneIndex from "@/components/map/ZoneIndex";
 import ActiveDock from "@/components/map/ActiveDock";
 import Dossier from "@/components/map/Dossier";
 import LoadingOverlay from "@/components/map/LoadingOverlay";
+import TutorialOverlay from "@/components/map/TutorialOverlay";
 import styles from "./page.module.css";
 import type { ZonaPreview, LocalDetalleResponse, PerfilEstructurado } from "@/lib/types";
 import { api } from "@/lib/api";
@@ -36,11 +37,28 @@ export default function AppPage() {
 
   const [basemap, setBasemap]             = useState<BasemapId>("voya");
   const [coords, setCoords]               = useState(BCN_CENTER);
+  const [showTutorial, setShowTutorial]   = useState(false);
 
   const activeZone = useMemo(
     () => zonas.find((z) => z.zona_id === activeId) ?? null,
     [zonas, activeId],
   );
+
+  // Mostrar tutorial la primera vez que el usuario llega al mapa
+  useEffect(() => {
+    if (view === "map" && !localStorage.getItem("kp_tutorial_seen")) {
+      setShowTutorial(true);
+    }
+  }, [view]);
+
+  const handleCloseTutorial = useCallback(() => {
+    localStorage.setItem("kp_tutorial_seen", "1");
+    setShowTutorial(false);
+  }, []);
+
+  const handleOpenTutorial = useCallback(() => {
+    setShowTutorial(true);
+  }, []);
 
   const fetchZonas = useCallback(
     async (query: string) => {
@@ -241,6 +259,7 @@ export default function AppPage() {
         query={searchQuery}
         numZonas={zonas.length}
         onRestart={handleRestart}
+        onTutorial={handleOpenTutorial}
       />
 
       <main className={styles.canvas}>
@@ -309,6 +328,10 @@ export default function AppPage() {
           onClose={() => setDossierOpen(false)}
           sessionId={sessionId}
         />
+      )}
+
+      {showTutorial && (
+        <TutorialOverlay onClose={handleCloseTutorial} />
       )}
     </div>
   );
