@@ -78,8 +78,26 @@ _SCENARIO_FACTORS: dict[str, float] = {
 _STRESS_FACTOR = 0.40
 
 # ── Ocupación sostenible ──────────────────────────────────────────────────────
-MAX_OCCUPANCY   = 0.80
+MAX_OCCUPANCY   = 0.80  # default global (exportado para compatibilidad)
 _OCCUPANCY_WARN = 0.85
+
+# Ocupación máxima sostenible por sector — refleja diferencias operativas reales
+_MAX_OCCUPANCY_SECTOR: dict[str, float] = {
+    "restauracion": 0.90,  # alta rotación, turnos
+    "supermercado": 0.85,
+    "moda":         0.85,
+    "farmacia":     0.82,
+    "shisha_lounge":0.80,
+    "estetica":     0.75,  # cita previa, preparación entre clientes
+    "peluqueria":   0.75,
+    "tatuajes":     0.70,  # sesiones largas, higiene entre clientes
+    "clinica":      0.75,
+}
+
+
+def get_max_occupancy(sector: str) -> float:
+    """Devuelve la ocupación máxima sostenible para el sector dado."""
+    return _MAX_OCCUPANCY_SECTOR.get(sector, MAX_OCCUPANCY)
 
 # ── Productividad del personal ────────────────────────────────────────────────
 _STAFF_EFFICIENCY = 0.80
@@ -106,6 +124,7 @@ async def calcular_proyeccion(
     params: dict,
     tipo_negocio: str = "nuevo",
     sector: str = "_default",
+    mes_apertura: int = 1,
 ) -> dict:
     """
     Modelo financiero de 12 pasos con mejoras v4:
@@ -127,6 +146,9 @@ async def calcular_proyeccion(
 
     seasonal_coeffs = _SEASONAL.get(sector, _SEASONAL["_default"])
 
+    # Ocupación máxima del sector (CAMBIO 4: sector-specific, no global)
+    max_occ = _MAX_OCCUPANCY_SECTOR.get(sector, MAX_OCCUPANCY)
+
     validation_flags: list[str] = []
 
     # ── PASO 1: Normalización de entradas ──────────────────────────────────────
@@ -141,13 +163,12 @@ async def calcular_proyeccion(
     max_staff_cap    = num_empleados * productivity_avg * _STAFF_EFFICIENCY
 
     if max_staff_cap > 0 and clients_base > max_staff_cap:
-        original     = clients_base
-        clients_base = math.floor(max_staff_cap * 10) / 10
+        # CAMBIO 1: solo flag, sin modificar clients_base (corrección ya aplicada upstream)
         validation_flags.append(
-            f"Capacidad del personal insuficiente: {num_empleados} empleado(s) pueden atender "
+            f"Capacidad del personal: {num_empleados} empleado(s) pueden atender "
             f"máx. {math.ceil(max_staff_cap)} clientes/día "
-            f"(productividad {productivity_avg:.0f} clientes/empleado/día × eficiencia {_STAFF_EFFICIENCY:.0%}). "
-            f"Clientes ajustados: {original:.0f} → {clients_base:.0f}."
+            f"(productividad {productivity_avg:.0f}/empleado/día × eficiencia {_STAFF_EFFICIENCY:.0%}). "
+            f"Los ajustes de demanda se aplican antes de llegar aquí."
         )
 
     # ── PASO 3: Sobredimensión de plantilla ──────────────────────────────────
@@ -159,14 +180,13 @@ async def calcular_proyeccion(
             f"El exceso incrementa costes fijos sin generar ingresos adicionales."
         )
 
-    # ── PASO 4: Unificación demanda vs. capacidad física ──────────────────────
+    # ── PASO 4: Safety cap — no debería activarse si el pipeline upstream funciona ──
     if clients_base > max_cap:
         validation_flags.append(
-            f"Demanda base ({clients_base:.0f}) > capacidad máxima ({max_cap:.0f}): ajustado a capacidad"
+            f"Demanda base ({clients_base:.0f}) supera la capacidad máxima ({max_cap:.0f}). "
+            f"Verifica las correcciones upstream."
         )
-        clients_base = max_cap
-
-    clients_base = max(1.0, clients_base)
+    clients_base = max(1.0, min(clients_base, max_cap))
 
     # ── Inversión inicial ──────────────────────────────────────────────────────
     inversion = (
@@ -180,7 +200,7 @@ async def calcular_proyeccion(
 
     # ── PASO 8: Break-even ───────────────────────────────────────────────────
     ing_be     = cf_mes / max(0.01, margen_unit)
-    denom_be   = (p["ticket_medio"] or 0.01) * (p["dias_apertura_mes"] or 1) * MAX_OCCUPANCY
+    denom_be   = (p["ticket_medio"] or 0.01) * (p["dias_apertura_mes"] or 1) * max_occ
     be_raw     = ing_be / denom_be
     be_clients = max(1, math.ceil(be_raw)) if math.isfinite(be_raw) else 1
 
@@ -198,10 +218,10 @@ async def calcular_proyeccion(
 
     for mes in range(1, 37):
         ramp_raw = ramp_curve[min(mes - 1, len(ramp_curve) - 1)]
-        ramp     = min(ramp_raw, MAX_OCCUPANCY)
+        ramp     = min(ramp_raw, max_occ)
 
-        # Estacionalidad: mes 1 = Enero (índice 0)
-        seasonal = seasonal_coeffs[(mes - 1) % 12]
+        # CAMBIO 2: estacionalidad desde el mes real de apertura
+        seasonal = seasonal_coeffs[(mes_apertura - 1 + mes - 1) % 12]
 
         row: dict = {"mes": mes, "ramp_factor": round(ramp, 3), "costes_fijos": round(cf_mes)}
         base_cogs = 0.0
@@ -258,7 +278,7 @@ async def calcular_proyeccion(
 
     # ── PASO 5-7: Régimen estable base ────────────────────────────────────────
     cl_base      = scenario_clients["base"]
-    ing_estable  = p["ticket_medio"] * cl_base * p["dias_apertura_mes"] * MAX_OCCUPANCY
+    ing_estable  = p["ticket_medio"] * cl_base * p["dias_apertura_mes"] * max_occ
     cogs_estable = ing_estable * p["coste_mercancia_pct"]
     ben_estable  = ing_estable - cogs_estable - cf_mes
 
@@ -340,11 +360,11 @@ async def calcular_proyeccion(
         {
             "clientes":       round(chart_max * i / 20, 1),
             "ingresos":       round(
-                p["ticket_medio"] * (chart_max * i / 20) * p["dias_apertura_mes"] * MAX_OCCUPANCY
+                p["ticket_medio"] * (chart_max * i / 20) * p["dias_apertura_mes"] * max_occ
             ),
             "costes_totales": round(
                 p["ticket_medio"] * (chart_max * i / 20) * p["dias_apertura_mes"]
-                * MAX_OCCUPANCY * p["coste_mercancia_pct"] + cf_mes
+                * max_occ * p["coste_mercancia_pct"] + cf_mes
             ),
         }
         for i in range(21)
@@ -407,6 +427,7 @@ async def calcular_proyeccion(
     return {
         "clients_per_day":              cl_base,
         "max_capacity":                 max_cap,
+        "max_occupancy_usado":          round(max_occ, 3),
         "max_staff_capacity":           round(max_staff_cap, 1),
         "ocupacion_efectiva":           round(ocupacion_efectiva, 3),
         "scenario_clients":             scenario_clients,

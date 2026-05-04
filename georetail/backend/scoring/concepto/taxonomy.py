@@ -385,6 +385,7 @@ def _make_modifier(
 
 BASE_VARIANTS_BY_SECTOR = {
     "restauracion": [
+        ("tapas_bar", "Tapas bar", ["bar de tapas", "tapas bar", "taberna", "pincheria", "bar de pinchos", "tapas", "bares de tapas"], "tapas_bar", {"dependencia_flujo": 0.85, "nivel_precio": 0.45, "clientela_turismo": 0.30, "clientela_vecindario": 0.60, "horario_nocturno": 0.20, "experiencial": 0.35, "sensibilidad_alquiler": 0.65}, {"flujo_min": 600.0}, None),
         ("specialty_coffee", "Specialty coffee bar", ["specialty coffee", "cafe de especialidad", "third wave coffee", "cafeteria_specialty_coffee"], "specialty_coffee", {"dependencia_flujo": 0.35, "nivel_precio": 0.72, "clientela_turismo": 0.15, "clientela_vecindario": 0.70, "horario_nocturno": 0.05, "experiencial": 0.55, "sensibilidad_alquiler": 0.45}, {"ratio_comercial_min": 0.18}, None),
         ("neighborhood_cafe", "Neighborhood cafe", ["cafeteria de barrio", "bar cafeteria", "coffee shop local"], None, {"dependencia_flujo": 0.78, "nivel_precio": 0.35, "clientela_turismo": 0.10, "clientela_vecindario": 0.88, "horario_nocturno": 0.05, "experiencial": 0.18, "sensibilidad_alquiler": 0.70}, {"ratio_comercial_min": 0.15}, None),
         ("express_cafe", "Express grab-and-go cafe", ["cafeteria express", "grab and go", "cafeteria_express_paso"], None, {"dependencia_flujo": 0.93, "nivel_precio": 0.28, "clientela_turismo": 0.28, "clientela_vecindario": 0.25, "horario_nocturno": 0.02, "experiencial": 0.10, "sensibilidad_alquiler": 0.80}, {"flujo_min": 850.0, "ratio_comercial_min": 0.25}, None),

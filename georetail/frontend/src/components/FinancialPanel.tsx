@@ -233,103 +233,109 @@ function StatCard({
   );
 }
 
-// ─── Score de viabilidad global ──────────────────────────────────────────────
-
-function computeViabilityScore(f: FinancieroResponse): number {
-  const m = f.metricas_clave;
-  const d = f.decision;
-  if (!m || !d) return 50;
-
-  let score = 0;
-
-  // ROI base (0–25 pts)
-  const roi = m.roi_base;
-  score += roi >= 0.6 ? 25 : roi >= 0.4 ? 18 : roi >= 0.2 ? 10 : roi >= 0 ? 4 : 0;
-
-  // Payback (0–20 pts)
-  const pb = m.payback_meses;
-  score += pb <= 12 ? 20 : pb <= 18 ? 16 : pb <= 24 ? 10 : pb <= 30 ? 5 : pb < 999 ? 1 : 0;
-
-  // Beneficio mensual (0–20 pts)
-  const bm = d.beneficio_mensual;
-  score += bm > 4000 ? 20 : bm > 2000 ? 15 : bm > 500 ? 10 : bm > 0 ? 5 : 0;
-
-  // Margen bruto (0–15 pts)
-  const mb = m.margen_bruto_pct;
-  score += mb >= 0.5 ? 15 : mb >= 0.35 ? 10 : mb >= 0.2 ? 5 : 0;
-
-  // Gap de capital (0–10 pts)
-  score += d.gap_capital <= 0 ? 10 : d.gap_capital < 10000 ? 5 : 0;
-
-  // Recomendación directa (0–10 pts)
-  score += d.recomendacion === "si" ? 10 : d.recomendacion === "riesgo" ? 5 : 0;
-
-  // Penalizaciones
-  if (f.alerta_alquiler) score = Math.max(0, score - 5);
-
-  return Math.min(100, score);
-}
-
 // ─── BLOQUE 1: Decisión rápida ────────────────────────────────────────────────
 
 const DECISION_CONFIG = {
-  si:     { label: "ABRIR", bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.3)", color: C.green,  emoji: "✓" },
-  riesgo: { label: "CON RIESGO", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.3)", color: C.yellow, emoji: "!" },
-  no:     { label: "NO ABRIR", bg: "rgba(239,68,68,0.12)",  border: "rgba(239,68,68,0.3)",  color: C.red,   emoji: "✕" },
+  si:     { titular: "Recomendamos abrir este negocio",  bg: "rgba(16,185,129,0.10)", border: "rgba(16,185,129,0.28)", color: C.green,  dot: C.green  },
+  riesgo: { titular: "Viable, pero con riesgos importantes", bg: "rgba(245,158,11,0.10)", border: "rgba(245,158,11,0.28)", color: C.yellow, dot: C.yellow },
+  no:     { titular: "No recomendamos abrir este negocio",   bg: "rgba(239,68,68,0.10)",  border: "rgba(239,68,68,0.28)",  color: C.red,    dot: C.red    },
 };
 
-function BloqueDecision({ d, viabilityScore }: { d: DecisionBlock; viabilityScore?: number }) {
-  const cfg        = DECISION_CONFIG[d.recomendacion];
-  const score      = viabilityScore ?? null;
-  const scoreColor = score == null ? C.muted : score >= 70 ? C.green : score >= 45 ? C.yellow : C.red;
+function BloqueDecision({ d }: { d: DecisionBlock }) {
+  const cfg   = DECISION_CONFIG[d.recomendacion];
+  const score = d.viability_score ?? null;
+  const scoreColor = score == null ? C.muted : score >= 70 ? C.green : score >= 50 ? C.yellow : C.red;
+  const exp   = d.explicacion;
+
   return (
     <section className={styles.section}>
+
+      {/* ── Header: titular + score ── */}
       <div style={{
-        display: "flex", alignItems: "baseline", justifyContent: "space-between",
-        marginBottom: 16,
+        background: cfg.bg, border: `1px solid ${cfg.border}`, borderRadius: 10,
+        padding: "14px 16px", marginBottom: 14,
       }}>
-        <h3 style={{
-          fontSize: 10, fontWeight: 700, textTransform: "uppercase",
-          letterSpacing: "0.08em", color: C.muted, margin: 0,
-        }}>Decisión</h3>
-        {score != null && (
-          <span style={{ fontSize: 11, color: C.muted, fontVariantNumeric: "tabular-nums" }}>
-            Viabilidad{" "}
-            <strong style={{ color: scoreColor, fontWeight: 800, fontSize: 13 }}>{score}</strong>
-            <span style={{ color: C.subtle }}> / 100</span>
-          </span>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: cfg.dot, marginTop: 1 }} />
+            <span style={{ fontSize: 14, fontWeight: 700, color: cfg.color, letterSpacing: "0.01em", lineHeight: 1.3 }}>
+              {cfg.titular}
+            </span>
+          </div>
+          {score != null && (
+            <span style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+              <strong style={{ color: scoreColor, fontWeight: 800, fontSize: 15 }}>{score}</strong>
+              <span style={{ color: C.subtle }}> / 100</span>
+            </span>
+          )}
+        </div>
+
+        {/* Subtexto: impacto_clave */}
+        {exp?.impacto_clave && (
+          <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.55, paddingLeft: 17 }}>
+            {exp.impacto_clave}
+          </div>
         )}
       </div>
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10,
-        paddingBottom: 16, marginBottom: 14,
-        borderBottom: `1px solid ${C.border}`,
-      }}>
-        <span style={{
-          width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-          background: cfg.color,
-        }} />
-        <span style={{ fontSize: 16, fontWeight: 700, color: cfg.color, letterSpacing: "0.02em" }}>
-          {cfg.label}
-        </span>
-        <span style={{ fontSize: 10, color: C.subtle, marginLeft: 2 }}>
-          ROI ≥ 40% · Payback ≤ 18m · Alquiler ≤ 15%
-        </span>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+
+      {/* ── Resumen ── */}
+      {exp?.resumen && (
+        <div style={{ fontSize: 12, color: C.text, lineHeight: 1.65, marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${C.border}` }}>
+          {exp.resumen}
+        </div>
+      )}
+
+      {/* ── Razones ── */}
+      {exp?.razones && exp.razones.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.subtle, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>
+            Por qué
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {exp.razones.map((r, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 7, fontSize: 11, color: C.muted, lineHeight: 1.55 }}>
+                <span style={{ color: d.recomendacion === "si" ? C.green : d.recomendacion === "riesgo" ? C.yellow : C.red, flexShrink: 0, marginTop: 1, fontSize: 10 }}>
+                  {d.recomendacion === "si" ? "✓" : "·"}
+                </span>
+                {r}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Recomendaciones ── */}
+      {exp?.recomendaciones && exp.recomendaciones.length > 0 && (
+        <div style={{ marginBottom: 14, padding: "12px 14px", background: "rgba(99,102,241,0.06)", border: `1px solid rgba(99,102,241,0.15)`, borderRadius: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.indigo, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>
+            Qué puedes hacer
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {exp.recomendaciones.map((r, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 7, fontSize: 11, color: C.muted, lineHeight: 1.55 }}>
+                <span style={{ color: C.indigo, flexShrink: 0, fontWeight: 700, fontSize: 11 }}>→</span>
+                {r}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Métricas clave ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px", paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
         <StatCard
           label="Beneficio mensual"
           value={`${d.beneficio_mensual >= 0 ? "+" : ""}${fmt(d.beneficio_mensual)} €`}
           sub="en régimen estable (escenario base)"
           color={d.beneficio_mensual >= 0 ? C.green : C.red}
-          tooltip="Beneficio neto mensual en régimen estable (mes 12, ocupación al 80%). Ingresos menos todos los costes operativos."
+          tooltip="Beneficio neto mensual en régimen estable (mes 12, ocupación máxima del sector). Ingresos menos todos los costes operativos."
         />
         <StatCard
           label="Payback"
           value={d.payback >= 999 ? "+36m" : `${d.payback} meses`}
           sub="recuperación de inversión"
           color={d.payback <= 18 ? C.green : d.payback <= 30 ? C.yellow : C.red}
-          tooltip="Payback: meses necesarios para recuperar toda la inversión inicial con los beneficios acumulados. Menos de 18 meses es ideal."
+          tooltip="Meses necesarios para recuperar toda la inversión inicial con los beneficios acumulados. Menos de 18 meses es ideal."
         />
         <StatCard
           label="Capital necesario"
@@ -340,7 +346,7 @@ function BloqueDecision({ d, viabilityScore }: { d: DecisionBlock; viabilityScor
         <StatCard
           label="Gap de capital"
           value={d.gap_capital > 0 ? `${fmt(d.gap_capital)} €` : "Cubierto"}
-          sub={d.gap_capital > 0 ? "financiación necesaria" : "capital suficiente"}
+          sub={d.gap_capital > 0 ? "necesitas financiación" : "capital suficiente"}
           color={d.gap_capital > 0 ? C.yellow : C.green}
           tooltip="Diferencia entre el capital necesario y el capital disponible. Si es positivo, necesitas financiación externa o socios."
         />
@@ -355,7 +361,7 @@ function BloqueValidationFlags({ flags }: { flags: string[] }) {
   if (!flags.length) return null;
   return (
     <section className={styles.section}>
-      <SectionTitle title="Avisos del modelo" />
+      <SectionTitle title="Cosas que debes saber" />
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {flags.map((flag, i) => (
           <div key={i} style={{
@@ -381,28 +387,58 @@ const BUSINESS_MODEL_LABELS: Record<string, { label: string; color: string }> = 
   hybrid:             { label: "Híbrido",           color: C.muted  },
 };
 
+const CAPA_BADGE: Record<string, { label: string; color: string }> = {
+  gatekeeper: { label: "DATOS",     color: C.indigo },
+  pipeline:   { label: "CAPACIDAD", color: C.yellow },
+  demanda:    { label: "DEMANDA",   color: C.green  },
+};
+
 function BloqueCorrecciones({ correcciones }: { correcciones: CorreccionAplicada[] }) {
   if (!correcciones.length) return null;
   return (
     <section className={styles.section}>
-      <SectionTitle title="Ajustes automáticos aplicados" />
+      <SectionTitle title="Ajustes aplicados al modelo" />
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {correcciones.map((c, i) => (
-          <div key={i} style={{
-            padding: "10px 0",
-            borderBottom: `1px solid ${C.border}`,
-          }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              {c.parametro.replace(/_/g, " ")}
+        {correcciones.map((c, i) => {
+          const badge   = c.capa ? CAPA_BADGE[c.capa] : null;
+          const pct     = c.impacto_pct != null ? Math.round(c.impacto_pct * 100) : null;
+          const pctColor = pct == null ? C.subtle : pct < 0 ? C.red : C.green;
+          const pctLabel = pct == null ? "" : pct > 0 ? `+${pct}%` : `${pct}%`;
+          return (
+            <div key={i} style={{
+              padding: "10px 0",
+              borderBottom: `1px solid ${C.border}`,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  {c.parametro.replace(/_/g, " ")}
+                </span>
+                {badge && (
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, color: badge.color,
+                    background: `${badge.color}22`, border: `1px solid ${badge.color}44`,
+                    borderRadius: 4, padding: "1px 5px", letterSpacing: "0.05em",
+                  }}>
+                    {badge.label}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: C.subtle, lineHeight: 1.55 }}>{c.motivo}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                <span style={{ fontSize: 11, color: C.subtle, fontVariantNumeric: "tabular-nums" }}>
+                  {Math.round(c.valor_original)}
+                  <span style={{ color: C.border, margin: "0 4px" }}>→</span>
+                  <strong style={{ color: C.text }}>{Math.round(c.valor_corregido)}</strong>
+                </span>
+                {pct != null && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: pctColor, fontVariantNumeric: "tabular-nums" }}>
+                    ({pctLabel})
+                  </span>
+                )}
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: C.subtle, lineHeight: 1.55 }}>{c.motivo}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
-              <span style={{ fontSize: 10, color: C.subtle, fontVariantNumeric: "tabular-nums" }}>
-                {Math.round(c.valor_original)} → <strong style={{ color: C.muted }}>{Math.round(c.valor_corregido)}</strong>
-              </span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -1857,7 +1893,7 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
       </section>
 
       {/* ── BLOQUE 1: Decisión rápida ── */}
-      {f.decision && <BloqueDecision d={f.decision} viabilityScore={computeViabilityScore(f)} />}
+      {f.decision && <BloqueDecision d={f.decision} />}
 
       {/* ── Avisos del modelo ── */}
       <BloqueValidationFlags flags={f.validation_flags ?? []} />
@@ -1872,7 +1908,14 @@ export default function FinancialPanel({ financiero, loading, zonaId, sessionId,
             <path d="M7 1.5l5.5 9.5H1.5L7 1.5z" stroke="var(--yellow)" strokeWidth="1.3" />
             <path d="M7 5.5v2.5M7 9.5h.01" stroke="var(--yellow)" strokeWidth="1.3" strokeLinecap="round" />
           </svg>
-          El alquiler representa el <strong>{Math.round(f.alquiler_sobre_ventas_pct * 100)}%</strong> de las ventas — por encima del 15% recomendado
+          <span>
+            Alquiler:{" "}
+            <strong>{Math.round(f.alquiler_sobre_ventas_pct * 100)}%</strong>
+            {f.alquiler_sobre_ventas_pct_conservador != null && f.alquiler_sobre_ventas_pct_conservador > 0 && (
+              <> / <strong>{Math.round(f.alquiler_sobre_ventas_pct_conservador * 100)}%</strong> (escenario desfavorable)</>
+            )}
+            {" "}— por encima del 15% recomendado
+          </span>
         </div>
       )}
 

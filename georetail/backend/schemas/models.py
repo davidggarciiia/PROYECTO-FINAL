@@ -536,12 +536,22 @@ class ProyeccionMes(BaseModel):
 
 # ── Bloques v2 del panel financiero ───────────────────────────────────────────
 
+class ExplicacionDecision(BaseModel):
+    factor_limitante: str              # "alquiler" | "costes" | "demanda" | "payback" | "viable"
+    resumen:          str              # frase-decisión en lenguaje humano
+    impacto_clave:    str              # subtítulo — el problema concreto en una línea
+    razones:          list[str] = []   # bullets de por qué es viable/riesgo/no
+    recomendaciones:  list[str] = []   # acciones concretas que puede tomar el usuario
+
+
 class DecisionBlock(BaseModel):
     recomendacion:     str   # "si" | "riesgo" | "no"
     beneficio_mensual: float
     payback:           int
     capital_necesario: float
     gap_capital:       float
+    viability_score:   int                          = 50
+    explicacion:       Optional[ExplicacionDecision] = None
 
 
 class EconomiaBase(BaseModel):
@@ -581,8 +591,10 @@ class MetricasClave(BaseModel):
     roi_conservador:   float
     roi_base:          float
     roi_optimista:     float
+    roi_stress:        float = -1.0
     margen_bruto_pct:  float
     payback_meses:     int
+    payback_stress:    int   = 999
     mes_caja_positiva: int
 
 
@@ -615,6 +627,8 @@ class CorreccionAplicada(BaseModel):
     valor_original:  float
     valor_corregido: float
     motivo:          str
+    capa:            str   = ""   # "gatekeeper" | "pipeline" | "demanda"
+    impacto_pct:     float = 0.0  # cambio relativo: (corregido - original) / original
 
 
 class CapacityModelInfo(BaseModel):
@@ -651,6 +665,7 @@ class ChecksDetallados(BaseModel):
 class ValidacionFinanciera(BaseModel):
     coherencia_global:    str   # "alta" | "media" | "baja"
     veredicto:            str   # "fiable" | "optimista" | "no_creible"
+    subsector_usado:      str   = ""  # subsector used for validation (e.g. "tapas_bar")
     problemas_detectados: list[ProblemaDetectado] = Field(default_factory=list)
     ajustes_recomendados: list[AjusteRecomendado] = Field(default_factory=list)
     supuestos_peligrosos: list[str]               = Field(default_factory=list)
@@ -677,8 +692,9 @@ class FinancieroResponse(BaseModel):
     breakeven_clientes_dia:       int
     proyeccion:                   list[ProyeccionMes]
     margen_sector_tipico:         float
-    alquiler_sobre_ventas_pct:    float
-    alerta_alquiler:              bool
+    alquiler_sobre_ventas_pct:             float
+    alquiler_sobre_ventas_pct_conservador: float = 0.0
+    alerta_alquiler:                       bool
     # Bloques v2
     decision:          Optional[DecisionBlock]    = None
     economia_base:     Optional[EconomiaBase]     = None

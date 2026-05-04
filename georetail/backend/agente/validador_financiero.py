@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 _FALLBACK: dict = {
     "coherencia_global": "no_verificada",
     "veredicto": "no_verificado",
+    "subsector_usado": "",
     "problemas_detectados": [],
     "ajustes_recomendados": [],
     "supuestos_peligrosos": ["La validación automática no pudo completarse. Interpreta los resultados con cautela."],
@@ -98,12 +99,21 @@ def _construir_prompt(p: dict) -> str:
     flags_str    = "\n".join(f"- {f}" for f in p.get("validation_flags", [])) or "None"
     correc_str   = "\n".join(f"- {c}" for c in p.get("correcciones_str", [])) or "None"
 
+    subsector_str   = p.get("subsector", "") or "—"
+    descripcion_str = p.get("descripcion", "") or "—"
+    m2_aprox        = p.get("m2_aprox", 60.0)
+    capital_disp    = p.get("capital_disponible", 0.0)
+
     return f"""FINANCIAL MODEL VALIDATION REQUEST
 
 BUSINESS CONTEXT:
   sector:              {p.get("sector", "unknown")}
+  subsector:           {subsector_str}
+  descripcion:         {descripcion_str}
   business_model:      {p.get("business_model_type", "retail_walkin")}
   tipo_negocio:        {p.get("tipo_negocio", "nuevo")} (nuevo=greenfield, traspaso=acquisition)
+  m2_aprox:            {m2_aprox:.0f} m²
+  capital_disponible:  {capital_disp:,.0f} €
   has_user_overrides:  {p.get("has_overrides", False)}
 
 INPUTS USED IN CALCULATION:
@@ -192,6 +202,7 @@ def _sanitizar(r: dict) -> None:
     """Garantiza que todos los campos requeridos existen con valores válidos."""
     r.setdefault("coherencia_global", "media")
     r.setdefault("veredicto", "fiable")
+    r.setdefault("subsector_usado", "")
     r.setdefault("problemas_detectados", [])
     r.setdefault("ajustes_recomendados", [])
     r.setdefault("supuestos_peligrosos", [])
