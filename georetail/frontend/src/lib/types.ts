@@ -459,12 +459,22 @@ export interface ParametroResponse {
 }
 
 // ── Bloques v2 del panel financiero ────────────────────────────────────────
+export interface ExplicacionDecision {
+  factor_limitante: string;
+  resumen:          string;
+  impacto_clave:    string;
+  razones:          string[];
+  recomendaciones:  string[];
+}
+
 export interface DecisionBlock {
   recomendacion: "si" | "riesgo" | "no";
   beneficio_mensual: number;
   payback: number;
   capital_necesario: number;
   gap_capital: number;
+  viability_score?: number;
+  explicacion?: ExplicacionDecision;
 }
 
 export interface EconomiaBase {
@@ -539,6 +549,8 @@ export interface CorreccionAplicada {
   valor_original: number;
   valor_corregido: number;
   motivo: string;
+  capa?: "gatekeeper" | "pipeline" | "demanda" | "";
+  impacto_pct?: number;
 }
 
 export interface CapacityModelInfo {
@@ -580,6 +592,7 @@ export interface ChecksDetallados {
 export interface ValidacionFinanciera {
   coherencia_global: "alta" | "media" | "baja";
   veredicto: "fiable" | "optimista" | "no_creible";
+  subsector_usado?: string;
   problemas_detectados: ProblemaDetectado[];
   ajustes_recomendados: AjusteRecomendado[];
   supuestos_peligrosos: string[];
@@ -607,6 +620,7 @@ export interface FinancieroResponse {
   proyeccion: ProyeccionMes[];
   margen_sector_tipico: number;
   alquiler_sobre_ventas_pct: number;
+  alquiler_sobre_ventas_pct_conservador?: number;
   alerta_alquiler: boolean;
   // Bloques v2
   decision?: DecisionBlock;
@@ -624,6 +638,7 @@ export interface FinancieroResponse {
   tipo_negocio?: "nuevo" | "traspaso";
   validation_flags?: string[];
   ocupacion_efectiva?: number;
+  max_staff_capacity?: number;
   validacion_financiera?: ValidacionFinanciera;
   // Análisis v4: stress + sensibilidad
   ebitda_anual_stress?: number;

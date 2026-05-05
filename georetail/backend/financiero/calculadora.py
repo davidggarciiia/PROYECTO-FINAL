@@ -33,11 +33,8 @@ _RAMP_TRASPASO     = [0.60, 0.68, 0.75, 0.81, 0.86, 0.90, 0.94, 0.97, 0.99, 1.00
 _RAMP_POR_SECTOR: dict[str, list[float]] = {
     "restauracion":  _RAMP_RESTAURACION,
     "moda":          _RAMP_RETAIL,
-    "alimentacion":  _RAMP_RETAIL,
-    "salud":         _RAMP_RETAIL,
-    "deporte":       _RAMP_HYBRID,
-    "educacion":     _RAMP_APPOINTMENT,
-    "servicios":     _RAMP_RETAIL,
+    "supermercado":  _RAMP_RETAIL,
+    "farmacia":      _RAMP_RETAIL,
     "tatuajes":      _RAMP_APPOINTMENT,
     "estetica":      _RAMP_APPOINTMENT,
     "clinica":       _RAMP_APPOINTMENT,
@@ -46,89 +43,24 @@ _RAMP_POR_SECTOR: dict[str, list[float]] = {
 }
 
 # ── Estacionalidad mensual por sector ─────────────────────────────────────────
-# Índice 0 = Enero. Normalizado: suma = 12.0, media = 1.0.
-#
-# Metodología y fuentes (revisión 2026-04):
-#   - Restauración BCN: Observatori del Turisme a Barcelona (2023-2024), Gremio de Hoteles BCN,
-#     Mastercard SpendingPulse hostelería España (oct 2023). Agosto revisado al alza respecto
-#     a la estimación genérica nacional: turismo internacional (80.8% visitantes extranjeros)
-#     compensa la salida de residentes; ocupación hotelera Jul-Ago 85-88% (fuente: Gremio Hoteles).
-#   - Moda/Textil: Barómetro Acotex mensual 2023-2025 (Indicador del Comercio de Moda,
-#     Modaes / FashionUnited). Noviembre (Black Friday) supera a Diciembre desde 2022.
-#     Enero beneficia de rebajas (+9.9% interanual en ene-2023, Acotex).
-#   - Tatuajes: profesionales del sector + fuentes médicas confirman caída estival —
-#     sol y baño en playa/piscina contraindicados con tatuaje reciente (2-4 semanas).
-#     "En verano disminuye la demanda; el trabajo se reactiva en septiembre"
-#     (inksweettattoo.es, lamanozurda.es, 222tattoomadrid.com, 2024).
-#   - Peluquería/Estética: Professional Beauty España (2025); 59.3% de salones permanecen
-#     abiertos en agosto — agosto no es tan bajo como otros sectores. Dic y May-Jun son pico
-#     (Navidad + bodas/comuniones). Fuente: beautymarket.es, professionalbeauty.es.
-#   - Salud (farmacia/clínica): Sistema de Vigilancia de la Gripe, ISCIII / Red Centinela.
-#     Epidemia gripal: semanas 47-03 (nov-ene/feb); pico máximo sem. 4-6 (finales ene / feb).
-#     Verano (jun-ago): demanda OTC mínima. Oct-Nov: inicio subida respiratorias + preparación
-#     vacunas. Dic: segunda ola gripal. Fuente: vgripe.isciii.es, gacetamedica.com (2025-2026).
-#   - Alimentación: Panel de Consumo Alimentario MAPA 2024. Diciembre = 9.9% gasto anual
-#     (pico navideño). Oct-Nov = 8.6-8.7% cada mes (post-verano). Agosto: menor actividad.
-#     Fuente: mapa.gob.es/dam/mapa/contenido/alimentacion (informe-consumo-2024).
-#   - Deporte (gimnasios): Estadísticas globales fitness (Wodify, GymDesk, 2025-2026).
-#     Enero +25% matriculaciones (propósitos). Sep +10-15% retorno post-verano. Jun-Jul
-#     operación bikini = segunda ola. Verano: caída asistencia. Confirmado para España por
-#     Vitonica.com y prensa sectorial. Fuente: wod.guru, wodify.com, vitonica.com.
-#   - Educación (academias): Calendario escolar España. Verano (jul-ago): colapso de la
-#     demanda. Sep-Oct: matriculación masiva inicio de curso. La eliminación de exámenes
-#     de septiembre ha reducido la demanda de julio-agosto aún más (telecinco.es, 2022;
-#     infobae.com sector educativo, oct 2024). Fuente: academias.com, INEE blog.
-#   - Servicios: El 35-41% de los trabajadores españoles toman vacaciones en julio-agosto
-#     (Wolters Kluwer / Audiolis, 2024), lo que reduce la actividad B2B y B2C en agosto.
-#     Enero y septiembre son meses de alta actividad de arranque. Fuente: sage.com,
-#     INE Índice Cifra de Negocios Sector Servicios.
-#   - Shisha Lounge: no existen datos estadísticos sectoriales públicos en España. Estimación
-#     basada en patrón de ocio nocturno: pico verano (terrazas) + Navidad (sociabilidad).
-#     Enero-Feb: caída post-festiva. Conservar como estimación informada.
+# Índice 0 = Enero. Normalizado: la media de los 12 coeficientes ≈ 1.0
+# Fuente: benchmarks sector retail/restauración BCN + patronal sectorial
 _SEASONAL: dict[str, list[float]] = {
-    # Restauración BCN: turismo internacional (80.8% visitantes extranjeros) compensa la
-    # salida de residentes en verano. Agosto NO es un mes bajo en BCN —ocup. hotelera
-    # 85-88% jul-ago (Gremio Hoteles BCN). Jul pico alto; Dic pico festivo; Feb mínimo.
-    # Fuente: Observatori Turisme BCN 2023-24; Mastercard SpendingPulse hostelería oct-2023.
-    "restauracion": [0.83, 0.82, 0.91, 0.96, 1.03, 1.08, 1.11, 0.99, 1.03, 1.04, 1.01, 1.19],
-    # Moda/Textil: Noviembre (Black Friday) supera a Diciembre desde 2022. Enero-rebajas
-    # sostiene ventas. Diciembre algo menor que los picos históricos de Navidad tradicional.
-    # Fuente: Barómetro Acotex mensual; Indicador Comercio de Moda (Modaes/FashionUnited).
-    "moda":         [0.70, 0.69, 0.93, 1.04, 1.14, 1.01, 0.90, 0.84, 1.07, 1.12, 1.24, 1.32],
-    # Tatuajes: verano es temporada BAJA (no alta) — sol y baño contraindicados las 2-4 semanas
-    # post-tatuaje. Demanda baja jun-ago; reactiva en septiembre. Pico natural oct-nov (eventos
-    # de otoño) y primavera (may). Turismo en BCN genera algo de demanda extranjera en verano
-    # pero no compensa la caída de demanda local. Septiembre = reactivación clara.
-    # Fuente: inksweettattoo.es, lamanozurda.es, 222tattoomadrid.com (2024).
-    "tatuajes":     [0.90, 0.88, 0.98, 1.07, 1.10, 0.98, 0.92, 0.88, 1.12, 1.10, 1.04, 1.02],
-    # Estética: pico Dec (Nav/año nuevo) y primavera May-Jun (bodas, comuniones, eventos).
-    # Agosto: 59.3% salones abiertos pero menor demanda. Fuente: beautymarket.es; Professional
-    # Beauty España 2025.
-    "estetica":     [0.90, 0.86, 1.00, 1.05, 1.08, 1.05, 0.91, 0.84, 1.02, 1.02, 1.07, 1.18],
-    # Peluquería: pico dic (Navidad) y may-jun (bodas/comuniones); 59.3% salones abiertos
-    # en agosto (no cierra tanto como otros sectores). Fuente: professionalbeauty.es 2025.
-    "peluqueria":   [0.90, 0.85, 0.99, 1.01, 1.06, 1.09, 0.97, 0.88, 1.02, 1.00, 1.01, 1.22],
-    # Salud/Farmacia: pico ene-feb (epidemia gripal semanas 4-6, ISCIII). Oct-Nov: subida
-    # respiratorias + vacunación gripal. Dic: inicio 2ª ola gripal. Jun-ago: mínimo.
-    # Fuente: Sistema Vigilancia Gripe España, vgripe.isciii.es; ISCIII / Red Centinela.
-    "salud":        [1.15, 1.07, 1.00, 0.95, 0.91, 0.88, 0.90, 0.92, 0.96, 1.02, 1.09, 1.15],
-    # Alimentación: dic = 9.9% gasto anual (pico navideño); oct-nov elevados (8.6-8.7%/mes);
-    # ago: leve caída. Fuente: Panel Consumo Alimentario MAPA 2024 (informe-consumo-2024).
-    "alimentacion": [0.95, 0.90, 0.95, 0.98, 0.99, 0.99, 1.04, 1.02, 1.02, 1.02, 1.04, 1.10],
-    # Deporte (gimnasios): ene +25% (propósitos año nuevo); sep +10-15% (vuelta rutina);
-    # jun +operación bikini; verano (jul-ago): menor asistencia (exterior/vacaciones).
-    # Fuente: Wodify Membership Stats 2025-26; wod.guru; vitonica.com; prensa española.
-    "deporte":      [1.16, 1.07, 1.02, 0.97, 1.04, 1.06, 0.90, 0.85, 1.02, 1.00, 0.96, 0.94],
-    # Educación (academias/refuerzo): colapso verano jul-ago; máximo sep-oct (inicio de curso).
-    # La eliminación exámenes sep ha agravado la caída estival. May: fin de curso + exámenes.
-    # Fuente: INEE blog 2022-23; Infobae sector educativo oct-2024; academias.com.
-    "educacion":    [0.97, 0.95, 1.03, 1.08, 1.10, 0.87, 0.65, 0.59, 1.30, 1.30, 1.19, 0.97],
-    # Servicios (generales): 35-41% trabajadores de vacaciones en jul-ago (reducción B2B/B2C).
-    # Sep-ene: meses fuertes de actividad empresarial. Fuente: Wolters Kluwer / Audiolis 2024;
-    # INE Índice Cifra de Negocios Sector Servicios.
-    "servicios":    [0.95, 0.90, 0.97, 1.01, 1.04, 1.05, 1.02, 0.95, 1.04, 1.03, 1.00, 1.04],
-    # Shisha Lounge: estimación sectorial (sin datos estadísticos públicos en España).
-    # Pico verano (terrazas, turismo) + navidad (sociabilidad). Caída ene-feb post-festiva.
+    # Restauración: pico Dic, caída Ago (-25%), punta Jun-Jul turismo
+    "restauracion": [0.85, 0.82, 0.91, 0.96, 1.03, 1.06, 1.04, 0.75, 1.05, 1.04, 1.00, 1.22],
+    # Moda: pico Nav/Dic, rebajas Ene-Feb (-35%), caída Ago
+    "moda":         [0.65, 0.68, 0.88, 0.97, 1.07, 0.96, 0.86, 0.80, 1.00, 1.06, 1.12, 1.38],
+    # Tatuajes: relativamente estable, ligero pico verano (turistas)
+    "tatuajes":     [0.88, 0.84, 0.96, 1.01, 1.05, 1.12, 1.10, 0.97, 1.02, 1.00, 0.97, 0.97],
+    # Estética: pico Nav y primavera (bodas), caída Ago
+    "estetica":     [0.90, 0.87, 1.00, 1.04, 1.06, 1.04, 0.90, 0.84, 1.00, 1.00, 1.05, 1.15],
+    # Peluquería: pico Nav y verano (bodas), caída Feb
+    "peluqueria":   [0.90, 0.87, 0.98, 1.00, 1.03, 1.07, 0.96, 0.85, 1.00, 0.98, 1.00, 1.21],
+    # Farmacia: pico Ene (gripes), estable resto, sin picos grandes
+    "farmacia":     [1.12, 1.02, 0.96, 0.93, 0.91, 0.88, 0.90, 0.91, 0.95, 1.00, 1.05, 1.10],
+    # Supermercado: estable, leve pico navidad
+    "supermercado": [0.96, 0.91, 0.96, 0.99, 1.01, 1.01, 1.05, 1.01, 1.01, 1.00, 1.02, 1.09],
+    # Shisha lounge: pico verano y navidad, flojo Feb
     "shisha_lounge":[0.88, 0.84, 0.94, 1.00, 1.06, 1.12, 1.13, 0.86, 1.00, 1.00, 1.03, 1.12],
     # Default: sin estacionalidad
     "_default":     [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
@@ -146,8 +78,26 @@ _SCENARIO_FACTORS: dict[str, float] = {
 _STRESS_FACTOR = 0.40
 
 # ── Ocupación sostenible ──────────────────────────────────────────────────────
-MAX_OCCUPANCY   = 0.80
+MAX_OCCUPANCY   = 0.80  # default global (exportado para compatibilidad)
 _OCCUPANCY_WARN = 0.85
+
+# Ocupación máxima sostenible por sector — refleja diferencias operativas reales
+_MAX_OCCUPANCY_SECTOR: dict[str, float] = {
+    "restauracion": 0.90,  # alta rotación, turnos
+    "supermercado": 0.85,
+    "moda":         0.85,
+    "farmacia":     0.82,
+    "shisha_lounge":0.80,
+    "estetica":     0.75,  # cita previa, preparación entre clientes
+    "peluqueria":   0.75,
+    "tatuajes":     0.70,  # sesiones largas, higiene entre clientes
+    "clinica":      0.75,
+}
+
+
+def get_max_occupancy(sector: str) -> float:
+    """Devuelve la ocupación máxima sostenible para el sector dado."""
+    return _MAX_OCCUPANCY_SECTOR.get(sector, MAX_OCCUPANCY)
 
 # ── Productividad del personal ────────────────────────────────────────────────
 _STAFF_EFFICIENCY = 0.80
@@ -174,21 +124,12 @@ async def calcular_proyeccion(
     params: dict,
     tipo_negocio: str = "nuevo",
     sector: str = "_default",
+    mes_apertura: int = 1,
 ) -> dict:
     """
     Modelo financiero de 12 pasos con mejoras v4:
     - Ramp-up diferenciado por sector y tipo de negocio
-    - Estacionalidad mensual contrastada con fuentes oficiales (ver _SEASONAL):
-        · Restauración BCN: Observatori Turisme Barcelona 2023-24; Gremio Hoteles BCN.
-        · Moda/Textil: Barómetro Acotex mensual 2023-2025 (Modaes/FashionUnited).
-        · Tatuajes: inksweettattoo.es, lamanozurda.es (demanda baja en verano por sol/baño).
-        · Salud/Farmacia: Sistema Vigilancia Gripe ISCIII / Red Centinela (vgripe.isciii.es).
-        · Alimentación: Panel Consumo Alimentario MAPA 2024.
-        · Deporte: Wodify Membership Stats 2025-26; vitonica.com.
-        · Peluquería/Estética: Professional Beauty España 2025; beautymarket.es.
-        · Educación: INEE blog; Infobae sector educativo oct-2024.
-        · Servicios: Wolters Kluwer / Audiolis 2024; INE Cifra de Negocios Servicios.
-    - Asume apertura en Enero como mes de referencia
+    - Estacionalidad mensual (asume apertura en Enero como referencia conservadora)
     - Escenario de estrés (×0.40 ingresos, costes fijos intactos)
     - ROI = ganancia_neta / inversión (documentado explícitamente)
 
@@ -205,6 +146,9 @@ async def calcular_proyeccion(
 
     seasonal_coeffs = _SEASONAL.get(sector, _SEASONAL["_default"])
 
+    # Ocupación máxima del sector (CAMBIO 4: sector-specific, no global)
+    max_occ = _MAX_OCCUPANCY_SECTOR.get(sector, MAX_OCCUPANCY)
+
     validation_flags: list[str] = []
 
     # ── PASO 1: Normalización de entradas ──────────────────────────────────────
@@ -219,13 +163,12 @@ async def calcular_proyeccion(
     max_staff_cap    = num_empleados * productivity_avg * _STAFF_EFFICIENCY
 
     if max_staff_cap > 0 and clients_base > max_staff_cap:
-        original     = clients_base
-        clients_base = math.floor(max_staff_cap * 10) / 10
+        # CAMBIO 1: solo flag, sin modificar clients_base (corrección ya aplicada upstream)
         validation_flags.append(
-            f"Capacidad del personal insuficiente: {num_empleados} empleado(s) pueden atender "
+            f"Capacidad del personal: {num_empleados} empleado(s) pueden atender "
             f"máx. {math.ceil(max_staff_cap)} clientes/día "
-            f"(productividad {productivity_avg:.0f} clientes/empleado/día × eficiencia {_STAFF_EFFICIENCY:.0%}). "
-            f"Clientes ajustados: {original:.0f} → {clients_base:.0f}."
+            f"(productividad {productivity_avg:.0f}/empleado/día × eficiencia {_STAFF_EFFICIENCY:.0%}). "
+            f"Los ajustes de demanda se aplican antes de llegar aquí."
         )
 
     # ── PASO 3: Sobredimensión de plantilla ──────────────────────────────────
@@ -237,14 +180,13 @@ async def calcular_proyeccion(
             f"El exceso incrementa costes fijos sin generar ingresos adicionales."
         )
 
-    # ── PASO 4: Unificación demanda vs. capacidad física ──────────────────────
+    # ── PASO 4: Safety cap — no debería activarse si el pipeline upstream funciona ──
     if clients_base > max_cap:
         validation_flags.append(
-            f"Demanda base ({clients_base:.0f}) > capacidad máxima ({max_cap:.0f}): ajustado a capacidad"
+            f"Demanda base ({clients_base:.0f}) supera la capacidad máxima ({max_cap:.0f}). "
+            f"Verifica las correcciones upstream."
         )
-        clients_base = max_cap
-
-    clients_base = max(1.0, clients_base)
+    clients_base = max(1.0, min(clients_base, max_cap))
 
     # ── Inversión inicial ──────────────────────────────────────────────────────
     inversion = (
@@ -258,7 +200,7 @@ async def calcular_proyeccion(
 
     # ── PASO 8: Break-even ───────────────────────────────────────────────────
     ing_be     = cf_mes / max(0.01, margen_unit)
-    denom_be   = (p["ticket_medio"] or 0.01) * (p["dias_apertura_mes"] or 1) * MAX_OCCUPANCY
+    denom_be   = (p["ticket_medio"] or 0.01) * (p["dias_apertura_mes"] or 1) * max_occ
     be_raw     = ing_be / denom_be
     be_clients = max(1, math.ceil(be_raw)) if math.isfinite(be_raw) else 1
 
@@ -276,10 +218,10 @@ async def calcular_proyeccion(
 
     for mes in range(1, 37):
         ramp_raw = ramp_curve[min(mes - 1, len(ramp_curve) - 1)]
-        ramp     = min(ramp_raw, MAX_OCCUPANCY)
+        ramp     = min(ramp_raw, max_occ)
 
-        # Estacionalidad: mes 1 = Enero (índice 0)
-        seasonal = seasonal_coeffs[(mes - 1) % 12]
+        # CAMBIO 2: estacionalidad desde el mes real de apertura
+        seasonal = seasonal_coeffs[(mes_apertura - 1 + mes - 1) % 12]
 
         row: dict = {"mes": mes, "ramp_factor": round(ramp, 3), "costes_fijos": round(cf_mes)}
         base_cogs = 0.0
@@ -336,7 +278,7 @@ async def calcular_proyeccion(
 
     # ── PASO 5-7: Régimen estable base ────────────────────────────────────────
     cl_base      = scenario_clients["base"]
-    ing_estable  = p["ticket_medio"] * cl_base * p["dias_apertura_mes"] * MAX_OCCUPANCY
+    ing_estable  = p["ticket_medio"] * cl_base * p["dias_apertura_mes"] * max_occ
     cogs_estable = ing_estable * p["coste_mercancia_pct"]
     ben_estable  = ing_estable - cogs_estable - cf_mes
 
@@ -418,11 +360,11 @@ async def calcular_proyeccion(
         {
             "clientes":       round(chart_max * i / 20, 1),
             "ingresos":       round(
-                p["ticket_medio"] * (chart_max * i / 20) * p["dias_apertura_mes"] * MAX_OCCUPANCY
+                p["ticket_medio"] * (chart_max * i / 20) * p["dias_apertura_mes"] * max_occ
             ),
             "costes_totales": round(
                 p["ticket_medio"] * (chart_max * i / 20) * p["dias_apertura_mes"]
-                * MAX_OCCUPANCY * p["coste_mercancia_pct"] + cf_mes
+                * max_occ * p["coste_mercancia_pct"] + cf_mes
             ),
         }
         for i in range(21)
@@ -485,6 +427,7 @@ async def calcular_proyeccion(
     return {
         "clients_per_day":              cl_base,
         "max_capacity":                 max_cap,
+        "max_occupancy_usado":          round(max_occ, 3),
         "max_staff_capacity":           round(max_staff_cap, 1),
         "ocupacion_efectiva":           round(ocupacion_efectiva, 3),
         "scenario_clients":             scenario_clients,
