@@ -48,7 +48,7 @@ export default function AppPage() {
       setErrorMsg(null);
       try {
         const res = await api.buscar({
-          descripcion: "",
+          descripcion: pe.matices || "",
           perfil_estructurado: pe,
           session_id: sessionId || undefined,
         });
@@ -91,7 +91,17 @@ export default function AppPage() {
   // Wizard completed: go to map with structured search
   const handleWizardComplete = useCallback(
     (pe: PerfilEstructurado) => {
-      setSearchQuery(pe.subsector || pe.sector);
+      // Extract a human-readable label from matices: "Sector: X. Subsector: Y. Detalle: Z"
+      const displayLabel = (() => {
+        if (pe.matices) {
+          const sub = pe.matices.match(/Subsector:\s*([^.]+)/);
+          if (sub) return sub[1].trim();
+          const sec = pe.matices.match(/Sector:\s*([^.]+)/);
+          if (sec) return sec[1].trim();
+        }
+        return pe.subsector || pe.sector;
+      })();
+      setSearchQuery(displayLabel);
       setView("map");
       void fetchZonasStructured(pe);
     },

@@ -507,14 +507,32 @@ async def aplicar_subsector(
     Usado para corregir el caché semanal que no conoce el subsector del usuario.
     """
     bench_sub: dict = {}
+    bench_source: str = "sector_default"
+
     if subsector:
         from db.financiero import get_benchmarks_subsector
         bench_sub = await get_benchmarks_subsector(subsector)
+        if bench_sub:
+            bench_source = "db_subsector"
+
     if not bench_sub and (descripcion or subsector):
         bench_sub = await _estimar_bench_llm(sector, subsector, descripcion, session_id)
+        if bench_sub:
+            bench_source = "llm_estimated"
+
     if not bench_sub:
+        logger.warning(
+            "[BENCH_FALLBACK] subsector=%r sector=%s — sin benchmark específico, "
+            "usando datos genéricos del sector (menor precisión financiera)",
+            subsector or "(sin subsector)", sector,
+        )
         return
 
+    logger.info(
+        "[BENCH_SOURCE] subsector=%s source=%s ticket=[%.0f–%.0f]",
+        subsector or "?", bench_source,
+        bench_sub.get("ticket_medio_min", 0), bench_sub.get("ticket_medio_max", 0),
+    )
     src = subsector if subsector else "llm"
 
     # Ticket: clamp al rango del subsector

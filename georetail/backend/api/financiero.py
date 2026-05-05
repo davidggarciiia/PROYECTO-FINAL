@@ -221,6 +221,11 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
     if not subsector:
         subsector = perfil.get("subsector_detectado") or ""
 
+    logger.info(
+        "DEBUG financiero — sector=%r subsector=%r descripcion=%r top_concept_id=%r",
+        sector, subsector, descripcion_original[:60], _top_id,
+    )
+
     # Dimensiones del perfil de negocio desde taxonomía (fallback: defaults del sector)
     _pn = perfil.get("perfil_negocio") or {}
     _sector_defaults = SECTOR_PROFILE_DEFAULTS.get(sector, NEUTRAL_PROFILE)

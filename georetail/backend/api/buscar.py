@@ -32,7 +32,6 @@ from schemas.models import (
 )
 from api._utils import score_to_color
 from agente.validador import validar_negocio
-from scoring.taxonomia import subsector_valido
 from agente.refinador import generar_pregunta_senal, refinar
 from agente.traductor import traducir
 from scoring.motor import calcular_scores_batch
@@ -115,16 +114,15 @@ def _validacion_desde_perfil_estructurado(pe: PerfilEstructurado) -> dict:
     partir del cuestionario estructurado. No llama al LLM: todos los campos se
     derivan del formulario.
 
-    El subsector se valida contra taxonomia.py antes de usarlo. Si no pertenece
-    al sector declarado se descarta silenciosamente para no contaminar el scoring.
+    No se llama a subsector_valido() aquí: el formulario usa códigos de benchmarks DB
+    (hair_salon, barber_shop, pet_grooming…) mientras que SUBSECTORES usa la taxonomía
+    de scrapers (peluqueria, barberia…). Son dos sistemas distintos. Los datos del
+    formulario estructurado se confían directamente.
     """
     sector = pe.sector or "desconocido"
-    # Validar que el subsector pertenezca al sector declarado (taxonomia.py es la fuente de verdad)
-    subsector_validado = (
-        pe.subsector
-        if (pe.subsector and subsector_valido(sector, pe.subsector))
-        else None
-    )
+    # Structured form data is trusted — comes from sectorMap.ts which uses DB benchmark codes.
+    # subsector_valido() checks against scraper taxonomy codes (different coding system).
+    subsector_validado = pe.subsector or None
     idea_tags: list[str] = []
     if subsector_validado:
         idea_tags.append(subsector_validado)
