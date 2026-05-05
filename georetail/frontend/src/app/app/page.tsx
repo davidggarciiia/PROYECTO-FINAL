@@ -17,7 +17,6 @@ import TutorialOverlay from "@/components/map/TutorialOverlay";
 import styles from "./page.module.css";
 import type { ZonaPreview, LocalDetalleResponse, PerfilEstructurado } from "@/lib/types";
 import { api } from "@/lib/api";
-
 type View = "onboarding" | "wizard" | "map";
 
 const BCN_CENTER = { lat: 41.3851, lng: 2.1734, zoom: 13 };
@@ -116,7 +115,7 @@ export default function AppPage() {
       setErrorMsg(null);
       try {
         const res = await api.buscar({
-          descripcion: "",
+          descripcion: pe.matices || "",
           perfil_estructurado: pe,
           session_id: sessionId || undefined,
         });
@@ -156,32 +155,26 @@ export default function AppPage() {
     [sessionId],
   );
 
-  // Onboarding submit (texto libre) -> mapa + primera búsqueda
-  const handleOnboardingSubmit = useCallback(
-    (q: string) => {
-      setSearchQuery(q);
-      setView("map");
-      void fetchZonas(q);
-    },
-    [fetchZonas],
-  );
-
-  // Onboarding -> "Cuestionario guiado": wizard full-screen
-  const handleOnboardingQuestionnaire = useCallback(() => {
-    setView("wizard");
-  }, []);
-
-  // Wizard completado: entra al mapa con la búsqueda estructurada
+  // Wizard completed: go to map with structured search
   const handleWizardComplete = useCallback(
     (pe: PerfilEstructurado) => {
-      setSearchQuery(pe.subsector || pe.sector);
+      // Extract a human-readable label from matices: "Sector: X. Subsector: Y. Detalle: Z"
+      const displayLabel = (() => {
+        if (pe.matices) {
+          const sub = pe.matices.match(/Subsector:\s*([^.]+)/);
+          if (sub) return sub[1].trim();
+          const sec = pe.matices.match(/Sector:\s*([^.]+)/);
+          if (sec) return sec[1].trim();
+        }
+        return pe.subsector || pe.sector;
+      })();
+      setSearchQuery(displayLabel);
       setView("map");
       void fetchZonasStructured(pe);
     },
     [fetchZonasStructured],
   );
 
-  // Wizard "Volver" en el primer paso: regresa al Onboarding
   const handleWizardBack = useCallback(() => {
     setView("onboarding");
   }, []);
@@ -207,8 +200,6 @@ export default function AppPage() {
     [zonas, activeId],
   );
 
-  // Fetch detalle cuando cambia la zona activa. Lo hacemos en background para que
-  // las barras por dimensión (HUD abajo-izq) estén disponibles sin abrir el dossier.
   useEffect(() => {
     if (!activeId || !sessionId) return;
     if (detalle?.zona.zona_id === activeId) return;
@@ -233,17 +224,10 @@ export default function AppPage() {
 
   const dimsActive = detalle?.zona.zona_id === activeId ? detalle?.zona.scores_dimensiones ?? null : null;
 
-  // Onboarding stage
   if (view === "onboarding") {
-    return (
-      <Onboarding
-        onSubmit={handleOnboardingSubmit}
-        onStartQuestionnaire={handleOnboardingQuestionnaire}
-      />
-    );
+    return <Onboarding onStart={() => setView("wizard")} />;
   }
 
-  // Wizard stage — pantalla principal cuando se elige "Cuestionario guiado"
   if (view === "wizard") {
     return (
       <QuickQuestionnaire

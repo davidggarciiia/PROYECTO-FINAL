@@ -599,6 +599,8 @@ class DecisionBlock(BaseModel):
     payback:           int
     capital_necesario: float
     gap_capital:       float
+    viability_score:   int                          = 50
+    explicacion:       Optional[ExplicacionDecision] = None
     viability_score:   int                           = 50
     explicacion:       Optional[ExplicacionDecision] = None
 
@@ -641,8 +643,10 @@ class MetricasClave(BaseModel):
     roi_base:          float
     roi_optimista:     float
     roi_stress:        float = -1.0
+    roi_stress:        float = -1.0
     margen_bruto_pct:  float
     payback_meses:     int
+    payback_stress:    int   = 999
     payback_stress:    int   = 999
     mes_caja_positiva: int
 
@@ -676,6 +680,8 @@ class CorreccionAplicada(BaseModel):
     valor_original:  float
     valor_corregido: float
     motivo:          str
+    capa:            str   = ""   # "gatekeeper" | "pipeline" | "demanda"
+    impacto_pct:     float = 0.0  # cambio relativo: (corregido - original) / original
     capa:            str   = ""   # "gatekeeper" | "pipeline" | "demanda"
     impacto_pct:     float = 0.0  # cambio relativo: (corregido - original) / original
 

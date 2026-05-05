@@ -514,8 +514,10 @@ export interface MetricasClave {
   roi_conservador: number;
   roi_base: number;
   roi_optimista: number;
+  roi_stress?: number;
   margen_bruto_pct: number;
   payback_meses: number;
+  payback_stress?: number;
   mes_caja_positiva: number;
   roi_stress?: number;
   payback_stress?: number;
@@ -621,6 +623,7 @@ export interface FinancieroResponse {
   margen_sector_tipico: number;
   alquiler_sobre_ventas_pct: number;
   alquiler_sobre_ventas_pct_conservador?: number;
+  alquiler_sobre_ventas_pct_conservador?: number;
   alerta_alquiler: boolean;
   // Bloques v2
   decision?: DecisionBlock;
@@ -638,6 +641,7 @@ export interface FinancieroResponse {
   tipo_negocio?: "nuevo" | "traspaso";
   validation_flags?: string[];
   ocupacion_efectiva?: number;
+  max_staff_capacity?: number;
   max_staff_capacity?: number;
   validacion_financiera?: ValidacionFinanciera;
   // Análisis v4: stress + sensibilidad
