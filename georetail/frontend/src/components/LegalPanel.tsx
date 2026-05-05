@@ -250,21 +250,37 @@ export default function LegalPanel({ zona, sessionId }: Props) {
   const [error, setError] = useState<string>("");
   const [openFaseIndex, setOpenFaseIndex] = useState<number>(0);
   const hasFetched = useRef(false);
+  const currentZoneRef = useRef(zona.zona_id);
+  const isLoadingRef = useRef(false);
+
+  // Reset al cambiar de local para evitar mostrar datos de la zona anterior.
+  useEffect(() => {
+    currentZoneRef.current = zona.zona_id;
+    hasFetched.current = false;
+    setRoadmap(null);
+    setError("");
+    setOpenFaseIndex(0);
+  }, [zona.zona_id]);
 
   const load = useCallback(async () => {
-    if (hasFetched.current) return;
+    if (hasFetched.current || isLoadingRef.current) return;
+    isLoadingRef.current = true;
     hasFetched.current = true;
+    const zonaIdSnapshot = zona.zona_id;
     setLoading(true);
     setError("");
     try {
-      const data = await api.legal(zona.zona_id, sessionId);
+      const data = await api.legal(zonaIdSnapshot, sessionId);
+      if (currentZoneRef.current !== zonaIdSnapshot) return;
       setRoadmap(data);
     } catch (e) {
       console.error("Error cargando roadmap legal:", e);
+      if (currentZoneRef.current !== zonaIdSnapshot) return;
       hasFetched.current = false;
       setError(e instanceof Error ? e.message : "No se pudo cargar el análisis legal.");
     } finally {
-      setLoading(false);
+      isLoadingRef.current = false;
+      if (currentZoneRef.current === zonaIdSnapshot) setLoading(false);
     }
   }, [zona.zona_id, sessionId]);
 
