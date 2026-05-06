@@ -11,33 +11,20 @@ from typing import Optional
 import numpy as np
 
 from db.conexion import get_db
+from financiero.sector_taxonomy import get_sector_profile
 
 logger = logging.getLogger(__name__)
 
-_SS_EMPRESA          = 0.31   # Seguridad Social empresa ~31% sobre salario bruto
-_FACTOR_CONSERVADOR  = 0.60
-_FACTOR_OPTIMISTA    = 1.15
-_MAX_CAPTURE_RATE    = 0.15   # límite hard: nunca > 15% del flujo peatonal
-_DEFAULT_OCCUPANCY   = 0.65   # ocupación conservadora para negocios de cita
-
-# Clasificación del modelo de negocio por sector
-_BUSINESS_MODEL_MAP: dict[str, str] = {
-    "restauracion":  "restaurant",
-    "tatuajes":      "appointment_based",
-    "estetica":      "appointment_based",
-    "clinica":       "appointment_based",
-    "peluqueria":    "appointment_based",
-    "shisha_lounge": "hybrid",
-    "moda":          "retail_walkin",
-    "supermercado":  "retail_walkin",
-    "farmacia":      "retail_walkin",
-}
+_SS_EMPRESA        = 0.31   # Seguridad Social empresa ~31% sobre salario bruto
+_MAX_CAPTURE_RATE  = 0.15   # límite hard: nunca > 15% del flujo peatonal
+_DEFAULT_OCCUPANCY = 0.65   # ocupación conservadora para negocios de cita
 
 
 def _determinar_modelo_negocio(sector: str, bench: dict) -> str:
+    """business_model_type desde el registro canónico; bench puede elevarlo a appointment."""
     if bench.get("is_appointment_based"):
         return "appointment_based"
-    return _BUSINESS_MODEL_MAP.get(sector, "retail_walkin")
+    return get_sector_profile(sector).business_model_type
 
 
 # Mapeo precio_objetivo declarado por usuario → nivel equivalente (fallback si no hay Google Places)
@@ -592,10 +579,12 @@ async def aplicar_subsector(
                 round(total_sal * 0.6), round(total_sal * 1.5),
             )
 
-    # Clientes/día para negocios de cita: recalcular con rangos del subsector
+    # Clientes/día para negocios de cita: recalcular SOLO si el modelo es appointment_based.
+    # Guardia obligatoria: sin esta condición, subsectores retail con esos campos en BD
+    # sobrescriben la estimación de flujo peatonal con lógica de agenda (bug crítico).
     cmin_s = float(bench_sub.get("clientes_dia_por_puesto_min") or 0)
     cmax_s = float(bench_sub.get("clientes_dia_por_puesto_max") or 0)
-    if cmin_s > 0 and cmax_s > 0 and emp_m2 > 0:
+    if cmin_s > 0 and cmax_s > 0 and emp_m2 > 0 and estimados.business_model_type == "appointment_based":
         puestos = max(1, math.floor(_m2 / emp_m2))
         nueva_base = max(1.0, round(puestos * (cmin_s + cmax_s) / 2 * _DEFAULT_OCCUPANCY, 1))
         nueva_max  = float(puestos * cmax_s)

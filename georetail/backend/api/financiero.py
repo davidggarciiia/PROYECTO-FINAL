@@ -35,6 +35,7 @@ from financiero.validador_pipeline import run_pipeline, BusinessInput as Pipelin
 from financiero.gatekeeper import run_gatekeeper, GatekeeperInput
 from scoring.concepto.taxonomy import SECTOR_PROFILE_DEFAULTS, NEUTRAL_PROFILE
 from financiero.estimador import estimar_parametros, ParametrosEstimados, PE, aplicar_subsector
+from financiero.sector_taxonomy import get_sector_profile, validate_model_coherence
 from financiero.calculadora import calcular_proyeccion, get_max_occupancy
 from db.sesiones import get_sesion
 from db.financiero import (
@@ -263,6 +264,9 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
     benchmarks          = await get_benchmarks_sector(sector)
     margen_sector       = benchmarks.get("margen_bruto_tipico", 0.65)
     business_model_type = getattr(estimados, "business_model_type", "retail_walkin")
+
+    # Coherencia entre business_model_type (estimador) y pipeline_model (taxonomía canónica).
+    validate_model_coherence(sector, business_model_type)
 
     # ── Diccionario de trabajo ────────────────────────────────────────────────
     v: dict = {
@@ -1130,6 +1134,10 @@ async def _get_o_calcular_estimados(
     precalc = await get_parametros_precalculados(zona_id=zona_id, sector=sector)
     if precalc:
         estimados = _row_to_estimados(precalc)
+        # El caché semanal no almacena business_model_type; el dataclass lo inicializa
+        # siempre a "retail_walkin". Inicializar desde el mapa de sectores antes de que
+        # aplicar_subsector() lo refine, para que su guardia condicional funcione correctamente.
+        estimados.business_model_type = get_sector_profile(sector).business_model_type
         # Aplicar overrides de subsector sobre el caché semanal:
         # ticket, margen, modelo, reforma, empleados, salarios, clientes/día
         await aplicar_subsector(estimados, sector, subsector, descripcion, session_id, perfil=perfil)

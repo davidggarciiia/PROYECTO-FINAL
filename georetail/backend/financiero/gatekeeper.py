@@ -19,27 +19,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Optional
 
+from financiero.sector_taxonomy import get_sector_profile
+
 StreamType = Literal["traffic", "space", "labor", "asset"]
 Priority   = Literal["primary", "secondary"]
 
-# ─── CAPA 1: Sector → stream topology ─────────────────────────────────────────
-
-_SECTOR_STREAMS: dict[str, list[tuple[str, str]]] = {
-    "restauracion":  [("space",   "primary"),  ("traffic", "secondary")],
-    "moda":          [("traffic", "primary")],
-    "estetica":      [("labor",   "primary")],
-    "tatuajes":      [("labor",   "primary")],
-    "peluqueria":    [("labor",   "primary")],
-    "shisha_lounge": [("space",   "primary")],
-    "salud":         [("labor",   "primary")],
-    "clinica":       [("labor",   "primary")],
-    "deporte":       [("space",   "primary")],
-    "educacion":     [("labor",   "primary"),  ("space",   "secondary")],
-    "alimentacion":  [("traffic", "primary")],
-    "supermercado":  [("traffic", "primary")],
-    "farmacia":      [("traffic", "primary")],
-    "_default":      [("traffic", "primary")],
-}
+# _SECTOR_STREAMS eliminado. La topología de streams se lee desde SECTOR_REGISTRY
+# en financiero/sector_taxonomy.py. Ver get_sector_profile().gatekeeper_streams.
 
 # CAPA 4: utilisation factors and m2/person per stream type
 _UTIL: dict[str, float] = {"traffic": 0.60, "space": 0.75, "labor": 0.85, "asset": 0.90}
@@ -90,7 +76,7 @@ def run_gatekeeper(inp: GatekeeperInput) -> GatekeeperResult:
     total_clients   = 0.0
     total_hours_req = 0.0
 
-    for stype, priority in _SECTOR_STREAMS.get(inp.sector, _SECTOR_STREAMS["_default"]):
+    for stype, priority in get_sector_profile(inp.sector).gatekeeper_streams:
         name = f"{stype}_{inp.sector}"
         logic_params, daily_clients = _compute_stream(stype, inp, corrections, name)
         total_clients   += daily_clients
@@ -156,15 +142,11 @@ def _traffic(inp: GatekeeperInput, corrections: list[dict], name: str) -> tuple[
     conv    = min(max(inp.conversion_rate, 0.0), 1.0)
     clients = inp.flujo_peatonal_dia * conv
 
-    # CAPA 4: max_operational_capacity = m2 / 2.5
-    max_op   = inp.total_m2 / _M2PP["traffic"]
-    # CAPA 4: productivity max = 20 clients/hr/employee
-    max_prod = inp.total_staff * inp.hours_open_per_day * 20 if inp.total_staff > 0 else max_op
+    # m2 / 2.5 es el aforo simultáneo (código de incendios), NO el throughput diario.
+    # Un supermercado de 60m² sirve 700 personas/día aunque solo haya 24 simultáneas.
+    # El único techo operativo relevante para tráfico es la productividad del personal.
+    max_prod = inp.total_staff * inp.hours_open_per_day * 20 if inp.total_staff > 0 else clients
 
-    if clients > max_op:
-        corrections.append(_corr(f"{name}.daily_clients", clients, max_op,
-            "Exceeds max_operational_capacity (m2 / 2.5)."))
-        clients = max_op
     if clients > max_prod:
         corrections.append(_corr(f"{name}.daily_clients", clients, max_prod,
             "Exceeds max staff productivity (20 clients/hr/employee)."))

@@ -19,27 +19,10 @@ import math
 from dataclasses import dataclass, field
 from typing import Optional
 
+from financiero.sector_taxonomy import get_sector_profile
 
-# ── Taxonomía ──────────────────────────────────────────────────────────────────
-# sector_code → (sector_display, subsector_display, modelo, cnae, tipo_coste, confidence)
-_TAXONOMY: dict[str, tuple[str, str, str, str, str, float]] = {
-    "restauracion":  ("Restauración",           "Restauración casual",        "space",   "5610", "stock",    0.95),
-    "bar":           ("Restauración",           "Bar / pub",                  "space",   "5630", "stock",    0.90),
-    "cafeteria":     ("Restauración",           "Cafetería / pastelería",     "space",   "5630", "stock",    0.90),
-    "shisha_lounge": ("Ocio y entretenimiento", "Shisha lounge",              "space",   "5630", "stock",    0.85),
-    "moda":          ("Retail moda",            "Moda generalista",           "traffic", "4771", "stock",    0.92),
-    "supermercado":  ("Retail alimentación",    "Supermercado / bazar",       "traffic", "4711", "stock",    0.95),
-    "farmacia":      ("Salud y farmacia",        "Farmacia",                  "traffic", "4773", "stock",    0.95),
-    "electronica":   ("Retail tecnología",      "Electrónica / telefonía",    "traffic", "4742", "stock",    0.88),
-    "tatuajes":      ("Belleza y estética",     "Tatuajes y piercings",       "labor",   "9602", "servicio", 0.93),
-    "estetica":      ("Belleza y estética",     "Estética y tratamientos",    "labor",   "9602", "servicio", 0.92),
-    "peluqueria":    ("Belleza y estética",     "Peluquería",                 "labor",   "9602", "servicio", 0.95),
-    "clinica":       ("Salud",                  "Clínica médica",             "labor",   "8690", "servicio", 0.90),
-    "fisioterapia":  ("Salud",                  "Fisioterapia",               "labor",   "8621", "servicio", 0.92),
-    "dentista":      ("Salud",                  "Clínica dental",             "labor",   "8621", "servicio", 0.92),
-}
-
-_DEFAULT_TAXONOMY = ("Comercio / Servicios", "Otro", "traffic", "4799", "stock", 0.50)
+# _TAXONOMY y _DEFAULT_TAXONOMY eliminados.
+# La clasificación sector→modelo se lee desde SECTOR_REGISTRY en sector_taxonomy.py.
 
 # ── Benchmarks por sector ──────────────────────────────────────────────────────
 # ticket_range:    [min €, p50 €, max €]
@@ -224,7 +207,7 @@ def run_pipeline(inp: BusinessInput) -> PipelineResult:
 
     _v1_capacidad_vs_demanda(adj, modelo, duracion, rotacion, aforo_max)
     _v3_validacion_temporal(adj, modelo, duracion)
-    _v4_coherencia_espacio(adj, aforo_max)
+    _v4_coherencia_espacio(adj, aforo_max, modelo)
     _v5_productividad_irreal(adj, modelo)
     _v6_ticket_fuera_mercado(adj, bench)
     _v7_costes_salariales(adj, bench)
@@ -257,19 +240,14 @@ def run_pipeline(inp: BusinessInput) -> PipelineResult:
 # ── Paso 1 — Clasificación ─────────────────────────────────────────────────────
 
 def _paso1_clasificar(inp: BusinessInput) -> dict:
-    entry = _TAXONOMY.get(inp.sector, None)
-    if entry:
-        sector_d, subsector_d, modelo, cnae, tipo_coste, conf = entry
-    else:
-        sector_d, subsector_d, modelo, cnae, tipo_coste, conf = _DEFAULT_TAXONOMY
-
+    p = get_sector_profile(inp.sector)
     return {
-        "sector":                  sector_d,
-        "subsector":               subsector_d,
-        "model":                   modelo,
-        "cnae":                    cnae,
-        "tipo_coste_variable":     tipo_coste,
-        "classification_confidence": conf,
+        "sector":                  p.sector_display,
+        "subsector":               p.subsector_display,
+        "model":                   p.pipeline_model,
+        "cnae":                    p.cnae,
+        "tipo_coste_variable":     p.tipo_coste,
+        "classification_confidence": p.pipeline_confidence,
     }
 
 
@@ -370,8 +348,14 @@ def _v3_validacion_temporal(
         adj.add_flag("time_bottleneck")
 
 
-def _v4_coherencia_espacio(adj: _Adj, aforo_max: float) -> None:
-    """Clientes simultáneos no pueden superar el aforo físico."""
+def _v4_coherencia_espacio(adj: _Adj, aforo_max: float, modelo: str) -> None:
+    """Clientes simultáneos vs aforo físico — SOLO para modelo 'space'.
+    Para 'traffic' y 'labor' los clientes rotan; dividir clientes/día por horas
+    no representa ocupación simultánea y produce caps incorrectos (p.ej. supermercado
+    con 700 clientes/día → 77 simultáneos → cap a 108, que es físicamente erróneo).
+    """
+    if modelo != "space":
+        return
     inp = adj.inp
     if inp.horas_apertura <= 0:
         return
