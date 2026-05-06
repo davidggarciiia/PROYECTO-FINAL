@@ -741,10 +741,10 @@ async def post_legal_roadmap(body: RoadmapRequest) -> dict:
             sistema=_SISTEMA_LEGAL,
             endpoint="legal_roadmap",
             session_id=body.session_id,
-            max_tokens=4500,
+            max_tokens=8000,
             temperature=0.2,
             requiere_json=True,
-            timeout=90,
+            timeout=220,
         )
         roadmap = json.loads(respuesta)
     except (json.JSONDecodeError, Exception) as exc:

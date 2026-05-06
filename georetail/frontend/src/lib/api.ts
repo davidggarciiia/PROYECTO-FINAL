@@ -15,16 +15,28 @@ import { USE_MOCK } from "./config";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    ...options,
-  });
-  if (!res.ok) {
-    const err = await res.text().catch(() => res.statusText);
-    throw new Error(`API ${path} → ${res.status}: ${err}`);
+async function apiFetch<T>(path: string, options?: RequestInit, timeoutMs?: number): Promise<T> {
+  const controller = timeoutMs != null ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      ...(controller ? { signal: controller.signal } : {}),
+      ...options,
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => res.statusText);
+      throw new Error(`API ${path} → ${res.status}: ${err}`);
+    }
+    return res.json() as Promise<T>;
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error(`API ${path} → timeout después de ${(timeoutMs as number) / 1000}s`);
+    }
+    throw e;
+  } finally {
+    if (timer != null) clearTimeout(timer);
   }
-  return res.json() as Promise<T>;
 }
 
 // ─── MOCK HELPERS ─────────────────────────────────────────────────────────────

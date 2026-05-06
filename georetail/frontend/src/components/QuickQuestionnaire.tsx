@@ -135,12 +135,12 @@ export default function QuickQuestionnaire({ onComplete, onBack }: Props) {
     setStep(2);
   };
 
-  const submit = () => {
+  const submitWith = (presupuestoVal: string) => {
     if (submitting) return;
     setSubmitting(true);
 
-    const ctx             = buildBusinessContext(sectorUI, subsectorLabel, descripcion);
-    const backendSector   = getBackendSector(sectorUI, subsectorLabel);
+    const ctx              = buildBusinessContext(sectorUI, subsectorLabel, descripcion);
+    const backendSector    = getBackendSector(sectorUI, subsectorLabel);
     const backendSubsector = getBackendSubsector(sectorUI, subsectorLabel);
 
     const pe: PerfilEstructurado = {
@@ -156,12 +156,19 @@ export default function QuickQuestionnaire({ onComplete, onBack }: Props) {
     const zonaTile = ZONA_TILES.find((t) => t.codigo === zona);
     if (zonaTile?.distritos?.length) pe.distritos = zonaTile.distritos;
 
-    const presTile = PRESUPUESTO_TILES.find((t) => t.codigo === presupuesto);
+    const presTile = PRESUPUESTO_TILES.find((t) => t.codigo === presupuestoVal);
     if (presTile?.max) pe.presupuesto_max = presTile.max;
 
     setLeaving(true);
     setTimeout(() => onComplete(pe), 260);
   };
+
+  const submit = () => submitWith(presupuesto);
+
+  // Auto-avance pasos 3, 4, 5
+  const pickPublico     = (c: string) => { setPublico(c);     setStep(4); };
+  const pickZona        = (c: string) => { setZona(c);        setStep(5); };
+  const pickPresupuesto = (c: string) => { setPresupuesto(c); submitWith(c); };
 
   const exitTimerRef = useRef<number | undefined>(undefined);
   useEffect(() => () => { if (exitTimerRef.current) clearTimeout(exitTimerRef.current); }, []);
@@ -254,11 +261,11 @@ export default function QuickQuestionnaire({ onComplete, onBack }: Props) {
             </div>
           )}
 
-          {step === 3 && renderTiles(PUBLICO_TILES, publico, setPublico)}
+          {step === 3 && renderTiles(PUBLICO_TILES, publico, pickPublico)}
 
-          {step === 4 && renderTiles(ZONA_TILES, zona, setZona)}
+          {step === 4 && renderTiles(ZONA_TILES, zona, pickZona)}
 
-          {step === 5 && renderTiles(PRESUPUESTO_TILES, presupuesto, setPresupuesto)}
+          {step === 5 && renderTiles(PRESUPUESTO_TILES, presupuesto, pickPresupuesto)}
         </div>
       </main>
 
