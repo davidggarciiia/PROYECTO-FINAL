@@ -13,6 +13,7 @@ import ZoneIndex from "@/components/map/ZoneIndex";
 import ActiveDock from "@/components/map/ActiveDock";
 import Dossier from "@/components/map/Dossier";
 import LoadingOverlay from "@/components/map/LoadingOverlay";
+import TutorialOverlay from "@/components/map/TutorialOverlay";
 import styles from "./page.module.css";
 import type { ZonaPreview, LocalDetalleResponse, PerfilEstructurado } from "@/lib/types";
 import { api } from "@/lib/api";
@@ -35,20 +36,86 @@ export default function AppPage() {
 
   const [basemap, setBasemap]             = useState<BasemapId>("voya");
   const [coords, setCoords]               = useState(BCN_CENTER);
-
+  const [showTutorial, setShowTutorial]   = useState(false);
 
   const activeZone = useMemo(
     () => zonas.find((z) => z.zona_id === activeId) ?? null,
     [zonas, activeId],
   );
 
+  // Mostrar tutorial la primera vez que el usuario llega al mapa
+  useEffect(() => {
+    if (view === "map" && !localStorage.getItem("kp_tutorial_seen")) {
+      setShowTutorial(true);
+    }
+  }, [view]);
+
+  const handleCloseTutorial = useCallback(() => {
+    localStorage.setItem("kp_tutorial_seen", "1");
+    setShowTutorial(false);
+  }, []);
+
+  const handleOpenTutorial = useCallback(() => {
+    setShowTutorial(true);
+  }, []);
+
+  const fetchZonas = useCallback(
+    async (query: string) => {
+      if (!query.trim()) return;
+      setLoading(true);
+      setErrorMsg(null);
+      try {
+        const res = await api.buscar({ descripcion: query, session_id: sessionId || undefined });
+        if (res.estado === "ok" && Array.isArray(res.zonas)) {
+          // API returns ZonaResumen (alquiler_estimado/m2_disponibles); HUD expects ZonaPreview (alquiler_mensual/m2)
+          const adapted: ZonaPreview[] = res.zonas.map((z) => ({
+            zona_id: z.zona_id,
+            nombre: z.nombre,
+            barrio: z.barrio,
+            distrito: z.distrito,
+            lat: z.lat,
+            lng: z.lng,
+            score_global: z.score_global,
+            m2: z.m2_disponibles,
+            alquiler_mensual: z.alquiler_estimado,
+            color: z.color,
+          }));
+          setZonas(adapted);
+          if (res.session_id) setSessionId(res.session_id);
+          if (adapted.length > 0) setActiveId(adapted[0].zona_id);
+        } else if (res.estado === "cuestionario") {
+          setErrorMsg("El motor necesita más contexto. Por ahora, añade detalles a tu prompt.");
+        } else if (res.estado === "error_tipo_negocio") {
+          setErrorMsg("No reconocemos el tipo de negocio. Intenta con una descripción distinta.");
+        } else if (res.estado === "inviable_legal") {
+          setErrorMsg("La combinación negocio + zona no es viable legalmente.");
+        }
+      } catch (e) {
+        console.error("api.buscar error:", e);
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/422/.test(msg)) {
+          setErrorMsg("Describe tu negocio con al menos 10 caracteres.");
+        } else if (/Failed to fetch|NetworkError/i.test(msg)) {
+          setErrorMsg("Error conectando con el motor. ¿Backend corriendo en :8000?");
+        } else {
+          setErrorMsg(`Error del motor: ${msg}`);
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [sessionId],
+  );
+
+  // Búsqueda estructurada desde el wizard — equivalente a fetchZonas pero
+  // mandando `perfil_estructurado` en vez de descripción libre.
   const fetchZonasStructured = useCallback(
     async (pe: PerfilEstructurado) => {
       setLoading(true);
       setErrorMsg(null);
       try {
         const res = await api.buscar({
-          descripcion: "",
+          descripcion: pe.matices || "",
           perfil_estructurado: pe,
           session_id: sessionId || undefined,
         });
@@ -91,7 +158,17 @@ export default function AppPage() {
   // Wizard completed: go to map with structured search
   const handleWizardComplete = useCallback(
     (pe: PerfilEstructurado) => {
-      setSearchQuery(pe.subsector || pe.sector);
+      // Extract a human-readable label from matices: "Sector: X. Subsector: Y. Detalle: Z"
+      const displayLabel = (() => {
+        if (pe.matices) {
+          const sub = pe.matices.match(/Subsector:\s*([^.]+)/);
+          if (sub) return sub[1].trim();
+          const sec = pe.matices.match(/Sector:\s*([^.]+)/);
+          if (sec) return sec[1].trim();
+        }
+        return pe.subsector || pe.sector;
+      })();
+      setSearchQuery(displayLabel);
       setView("map");
       void fetchZonasStructured(pe);
     },
@@ -146,9 +223,7 @@ export default function AppPage() {
   }, [activeId, sessionId, detalle]);
 
   const dimsActive = detalle?.zona.zona_id === activeId ? detalle?.zona.scores_dimensiones ?? null : null;
-  void dimsActive;
 
-  // Onboarding stage
   if (view === "onboarding") {
     return <Onboarding onStart={() => setView("wizard")} />;
   }
@@ -168,6 +243,7 @@ export default function AppPage() {
         query={searchQuery}
         numZonas={zonas.length}
         onRestart={handleRestart}
+        onTutorial={handleOpenTutorial}
       />
 
       <main className={styles.canvas}>
@@ -236,6 +312,10 @@ export default function AppPage() {
           onClose={() => setDossierOpen(false)}
           sessionId={sessionId}
         />
+      )}
+
+      {showTutorial && (
+        <TutorialOverlay onClose={handleCloseTutorial} />
       )}
     </div>
   );

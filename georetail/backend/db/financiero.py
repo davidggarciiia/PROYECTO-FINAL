@@ -28,6 +28,74 @@ async def get_benchmarks_sector(sector: str) -> dict:
     }
 
 
+async def get_benchmarks_subsector(subsector: str) -> dict:
+    if not subsector:
+        return {}
+    try:
+        async with get_db() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM benchmarks_subsector WHERE subsector_codigo=$1", subsector
+            )
+        return dict(row) if row else {}
+    except Exception as e:
+        logger.warning("get_benchmarks_subsector fail subsector=%s: %s", subsector, e)
+        return {}
+
+
+async def get_benchmarks_llm_cache(subsector: str) -> dict:
+    """Lee benchmarks generados por LLM previamente validados y guardados."""
+    if not subsector:
+        return {}
+    try:
+        async with get_db() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM benchmarks_subsector_llm WHERE subsector_codigo=$1", subsector
+            )
+        return dict(row) if row else {}
+    except Exception as e:
+        logger.warning("get_benchmarks_llm_cache fail subsector=%s: %s", subsector, e)
+        return {}
+
+
+async def guardar_bench_llm_cache(subsector: str, sector: str, bench: dict) -> None:
+    """Persiste benchmarks validados del LLM para reutilización determinista."""
+    if not subsector or not bench:
+        return
+    try:
+        async with get_db() as conn:
+            await conn.execute("""
+                INSERT INTO benchmarks_subsector_llm (
+                    subsector_codigo, sector_codigo, ticket_medio_min, ticket_medio_max,
+                    margen_bruto_tipico, is_appointment_based, empleados_por_m2,
+                    horas_apertura_dia, dias_apertura_mes_tipico,
+                    conversion_rate_min, conversion_rate_max
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                ON CONFLICT (subsector_codigo) DO UPDATE SET
+                    ticket_medio_min         = EXCLUDED.ticket_medio_min,
+                    ticket_medio_max         = EXCLUDED.ticket_medio_max,
+                    margen_bruto_tipico      = EXCLUDED.margen_bruto_tipico,
+                    is_appointment_based     = EXCLUDED.is_appointment_based,
+                    empleados_por_m2         = EXCLUDED.empleados_por_m2,
+                    horas_apertura_dia       = EXCLUDED.horas_apertura_dia,
+                    dias_apertura_mes_tipico = EXCLUDED.dias_apertura_mes_tipico,
+                    conversion_rate_min      = EXCLUDED.conversion_rate_min,
+                    conversion_rate_max      = EXCLUDED.conversion_rate_max,
+                    created_at               = NOW()
+            """,
+            subsector, sector,
+            bench.get("ticket_medio_min"), bench.get("ticket_medio_max"),
+            bench.get("margen_bruto_tipico"),
+            bool(bench.get("is_appointment_based", False)),
+            bench.get("empleados_por_m2"),
+            bench.get("horas_apertura_dia"),
+            bench.get("dias_apertura_mes_tipico"),
+            bench.get("conversion_rate_min"),
+            bench.get("conversion_rate_max"),
+            )
+    except Exception as e:
+        logger.warning("guardar_bench_llm_cache fail subsector=%s: %s", subsector, e)
+
+
 async def get_parametros_precalculados(zona_id: str, sector: str) -> Optional[dict]:
     try:
         async with get_db() as conn:

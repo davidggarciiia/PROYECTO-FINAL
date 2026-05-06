@@ -160,7 +160,7 @@ export default function QuickQuestionnaire({ onComplete, onBack }: Props) {
     if (presTile?.max) pe.presupuesto_max = presTile.max;
 
     setLeaving(true);
-    exitTimerRef.current = window.setTimeout(() => onComplete(pe), 260);
+    setTimeout(() => onComplete(pe), 260);
   };
 
   const exitTimerRef = useRef<number | undefined>(undefined);

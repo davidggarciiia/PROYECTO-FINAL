@@ -122,13 +122,15 @@ export const SUBSECTORES: Record<string, SubsectorDef[]> = {
     { label: "Nicho",         placeholder: "magic cards, discos de vinilo, figuras, comics..." },
   ],
   servicios_personales: [
-    { label: "Peluquería / barbería", placeholder: "premium, masculina, afro, extensiones, coloristas...", backendCode: "peluqueria" },
-    { label: "Estética y belleza",    placeholder: "micropigmentación, láser, uñas, spa, lashes..." },
-    { label: "Fisioterapia",          placeholder: "deportiva, neurológica, osteopatía, pilates terapéutico..." },
-    { label: "Psicología",            placeholder: "cognitiva, infantil, de pareja, EMDR, online..." },
-    { label: "Clínica dental",        placeholder: "estética, ortodoncia invisible, implantes, infantil..." },
-    { label: "Yoga / pilates",        placeholder: "hot yoga, reformer, meditación, pre-natal, ashtanga...", backendCode: "spa" },
-    { label: "Otro",                  placeholder: "describe el servicio personalizado que ofreces..." },
+    { label: "Peluquería",        placeholder: "unisex, coloristas, extensiones, premium, de barrio...",    backendCode: "hair_salon" },
+    { label: "Barbería",          placeholder: "hipster, fade, barba, premium, afeitado clásico...",         backendCode: "barber_shop" },
+    { label: "Estética y belleza",placeholder: "micropigmentación, láser, uñas, spa, lashes..." },
+    { label: "Peluquería canina", placeholder: "aseo de mascotas, dog grooming, baño y corte...",            backendCode: "pet_grooming" },
+    { label: "Fisioterapia",      placeholder: "deportiva, neurológica, osteopatía, pilates terapéutico..." },
+    { label: "Psicología",        placeholder: "cognitiva, infantil, de pareja, EMDR, online..." },
+    { label: "Clínica dental",    placeholder: "estética, ortodoncia invisible, implantes, infantil..." },
+    { label: "Yoga / pilates",    placeholder: "hot yoga, reformer, meditación, pre-natal, ashtanga...",     backendCode: "spa" },
+    { label: "Otro",              placeholder: "describe el servicio personalizado que ofreces..." },
   ],
   servicios_b2b: [
     { label: "Consultoría",            placeholder: "estratégica, financiera, operacional, digital..." },
@@ -187,11 +189,18 @@ export const SUBSECTORES: Record<string, SubsectorDef[]> = {
   ],
 };
 
-// Retail subsectors con backend sector específico (el resto usa "otro")
+// Subsectors que usan un sector backend distinto al default del sector UI padre.
 const RETAIL_BACKEND: Record<string, string> = {
   "Alimentación": "alimentacion",
   "Moda":         "moda",
   "Farmacia":     "salud",
+};
+
+const SERVICIOS_PERSONALES_BACKEND: Record<string, string> = {
+  "Peluquería canina": "servicios",
+  "Fisioterapia":      "salud",
+  "Psicología":        "salud",
+  "Clínica dental":    "salud",
 };
 
 // ── Public helpers ────────────────────────────────────────────────────────────
@@ -207,6 +216,9 @@ export function getSubsectorList(sectorCodigo: string): SubsectorDef[] {
 export function getBackendSector(sectorCodigo: string, subsectorLabel: string): string {
   if (sectorCodigo === "retail") {
     return RETAIL_BACKEND[subsectorLabel] ?? "otro";
+  }
+  if (sectorCodigo === "servicios_personales" && subsectorLabel in SERVICIOS_PERSONALES_BACKEND) {
+    return SERVICIOS_PERSONALES_BACKEND[subsectorLabel];
   }
   return getSectorDef(sectorCodigo)?.backendCode ?? "otro";
 }
