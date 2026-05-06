@@ -49,3 +49,24 @@ tools/
 
 # Claude Code local settings (contiene claves y rutas locales)
 .claude/settings.local.json
+
+# Archivos basura generados accidentalmente (fragmentos de código ejecutados como comandos)
+# Nombres que son tipos Python, valores, o fragmentos de código JS/TS
+None
+str
+float
+pd.DataFrame
+Optional\[*\]
+onComplete*
+Promedio
+# Nombres que son solo números o porcentajes (sin extensión)
+[0-9]
+[0-9][0-9]
+[0-9][0-9][0-9]
+[0-9]*%
+[0-9].[0-9]
+[0-9]`
+[0-9]}
+# Archivos con comas (fragmentos de listas/diffs)
+georetail/[0-9],
+georetail/[0-9],+

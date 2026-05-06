@@ -11,6 +11,25 @@ interface Props {
   sessionId: string;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getRootUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.hostname}/`;
+  } catch {
+    return url;
+  }
+}
+
+function getHostname(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function Skeleton({ h = 16, w = "100%" }: { h?: number; w?: string }) {
@@ -152,7 +171,7 @@ function TramiteCard({ tramite, isLast }: { tramite: TramiteLegal; isLast: boole
 
             {tramite.enlace && (
               <a
-                href={tramite.enlace}
+                href={getRootUrl(tramite.enlace)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={styles.tramiteEnlace}
@@ -166,7 +185,7 @@ function TramiteCard({ tramite, isLast }: { tramite: TramiteLegal; isLast: boole
                   />
                   <path d="M6.5 1.5h3v3M9.5 1.5L5.5 5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
                 </svg>
-                Acceder al trámite oficial
+                {getHostname(tramite.enlace)}
               </a>
             )}
           </div>
@@ -250,21 +269,37 @@ export default function LegalPanel({ zona, sessionId }: Props) {
   const [error, setError] = useState<string>("");
   const [openFaseIndex, setOpenFaseIndex] = useState<number>(0);
   const hasFetched = useRef(false);
+  const currentZoneRef = useRef(zona.zona_id);
+  const isLoadingRef = useRef(false);
+
+  // Reset al cambiar de local para evitar mostrar datos de la zona anterior.
+  useEffect(() => {
+    currentZoneRef.current = zona.zona_id;
+    hasFetched.current = false;
+    setRoadmap(null);
+    setError("");
+    setOpenFaseIndex(0);
+  }, [zona.zona_id]);
 
   const load = useCallback(async () => {
-    if (hasFetched.current) return;
+    if (hasFetched.current || isLoadingRef.current) return;
+    isLoadingRef.current = true;
     hasFetched.current = true;
+    const zonaIdSnapshot = zona.zona_id;
     setLoading(true);
     setError("");
     try {
-      const data = await api.legal(zona.zona_id, sessionId);
+      const data = await api.legal(zonaIdSnapshot, sessionId);
+      if (currentZoneRef.current !== zonaIdSnapshot) return;
       setRoadmap(data);
     } catch (e) {
       console.error("Error cargando roadmap legal:", e);
+      if (currentZoneRef.current !== zonaIdSnapshot) return;
       hasFetched.current = false;
       setError(e instanceof Error ? e.message : "No se pudo cargar el análisis legal.");
     } finally {
-      setLoading(false);
+      isLoadingRef.current = false;
+      if (currentZoneRef.current === zonaIdSnapshot) setLoading(false);
     }
   }, [zona.zona_id, sessionId]);
 
@@ -345,6 +380,18 @@ export default function LegalPanel({ zona, sessionId }: Props) {
             IA
           </span>
         </div>
+      </div>
+
+      {/* ── Aviso IA ── */}
+      <div className={styles.iaDisclaimer}>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
+          <path d="M7 1.5L12.5 11H1.5L7 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+          <path d="M7 5.5v3M7 10h.01" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        </svg>
+        <span>
+          <strong>Generado con IA — puede contener errores.</strong>{" "}
+          Esta información es orientativa y no constituye asesoramiento legal. Se recomienda contratar a un gestor o asesor especializado antes de iniciar cualquier trámite.
+        </span>
       </div>
 
       {/* ── Equipo externo ── */}
