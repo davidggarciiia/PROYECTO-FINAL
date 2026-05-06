@@ -1446,6 +1446,7 @@ function ChartCapacidad({ f }: { f: FinancieroResponse }) {
     ?? (f as unknown as { ocupacion_efectiva?: number }).ocupacion_efectiva
     ?? 0.8;
   const maxCap = f.capacity_model?.max_clients_day
+    ?? (f.parametros as { max_capacity?: number } | undefined)?.max_capacity
     ?? Math.round(eb.clientes_dia / Math.max(0.1, ocupacionEfectiva));
   const capacidadData = [
     { name: "Demanda estimada", value: Math.round(eb.clientes_dia), fill: C.green  },

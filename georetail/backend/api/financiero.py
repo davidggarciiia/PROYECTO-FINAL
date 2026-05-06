@@ -349,6 +349,11 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         v["clients_per_day"] = round(_gk_max, 1)
     else:
         _gk_corrections = []
+    # Sincronizar max_capacity con el cap real aplicado por el gatekeeper
+    if _gk_max > 0 and params.max_capacity > _gk_max:
+        params.max_capacity = round(_gk_max, 1)
+    if _gk_max > 0 and v["max_capacity"] > _gk_max:
+        v["max_capacity"] = round(_gk_max, 1)
     _gk_corrections += [
         {
             "parametro":       c["field"],
@@ -493,7 +498,8 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
     # Tasa de captación máxima según sector (corregida auditoría: no universal 15%)
     sector_capture_max = _CAPTURE_RATE_POR_SECTOR.get(sector, _CAPTURE_RATE_POR_SECTOR["_default"])
     max_potential = flujo_peatonal * sector_capture_max if flujo_peatonal > 0 else cl_base * 2
-    capture_rate  = min((cl_base / max_potential) if max_potential > 0 else 0.05, sector_capture_max)
+    _raw_capture  = (cl_base / flujo_peatonal) if flujo_peatonal > 0 else 0.05
+    capture_rate  = min(_raw_capture, sector_capture_max)
 
     modelo_demanda = ModeloDemanda(
         flujo_peatonal_dia=round(flujo_peatonal),
@@ -560,6 +566,7 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         _viability_score = max(0, _viability_score - 15)
 
     # CAMBIO 6: factor limitante + narrativa completa + recomendaciones accionables
+    _cf_mes = float(v["alquiler_mensual"] + v["salarios_mensual"] + v["otros_fijos_mensual"])
     _explicacion_raw = _calcular_explicacion(
         roi_b=roi_b, payback_b=pb_b, alquiler_pct=alquiler_pct, roi_c=roi_c,
         umbral_alquiler=_umbral_alquiler_decision,
@@ -568,6 +575,12 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         margen_bruto=margen_bruto,
         meses_runway=_meses_runway,
         correcciones_caps=[c for c in correcciones_raw if c.get("capa") == "caps_fisicos"],
+        ben_estable=float(ben_mes),
+        be_clients=float(resultado["breakeven_clientes_dia"]),
+        cl_base=float(cl_base),
+        cf_mes=_cf_mes,
+        num_empleados=int(v.get("num_empleados", 0)),
+        business_model_type=str(business_model_type),
     )
 
     # CAMBIO 4: ordenar correcciones por impacto absoluto y añadir impacto_pct
@@ -1248,6 +1261,12 @@ def _calcular_explicacion(
     margen_bruto: float = 0.0,
     meses_runway: float = 999.0,
     correcciones_caps: list[dict] | None = None,
+    ben_estable: float = 0.0,
+    be_clients: float = 0.0,
+    cl_base: float = 0.0,
+    cf_mes: float = 0.0,
+    num_empleados: int = 0,
+    business_model_type: str = "",
 ) -> dict:
     """Factor limitante + narrativa completa + recomendaciones accionables.
     Incluye contexto de correcciones físicas y runway para mayor transparencia."""
@@ -1310,24 +1329,51 @@ def _calcular_explicacion(
             f"para este tipo de negocio. Los costes variables consumen demasiado."
         )
     elif factor == "payback":
-        impacto_clave = (
-            f"El payback de {payback_b} meses supera el límite de 18 meses. "
-            f"La inversión tarda demasiado en recuperarse."
-        )
+        if payback_b >= 999 and ben_estable < 0:
+            deficit = abs(round(ben_estable))
+            impacto_clave = (
+                f"Déficit crónico: {fmt_eur(deficit)} €/mes de pérdida en régimen estable — "
+                f"los costes superan a los ingresos y el negocio no recupera la inversión."
+            )
+        else:
+            impacto_clave = (
+                f"El payback de {payback_b} meses supera el límite de 18 meses. "
+                f"La inversión tarda demasiado en recuperarse."
+            )
     else:
         impacto_clave = "Todos los indicadores cumplen los umbrales de viabilidad."
 
     # ── Razones (bullets explicativos) ──
     razones: list[str] = []
-    if roi_b < 0.40:
-        razones.append(f"Rentabilidad insuficiente (ROI {round(roi_b * 100)}% — mínimo: 40%)")
-    if payback_b > 18:
-        razones.append(f"Recuperación de inversión lenta ({payback_b} meses — máximo recomendado: 18)")
-    if alquiler_pct > umbral_alquiler:
+    if payback_b >= 999 and ben_estable < 0:
+        # Diagnóstico de déficit crónico — reemplaza los bullets genéricos de ROI/payback
+        deficit = abs(round(ben_estable))
         razones.append(
-            f"Alquiler elevado respecto a los ingresos "
-            f"({round(alquiler_pct * 100)}% vs. umbral {round(umbral_alquiler * 100)}%)"
+            f"Con {round(cl_base)} clientes/día los ingresos son insuficientes para cubrir los "
+            f"costes fijos de {fmt_eur(round(cf_mes))} €/mes — déficit de {fmt_eur(deficit)} €/mes"
         )
+        if be_clients > cl_base > 0:
+            faltan = round(be_clients - cl_base)
+            razones.append(
+                f"Necesitas {round(be_clients)} clientes/día para cubrir costes; "
+                f"tienes {round(cl_base)} — faltan {faltan} clientes/día"
+            )
+        if alquiler_pct > umbral_alquiler:
+            razones.append(
+                f"Alquiler elevado respecto a los ingresos "
+                f"({round(alquiler_pct * 100)}% vs. umbral {round(umbral_alquiler * 100)}%)"
+            )
+    else:
+        if roi_b < 0.40:
+            razones.append(f"Rentabilidad insuficiente (ROI {round(roi_b * 100)}% — mínimo: 40%)")
+        if payback_b > 18:
+            pb_label = ">36m" if payback_b >= 999 else f"{payback_b} meses"
+            razones.append(f"Recuperación de inversión lenta ({pb_label} — máximo recomendado: 18)")
+        if alquiler_pct > umbral_alquiler:
+            razones.append(
+                f"Alquiler elevado respecto a los ingresos "
+                f"({round(alquiler_pct * 100)}% vs. umbral {round(umbral_alquiler * 100)}%)"
+            )
     if margen_bruto < 0.60:
         razones.append(f"Margen operativo bajo ({round(margen_bruto * 100)}%)")
     if roi_c < 0:
@@ -1358,21 +1404,49 @@ def _calcular_explicacion(
 
     # ── Recomendaciones accionables ──
     recomendaciones: list[str] = []
-    if factor == "alquiler" and alquiler_mensual > 0:
-        alq_obj = round(alquiler_mensual * umbral_alquiler / alquiler_pct / 50) * 50
-        bajada  = round((1 - alq_obj / alquiler_mensual) * 100)
+
+    if payback_b >= 999 and ben_estable < 0:
+        # Diagnóstico de déficit crónico: recomendaciones específicas con números
+        if be_clients > cl_base > 0:
+            faltan = round(be_clients - cl_base)
+            recomendaciones.append(
+                f"Necesitas {faltan} clientes/día más para llegar al break-even — "
+                f"busca una zona con mayor afluencia o mejora la visibilidad del local"
+            )
+        if business_model_type == "appointment_based" and num_empleados > 0 and cl_base > 0:
+            # Estimar cuántos empleados justifica la demanda actual
+            # Uso ratio conservador: 1 empleado por cada ~5 clientes/día
+            emp_necesarios = max(1, math.ceil(cl_base / 5.0))
+            if num_empleados > emp_necesarios:
+                recomendaciones.append(
+                    f"Reduce la plantilla de {num_empleados} a {emp_necesarios} empleado(s) — "
+                    f"con {round(cl_base)} clientes/día no necesitas más puestos de trabajo"
+                )
+        if alquiler_pct > umbral_alquiler and alquiler_mensual > 0:
+            alq_obj = round(alquiler_mensual * umbral_alquiler / alquiler_pct / 50) * 50
+            recomendaciones.append(
+                f"Negocia el alquiler a ≤ {fmt_eur(alq_obj)} €/mes o busca un local más pequeño"
+            )
         recomendaciones.append(
-            f"Busca un local con alquiler ≤ {fmt_eur(alq_obj)} €/mes "
-            f"(bajada del {bajada}% sobre el actual)"
+            "Sube el precio medio si el mercado lo permite — "
+            "es la palanca más rápida para mejorar el margen"
         )
-    if factor in ("demanda", "payback"):
-        recomendaciones.append("Revisa la ubicación o la propuesta de valor para atraer más clientes")
-    if factor == "costes":
-        recomendaciones.append("Negocia mejores condiciones con proveedores o reduce el coste de mercancía")
-    if margen_bruto < 0.60:
-        recomendaciones.append("Sube el precio medio o reduce los costes variables por cliente")
-    if roi_b < 0.40 and factor not in ("alquiler",):
-        recomendaciones.append("Reduce la inversión inicial para mejorar el retorno sobre capital")
+    else:
+        if factor == "alquiler" and alquiler_mensual > 0:
+            alq_obj = round(alquiler_mensual * umbral_alquiler / alquiler_pct / 50) * 50
+            bajada  = round((1 - alq_obj / alquiler_mensual) * 100)
+            recomendaciones.append(
+                f"Busca un local con alquiler ≤ {fmt_eur(alq_obj)} €/mes "
+                f"(bajada del {bajada}% sobre el actual)"
+            )
+        if factor in ("demanda", "payback"):
+            recomendaciones.append("Revisa la ubicación o la propuesta de valor para atraer más clientes")
+        if factor == "costes":
+            recomendaciones.append("Negocia mejores condiciones con proveedores o reduce el coste de mercancía")
+        if margen_bruto < 0.60:
+            recomendaciones.append("Sube el precio medio o reduce los costes variables por cliente")
+        if roi_b < 0.40 and factor not in ("alquiler",):
+            recomendaciones.append("Reduce la inversión inicial para mejorar el retorno sobre capital")
     if recomendacion == "si" and not recomendaciones:
         recomendaciones.append("Monitoriza mensualmente ingresos vs. costes fijos el primer año")
 

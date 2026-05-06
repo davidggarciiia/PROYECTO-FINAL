@@ -158,27 +158,32 @@ async def calcular_proyeccion(
     business_model_type = str(p.get("business_model_type", "retail_walkin"))
 
     # ── PASO 2: Capacidad real del personal ───────────────────────────────────
-    rates            = _PRODUCTIVITY_RATES.get(business_model_type, _PRODUCTIVITY_RATES["retail_walkin"])
-    productivity_avg = (rates[0] + rates[1]) / 2
-    max_staff_cap    = num_empleados * productivity_avg * _STAFF_EFFICIENCY
-
-    if max_staff_cap > 0 and clients_base > max_staff_cap:
-        # CAMBIO 1: solo flag, sin modificar clients_base (corrección ya aplicada upstream)
-        validation_flags.append(
-            f"Capacidad del personal: {num_empleados} empleado(s) pueden atender "
-            f"máx. {math.ceil(max_staff_cap)} clientes/día "
-            f"(productividad {productivity_avg:.0f}/empleado/día × eficiencia {_STAFF_EFFICIENCY:.0%}). "
-            f"Los ajustes de demanda se aplican antes de llegar aquí."
-        )
+    # Solo relevante para modelos por cita: en retail/restaurante la capacidad depende
+    # del espacio físico (core.py), no del número de empleados por cliente.
+    if business_model_type == "appointment_based":
+        rates            = _PRODUCTIVITY_RATES.get(business_model_type, _PRODUCTIVITY_RATES["retail_walkin"])
+        productivity_avg = (rates[0] + rates[1]) / 2
+        max_staff_cap    = num_empleados * productivity_avg * _STAFF_EFFICIENCY
+        if max_staff_cap > 0 and clients_base > max_staff_cap * 1.05:
+            validation_flags.append(
+                f"Capacidad del personal: {num_empleados} empleado(s) pueden atender "
+                f"máx. {math.ceil(max_staff_cap)} clientes/día "
+                f"(productividad {productivity_avg:.0f}/empleado/día × eficiencia {_STAFF_EFFICIENCY:.0%}). "
+                f"Los ajustes de demanda se aplican antes de llegar aquí."
+            )
+    else:
+        productivity_avg = 0.0
+        max_staff_cap    = 0.0
 
     # ── PASO 3: Sobredimensión de plantilla ──────────────────────────────────
-    empleados_necesarios = math.ceil(clients_base / max(0.1, productivity_avg * _STAFF_EFFICIENCY))
-    if num_empleados > empleados_necesarios + 1:
-        validation_flags.append(
-            f"Sobredimensión de plantilla: {num_empleados} empleados para {round(clients_base)} "
-            f"clientes/día — bastarían ~{empleados_necesarios}. "
-            f"El exceso incrementa costes fijos sin generar ingresos adicionales."
-        )
+    if business_model_type == "appointment_based" and productivity_avg > 0:
+        empleados_necesarios = math.ceil(clients_base / max(0.1, productivity_avg * _STAFF_EFFICIENCY))
+        if num_empleados > empleados_necesarios + 1:
+            validation_flags.append(
+                f"Sobredimensión de plantilla: {num_empleados} empleados para {round(clients_base)} "
+                f"clientes/día — bastarían ~{empleados_necesarios}. "
+                f"El exceso incrementa costes fijos sin generar ingresos adicionales."
+            )
 
     # ── PASO 4: Safety cap — no debería activarse si el pipeline upstream funciona ──
     if clients_base > max_cap:

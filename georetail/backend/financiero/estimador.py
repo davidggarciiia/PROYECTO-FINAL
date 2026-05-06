@@ -12,6 +12,13 @@ import numpy as np
 
 from db.conexion import get_db
 from financiero.sector_taxonomy import get_sector_profile
+from financiero.core import (
+    get_modelo as _core_get_modelo,
+    derive_staff as _core_derive_staff,
+    physical_capacity as _core_physical_capacity,
+    estimate_demand as _core_estimate_demand,
+    final_clients as _core_final_clients,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +26,18 @@ _SS_EMPRESA        = 0.31   # Seguridad Social empresa ~31% sobre salario bruto
 _MAX_CAPTURE_RATE  = 0.15   # límite hard: nunca > 15% del flujo peatonal
 _DEFAULT_OCCUPANCY = 0.65   # ocupación conservadora para negocios de cita
 
+# Sectores donde is_appointment_based del subsector puede elevar el modelo canónico.
+# Retail/restauración NUNCA se elevan — evita que un bench LLM mal calibrado corrompa el modelo.
+_APPOINTMENT_CAPABLE_SECTORS: frozenset[str] = frozenset({
+    "estetica", "tatuajes", "peluqueria", "clinica", "salud",
+    "fisioterapia", "dentista", "educacion",
+})
+
 
 def _determinar_modelo_negocio(sector: str, bench: dict) -> str:
-    """business_model_type desde el registro canónico; bench puede elevarlo a appointment."""
-    if bench.get("is_appointment_based"):
+    """business_model_type desde el registro canónico; bench puede elevarlo a appointment
+    únicamente en sectores que físicamente operan con cita previa."""
+    if bench.get("is_appointment_based") and sector in _APPOINTMENT_CAPABLE_SECTORS:
         return "appointment_based"
     return get_sector_profile(sector).business_model_type
 
@@ -121,6 +136,10 @@ async def estimar_parametros(
         bench = {**bench, **{k: v for k, v in bench_sub.items() if v is not None}}
 
     m2 = local.get("m2") or perfil.get("m2_aprox") or 60.0
+    # m2_negocio: base para capacidad y personal — usa el m2 declarado por el usuario en el
+    # cuestionario (m2_aprox) si está disponible, ya que refleja la escala de negocio planeada.
+    # El m2 real del local se usa para alquiler/reforma, que sí dependen del espacio físico.
+    m2_negocio       = perfil.get("m2_aprox") or m2
     precio_objetivo  = str(perfil.get("precio_objetivo") or "").lower() or None
     presupuesto_max  = float(perfil.get("presupuesto_max") or 0) or None
 
@@ -130,23 +149,25 @@ async def estimar_parametros(
     p.ticket_medio      = _ticket(sector, precio_nivel_mediana, bench, precio_objetivo)
     p.alquiler_mensual  = _alquiler(local, vz, m2, presupuesto_max)
 
-    es_cita = bench.get("is_appointment_based", False) or p.business_model_type == "appointment_based"
-    pe_base, max_cap = (_clientes_cita_base(m2, bench) if es_cita
-                        else _clientes_flujo_base(sector, vz, comp, bench))
+    # Capacidad física, personal, demanda y clientes — fuente única: core.py
+    _horas   = float(bench.get("horas_apertura_dia", 9.0))
+    _modelo  = _core_get_modelo(sector)
+    p.num_empleados = _core_derive_staff(_modelo, m2_negocio, bench)
+    _cap     = _core_physical_capacity(_modelo, m2_negocio, bench, p.num_empleados, _horas)
+    _demand  = _core_estimate_demand(_modelo, m2_negocio, bench, vz, comp)
+    _clients = _core_final_clients(_demand, _cap)
 
-    p.clients_per_day = pe_base
-    p.max_capacity    = max_cap
-    # Derivados para compatibilidad con la tabla de precálculo
+    _fuente   = f"core.py — {_modelo}: {_demand:.0f} demanda / {_cap:.0f} cap. física"
+    _rango_mx = max(round(_cap * 1.5, 0), 20.0)  # 50% margen visual sobre cap física
+    p.clients_per_day = PE(_clients, _fuente, "media", 1.0, _rango_mx)
+    p.max_capacity    = _cap
     p.clientes_dia_conservador = PE(
-        max(1.0, round(pe_base.valor * 0.60, 1)), pe_base.fuente, pe_base.confianza,
-        pe_base.rango_min, pe_base.rango_max,
+        max(1.0, round(_clients * 0.60, 1)), _fuente, "media", 1.0, _rango_mx,
     )
     p.clientes_dia_optimista = PE(
-        max(1.0, round(min(pe_base.valor * 1.20, max_cap), 1)), pe_base.fuente, pe_base.confianza,
-        pe_base.rango_min, pe_base.rango_max,
+        max(1.0, round(min(_clients * 1.20, _cap), 1)), _fuente, "media", 1.0, _rango_mx,
     )
 
-    p.num_empleados      = max(1, math.ceil(m2 / (bench.get("empleados_por_m2") or 20)))
     p.salarios_mensual   = _salarios(p.num_empleados, bench)
     margen = bench.get("margen_bruto_tipico", 0.65)
     p.coste_mercancia_pct = PE(round(1-margen,3), f"INE CNAE — margen bruto típico {margen:.0%}",
@@ -158,6 +179,7 @@ async def estimar_parametros(
                                 "Art. 36 LAU — 2 meses alquiler", "alta",
                                 p.alquiler_mensual.valor, p.alquiler_mensual.valor*3)
     p.otros_iniciales     = _otros_ini(bench)
+
     return p
 
 
@@ -564,10 +586,12 @@ async def aplicar_subsector(
             round(_m2 * r_min), round(_m2 * r_max),
         )
 
-    # Personal: recalcular con empleados_por_m2 del subsector
+    # Personal: recalcular con empleados_por_m2 del subsector.
+    # floor para cita (1 empleado = 1 puesto, igual que _clientes_cita_base).
     emp_m2 = float(bench_sub.get("empleados_por_m2") or 0)
     if emp_m2 > 0:
-        nuevo_n = max(1, math.ceil(_m2 / emp_m2))
+        _es_cita = estimados.business_model_type == "appointment_based"
+        nuevo_n = max(1, math.floor(_m2 / emp_m2) if _es_cita else math.ceil(_m2 / emp_m2))
         if nuevo_n != estimados.num_empleados:
             estimados.num_empleados = nuevo_n
             sal = float(bench_sub.get("salario_base_mensual_convenio") or 1650.0)
@@ -585,15 +609,18 @@ async def aplicar_subsector(
     cmin_s = float(bench_sub.get("clientes_dia_por_puesto_min") or 0)
     cmax_s = float(bench_sub.get("clientes_dia_por_puesto_max") or 0)
     if cmin_s > 0 and cmax_s > 0 and emp_m2 > 0 and estimados.business_model_type == "appointment_based":
-        puestos = max(1, math.floor(_m2 / emp_m2))
-        nueva_base = max(1.0, round(puestos * (cmin_s + cmax_s) / 2 * _DEFAULT_OCCUPANCY, 1))
-        nueva_max  = float(puestos * cmax_s)
+        _horas_sub   = float(bench_sub.get("horas_apertura_dia", 9.0))
+        _modelo_sub  = _core_get_modelo(sector)
+        _staff_sub   = max(1, math.floor(_m2 / emp_m2))
+        _cap_sub     = _core_physical_capacity(_modelo_sub, _m2, bench_sub, _staff_sub, _horas_sub)
+        _demand_sub  = _core_estimate_demand(_modelo_sub, _m2, bench_sub, {}, {})
+        _clients_sub = _core_final_clients(_demand_sub, _cap_sub)
         estimados.clients_per_day = PE(
-            nueva_base,
-            f"Benchmarks {src}: {puestos} puesto(s) × {_DEFAULT_OCCUPANCY:.0%} ocupación",
-            "media", 1.0, max(nueva_max, 20.0),
+            _clients_sub,
+            f"Benchmarks {src}: {_staff_sub} puesto(s) × {_DEFAULT_OCCUPANCY:.0%} ocupación",
+            "media", 1.0, max(_cap_sub, 20.0),
         )
-        estimados.max_capacity = nueva_max
+        estimados.max_capacity = _cap_sub
 
     # Equipamiento: actualizar si el subsector tiene rangos propios
     eq_min = float(bench_sub.get("equipamiento_base_min") or 0)
@@ -605,6 +632,7 @@ async def aplicar_subsector(
             f"Benchmarks {src}: {eq_min:.0f}–{eq_max:.0f}€",
             "baja", eq_min, eq_max,
         )
+
 
 
 # Alias para importación desde api/financiero.py

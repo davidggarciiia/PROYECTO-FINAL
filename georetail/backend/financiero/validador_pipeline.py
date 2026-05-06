@@ -198,7 +198,8 @@ def run_pipeline(inp: BusinessInput) -> PipelineResult:
 
     # PASO 2 — Benchmarks
     bench    = _BENCH.get(inp.sector, _BENCH["_default"])
-    duracion = inp.duracion_servicio or bench["duracion_min"]
+    # duracion solo tiene sentido para modelo "labor"; otros modelos no tienen agenda por servicio
+    duracion = inp.duracion_servicio or (bench["duracion_min"] if modelo == "labor" else None)
     rotacion = inp.rotacion_mesas or bench["rotacion"]
     benchmarks = _paso2_benchmarks(bench, modelo)
 
