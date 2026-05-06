@@ -92,7 +92,8 @@ def _has_key(proveedor: str) -> bool:
 
 async def completar(mensajes: list[dict], sistema: str, endpoint: str,
                     session_id: Optional[str] = None, max_tokens: int = 1500,
-                    temperature: float = 0.3, requiere_json: bool = False) -> str:
+                    temperature: float = 0.3, requiere_json: bool = False,
+                    timeout: int = _TIMEOUT) -> str:
     if requiere_json:
         sistema += "\n\nRespond ONLY with valid JSON. No additional text or markdown."
 
@@ -107,7 +108,7 @@ async def completar(mensajes: list[dict], sistema: str, endpoint: str,
         try:
             texto, ti, to = await asyncio.wait_for(
                 _llamar(proveedor, mensajes, sistema, max_tokens, temperature),
-                timeout=_TIMEOUT,
+                timeout=timeout,
             )
             lat = int((time.perf_counter() - t0) * 1000)
             await r.set("llm:proveedor_activo", proveedor)
@@ -122,8 +123,10 @@ async def completar(mensajes: list[dict], sistema: str, endpoint: str,
             logger.warning("Server error %s → exhausted 15min", proveedor)
             await r.setex(f"llm:exhausted:{proveedor}", 900, "1"); continue
         except asyncio.TimeoutError:
-            logger.warning("Timeout %s (%ds) → exhausted 15min", proveedor, _TIMEOUT)
-            await r.setex(f"llm:exhausted:{proveedor}", 900, "1"); continue
+            # No marcar como exhausted por timeout — el proveedor puede ser lento
+            # puntualmente (requests largos como el roadmap legal de 3000 tokens).
+            logger.warning("Timeout %s (%ds) → trying next provider", proveedor, timeout)
+            continue
         except Exception as e:
             logger.error("Error inesperado %s: %s", proveedor, e); continue
 

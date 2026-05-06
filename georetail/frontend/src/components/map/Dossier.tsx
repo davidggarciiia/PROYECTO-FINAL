@@ -58,6 +58,7 @@ export default function Dossier({ zone, detalle, loading, onClose, sessionId }: 
   // Reset del estado cuando cambia la zona.
   useEffect(() => {
     activeZoneRef.current = zone.zona_id;
+    setTab("score");
     setCompetencia(null);
     setCompetenciaError(null);
     setLoadingComp(false);
