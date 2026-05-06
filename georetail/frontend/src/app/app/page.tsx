@@ -7,7 +7,6 @@ import SearchBox from "@/components/SearchBox";
 import Statusbar from "@/components/map/Statusbar";
 import MapCanvas, { type BasemapId } from "@/components/map/MapCanvas";
 import HudCoord from "@/components/map/HudCoord";
-import HudLegend from "@/components/map/HudLegend";
 import BasemapSwitcher from "@/components/map/BasemapSwitcher";
 import ZoneIndex from "@/components/map/ZoneIndex";
 import ActiveDock from "@/components/map/ActiveDock";
@@ -277,8 +276,6 @@ export default function AppPage() {
           onExpand={() => setDossierOpen(true)}
           onNav={handleNav}
         />
-
-        <HudLegend />
 
         <SearchBox
           sessionId={sessionId}

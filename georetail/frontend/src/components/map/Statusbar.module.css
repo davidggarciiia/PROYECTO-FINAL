@@ -1,5 +1,5 @@
 .statusbar {
-  height: 52px;
+  height: 68px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
   display: grid;
@@ -82,28 +82,29 @@
 }
 
 .help {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   font-family: var(--font-sans);
-  background: transparent;
-  border: 1px solid var(--border);
+  background: var(--accent);
+  border: 1px solid var(--accent);
   border-radius: var(--radius-xs);
-  color: var(--text-muted);
+  color: #fff;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition: border-color 0.15s, color 0.15s, background 0.15s, box-shadow 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
   text-transform: none;
   letter-spacing: 0;
+  box-shadow: 0 0 12px var(--accent-glow);
 }
 .help:hover {
-  border-color: var(--border-hover);
-  color: var(--text);
-  background: var(--surface-2);
+  background: var(--accent-light);
+  border-color: var(--accent-light);
+  box-shadow: 0 0 22px var(--accent-glow);
 }
 
 .restart {
@@ -131,7 +132,7 @@
 
 @media (max-width: 900px) {
   .statusbar {
-    height: 48px;
+    height: 60px;
     grid-template-columns: auto 1fr auto auto;
     padding: 0 12px;
     gap: 12px;

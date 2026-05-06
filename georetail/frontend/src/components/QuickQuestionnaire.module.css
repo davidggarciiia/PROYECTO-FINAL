@@ -311,20 +311,23 @@
 
 .btnGhost {
   background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
+  border: 1.5px solid var(--accent);
+  color: var(--accent-light);
   font-size: 14px;
+  font-weight: 600;
   padding: 11px 22px;
   min-height: 48px;
   border-radius: 10px;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, box-shadow 0.2s ease;
 }
 .btnGhost:hover:not(:disabled) {
-  color: var(--text);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(124, 58, 237, 0.1);
+  border-color: var(--accent-light);
+  color: #fff;
+  box-shadow: 0 0 14px var(--accent-glow);
 }
-.btnGhost:disabled { opacity: 0.4; cursor: not-allowed; }
+.btnGhost:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .btnNext {
   min-width: 200px;

@@ -88,7 +88,10 @@ export default function ActiveDock({
                     style={{ animationDelay: `${i * 0.12}s` }}
                   />
                 ) : (
-                  <div className={styles.fill} style={{ height: `${barPct}%` }} />
+                  <div
+                    className={styles.fill}
+                    style={{ height: `${barPct}%`, animationDelay: `${i * 0.055}s` }}
+                  />
                 )}
               </div>
               <div className={styles.barLabel}>{d.short}</div>

@@ -126,6 +126,17 @@
   50%       { height: 82%; }
 }
 
+@keyframes barReveal {
+  from {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
 .bars {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
@@ -176,7 +187,8 @@
   right: 0;
   bottom: 0;
   background: var(--text-muted);
-  transition: height 0.3s ease;
+  transform-origin: bottom center;
+  animation: barReveal 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .hi .fill {
