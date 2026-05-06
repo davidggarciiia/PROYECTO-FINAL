@@ -219,7 +219,7 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
     _top_id         = _base_concepts[0].get("id", "") if _base_concepts else ""
     subsector = _top_id.split(".")[-1] if _top_id.count(".") >= 2 else ""
     if not subsector:
-        subsector = perfil.get("subsector_detectado") or ""
+        subsector = perfil.get("subsector_detectado") or perfil.get("subsector") or ""
 
     logger.info(
         "DEBUG financiero — sector=%r subsector=%r descripcion=%r top_concept_id=%r",
@@ -300,9 +300,13 @@ async def financiero(body: FinancieroRequest) -> FinancieroResponse:
         salario_base_mensual=float(_sal_base),
         duracion_servicio=float(_dur) if _dur else None,
     ))
-    # Aplicar el ajuste de clientes del pipeline (sólo si es más restrictivo)
+    # Aplicar ajuste de clientes del pipeline (sólo si es más restrictivo)
     if _pipeline_result.constraints["adjusted_clients"] < v["clients_per_day"]:
         v["clients_per_day"] = _pipeline_result.constraints["adjusted_clients"]
+    # Aplicar corrección de ticket del pipeline (siempre — corrige tickets fuera de mercado)
+    _adj_ticket = _pipeline_result.constraints.get("adjusted_ticket")
+    if _adj_ticket and abs(_adj_ticket - v["ticket_medio"]) > 0.01:
+        v["ticket_medio"] = _adj_ticket
     # CAMBIO 1+7: correcciones con capa explícita para trazabilidad
     _pipeline_corrections: list[dict] = [
         {
@@ -1126,9 +1130,9 @@ async def _get_o_calcular_estimados(
     precalc = await get_parametros_precalculados(zona_id=zona_id, sector=sector)
     if precalc:
         estimados = _row_to_estimados(precalc)
-        # Bug 2 fix: aplicar overrides de subsector sobre el caché semanal
-        # El pipeline semanal no conoce el subsector del usuario → ajustar ticket, margen y modelo
-        await aplicar_subsector(estimados, sector, subsector, descripcion, session_id)
+        # Aplicar overrides de subsector sobre el caché semanal:
+        # ticket, margen, modelo, reforma, empleados, salarios, clientes/día
+        await aplicar_subsector(estimados, sector, subsector, descripcion, session_id, perfil=perfil)
         return estimados
     logger.info(
         "Calculando parámetros en tiempo real zona=%s sector=%s subsector=%s",

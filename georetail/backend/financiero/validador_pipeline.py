@@ -241,6 +241,7 @@ def run_pipeline(inp: BusinessInput) -> PipelineResult:
         constraints={
             "max_daily_clients": round(theo_max, 1),
             "adjusted_clients":  round(adj.clientes, 1),
+            "adjusted_ticket":   round(adj.ticket, 2),
             "required_staff":    required_staff,
         },
         operational_validation={

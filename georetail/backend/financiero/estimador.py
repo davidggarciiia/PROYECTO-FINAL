@@ -354,11 +354,11 @@ async def _get_local(zona_id, perfil):
     async with get_db() as conn:
         if m2:
             r = await conn.fetchrow(
-                "SELECT id,m2,alquiler_mensual FROM locales WHERE zona_id=$1 AND disponible=TRUE AND planta='PB' ORDER BY ABS(m2-$2) LIMIT 1",
+                "SELECT id,m2,alquiler_mensual FROM locales WHERE zona_id=$1 AND esta_disponible=TRUE AND planta='PB' ORDER BY ABS(m2-$2) LIMIT 1",
                 zona_id, float(m2))
         else:
             r = await conn.fetchrow(
-                "SELECT id,m2,alquiler_mensual FROM locales WHERE zona_id=$1 AND disponible=TRUE AND planta='PB' ORDER BY alquiler_mensual ASC NULLS LAST LIMIT 1",
+                "SELECT id,m2,alquiler_mensual FROM locales WHERE zona_id=$1 AND esta_disponible=TRUE AND planta='PB' ORDER BY alquiler_mensual ASC NULLS LAST LIMIT 1",
                 zona_id)
     return dict(r) if r else {}
 
@@ -500,11 +500,13 @@ async def aplicar_subsector(
     subsector: str,
     descripcion: str = "",
     session_id: str = "",
+    perfil: dict | None = None,
 ) -> None:
     """
     Aplica overrides de subsector sobre parámetros precalculados (in-place).
     Flujo: benchmarks_subsector BD → LLM fallback si vacío → nada si ambos fallan.
     Usado para corregir el caché semanal que no conoce el subsector del usuario.
+    Actualiza ticket, margen, modelo, reforma, empleados, salarios y clientes/día.
     """
     bench_sub: dict = {}
     bench_source: str = "sector_default"
@@ -561,6 +563,59 @@ async def aplicar_subsector(
         estimados.business_model_type = "appointment_based"
     elif bench_sub.get("is_appointment_based") is False and estimados.business_model_type == "appointment_based":
         estimados.business_model_type = "retail_walkin"
+
+    # Reforma local: recalcular con rangos del subsector (más precisos que sector genérico)
+    _m2 = float((perfil or {}).get("m2_aprox") or 0) or 60.0
+    r_min = float(bench_sub.get("reforma_m2_min") or 0)
+    r_max = float(bench_sub.get("reforma_m2_max") or 0)
+    if r_min > 0 and r_max > 0:
+        nueva_reforma = round(_m2 * (r_min + r_max) / 2)
+        estimados.reforma_local = PE(
+            nueva_reforma,
+            f"Subsector {src}: {r_min:.0f}–{r_max:.0f}€/m² × {_m2:.0f}m²",
+            "media",
+            round(_m2 * r_min), round(_m2 * r_max),
+        )
+
+    # Personal: recalcular con empleados_por_m2 del subsector
+    emp_m2 = float(bench_sub.get("empleados_por_m2") or 0)
+    if emp_m2 > 0:
+        nuevo_n = max(1, math.ceil(_m2 / emp_m2))
+        if nuevo_n != estimados.num_empleados:
+            estimados.num_empleados = nuevo_n
+            sal = float(bench_sub.get("salario_base_mensual_convenio") or 1650.0)
+            total_sal = round(nuevo_n * sal * (1 + _SS_EMPRESA))
+            estimados.salarios_mensual = PE(
+                total_sal,
+                f"{nuevo_n} empleado(s) × {sal:.0f}€ × {1 + _SS_EMPRESA:.0%} SS — {src}",
+                "media",
+                round(total_sal * 0.6), round(total_sal * 1.5),
+            )
+
+    # Clientes/día para negocios de cita: recalcular con rangos del subsector
+    cmin_s = float(bench_sub.get("clientes_dia_por_puesto_min") or 0)
+    cmax_s = float(bench_sub.get("clientes_dia_por_puesto_max") or 0)
+    if cmin_s > 0 and cmax_s > 0 and emp_m2 > 0:
+        puestos = max(1, math.floor(_m2 / emp_m2))
+        nueva_base = max(1.0, round(puestos * (cmin_s + cmax_s) / 2 * _DEFAULT_OCCUPANCY, 1))
+        nueva_max  = float(puestos * cmax_s)
+        estimados.clients_per_day = PE(
+            nueva_base,
+            f"Benchmarks {src}: {puestos} puesto(s) × {_DEFAULT_OCCUPANCY:.0%} ocupación",
+            "media", 1.0, max(nueva_max, 20.0),
+        )
+        estimados.max_capacity = nueva_max
+
+    # Equipamiento: actualizar si el subsector tiene rangos propios
+    eq_min = float(bench_sub.get("equipamiento_base_min") or 0)
+    eq_max = float(bench_sub.get("equipamiento_base_max") or 0)
+    if eq_min > 0 and eq_max > 0:
+        nuevo_eq = round((eq_min + eq_max) / 2)
+        estimados.equipamiento = PE(
+            nuevo_eq,
+            f"Benchmarks {src}: {eq_min:.0f}–{eq_max:.0f}€",
+            "baja", eq_min, eq_max,
+        )
 
 
 # Alias para importación desde api/financiero.py
