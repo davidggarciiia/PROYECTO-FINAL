@@ -86,6 +86,24 @@
   padding: 3px 8px;
 }
 
+/* ── Aviso IA ── */
+.iaDisclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 13px;
+  background: var(--yellow-dim, rgba(245, 158, 11, 0.08));
+  border: 1px solid var(--yellow-border, rgba(245, 158, 11, 0.25));
+  border-left: 3px solid var(--yellow, #F59E0B);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  color: var(--text);
+  line-height: 1.55;
+  margin-bottom: 18px;
+}
+.iaDisclaimer svg { color: var(--yellow, #F59E0B); margin-top: 1px; }
+.iaDisclaimer strong { color: var(--text); font-weight: 700; }
+
 /* ── Sections ── */
 .section {
   padding: 20px 0 16px;

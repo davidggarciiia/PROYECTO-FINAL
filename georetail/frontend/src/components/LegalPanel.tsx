@@ -11,6 +11,25 @@ interface Props {
   sessionId: string;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getRootUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.hostname}/`;
+  } catch {
+    return url;
+  }
+}
+
+function getHostname(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function Skeleton({ h = 16, w = "100%" }: { h?: number; w?: string }) {
@@ -152,7 +171,7 @@ function TramiteCard({ tramite, isLast }: { tramite: TramiteLegal; isLast: boole
 
             {tramite.enlace && (
               <a
-                href={tramite.enlace}
+                href={getRootUrl(tramite.enlace)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={styles.tramiteEnlace}
@@ -166,7 +185,7 @@ function TramiteCard({ tramite, isLast }: { tramite: TramiteLegal; isLast: boole
                   />
                   <path d="M6.5 1.5h3v3M9.5 1.5L5.5 5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
                 </svg>
-                Acceder al trámite oficial
+                {getHostname(tramite.enlace)}
               </a>
             )}
           </div>
@@ -361,6 +380,18 @@ export default function LegalPanel({ zona, sessionId }: Props) {
             IA
           </span>
         </div>
+      </div>
+
+      {/* ── Aviso IA ── */}
+      <div className={styles.iaDisclaimer}>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
+          <path d="M7 1.5L12.5 11H1.5L7 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+          <path d="M7 5.5v3M7 10h.01" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        </svg>
+        <span>
+          <strong>Generado con IA — puede contener errores.</strong>{" "}
+          Esta información es orientativa y no constituye asesoramiento legal. Se recomienda contratar a un gestor o asesor especializado antes de iniciar cualquier trámite.
+        </span>
       </div>
 
       {/* ── Equipo externo ── */}
