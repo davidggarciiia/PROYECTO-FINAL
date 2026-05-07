@@ -381,7 +381,11 @@ def _score_manual(datos: dict, sector: dict) -> dict:
         "score_seguridad":          round(s_seg, 1),
         "score_turismo":            round(s_turismo, 1),
         "score_dinamismo":          round(s_dinamismo, 1),
-        "probabilidad_supervivencia": None,
+        # Sin modelo XGBoost cargado, mapeamos prob3a 1:1 desde score_global
+        # (el score ya integra todos los factores que el ML usaría como features).
+        # Cuando el XGBoost se entrene y cargue, _score_xgboost sobrescribe esto
+        # con la prob real del modelo (línea 406).
+        "probabilidad_supervivencia": round(max(0.0, min(1.0, score_global / 100.0)), 3),
         "shap_values":              None,
         "modelo_version":           "manual_v2",
     }

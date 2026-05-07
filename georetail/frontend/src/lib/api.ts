@@ -37,7 +37,7 @@ async function mockFetch<T>(data: T, ms = 700): Promise<T> {
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 export const api = {
-  buscar: async (body: BuscarRequest): Promise<BuscarResponse> => {
+  buscar: async (body: BuscarRequest, options?: RequestInit): Promise<BuscarResponse> => {
     if (USE_MOCK) {
       const { MOCK_BUSCAR } = await import("./mock");
       return mockFetch(MOCK_BUSCAR, 800);
@@ -45,6 +45,7 @@ export const api = {
     return apiFetch<BuscarResponse>("/api/buscar", {
       method: "POST",
       body: JSON.stringify(body),
+      ...options,
     });
   },
 
@@ -115,7 +116,11 @@ export const api = {
     });
   },
 
-  localDetalle: async (zona_id: string, session_id: string): Promise<LocalDetalleResponse> => {
+  localDetalle: async (
+    zona_id: string,
+    session_id: string,
+    options?: RequestInit,
+  ): Promise<LocalDetalleResponse> => {
     if (USE_MOCK) {
       const { getMockDetalle } = await import("./mock");
       return mockFetch(getMockDetalle(zona_id), 900);
@@ -123,6 +128,7 @@ export const api = {
     return apiFetch<LocalDetalleResponse>("/api/local", {
       method: "POST",
       body: JSON.stringify({ zona_id, session_id }),
+      ...options,
     });
   },
 
@@ -145,13 +151,59 @@ export const api = {
     );
   },
 
-  competencia: async (zona_id: string, session_id: string): Promise<CompetenciaDetalle> => {
+  competencia: async (
+    zona_id: string,
+    session_id: string,
+    options?: RequestInit,
+  ): Promise<CompetenciaDetalle> => {
     if (USE_MOCK) {
       const { getMockCompetencia } = await import("./mock");
       return mockFetch(getMockCompetencia(zona_id), 700);
     }
     const params = new URLSearchParams({ session_id });
-    return apiFetch<CompetenciaDetalle>(`/api/competencia/${encodeURIComponent(zona_id)}?${params.toString()}`);
+    return apiFetch<CompetenciaDetalle>(
+      `/api/competencia/${encodeURIComponent(zona_id)}?${params.toString()}`,
+      options,
+    );
+  },
+
+  analisisCompetenciaProfundo: async (
+    zona_id: string,
+    session_id: string,
+    sector?: string,
+    options?: RequestInit,
+  ): Promise<{
+    zona_id: string;
+    sector: string;
+    markdown: string;
+    num_amenazas: number;
+    generado_at: string;
+    from_cache: boolean;
+  }> => {
+    const params = new URLSearchParams({ session_id });
+    if (sector) params.set("sector", sector);
+    return apiFetch(
+      `/api/competencia/${encodeURIComponent(zona_id)}/analisis-profundo?${params.toString()}`,
+      { method: "POST", ...options },
+    );
+  },
+
+  analisisInfoNegocio: async (
+    negocio_id: string,
+    session_id: string,
+    options?: RequestInit,
+  ): Promise<{
+    negocio_id: string;
+    nombre: string;
+    markdown: string;
+    generado_at: string;
+    from_cache: boolean;
+  }> => {
+    const params = new URLSearchParams({ session_id });
+    return apiFetch(
+      `/api/competencia/negocio/${encodeURIComponent(negocio_id)}/info?${params.toString()}`,
+      { method: "POST", ...options },
+    );
   },
 
   dimensionTurismo: async (zona_id: string, session_id: string) => {
@@ -161,11 +213,33 @@ export const api = {
     );
   },
 
+  /**
+   * POST /api/dimension/{dim_key}/{zona_id}/narrativa
+   *
+   * Lectura LLM (50-60 palabras interpretativas) + 3 decisiones prácticas
+   * reescritas con números reales de la zona. Aplica a 6 dimensiones:
+   * flujo_peatonal, demografia, transporte, seguridad, turismo, dinamismo.
+   * Cache backend 30 días por (zona_id, dim_key, sector, perfil_hash).
+   */
+  dimensionNarrativa: async (
+    dim_key: string,
+    zona_id: string,
+    session_id: string,
+    options?: RequestInit,
+  ): Promise<import("./types").NarrativaDimension> => {
+    const params = new URLSearchParams({ session_id });
+    return apiFetch<import("./types").NarrativaDimension>(
+      `/api/dimension/${encodeURIComponent(dim_key)}/${encodeURIComponent(zona_id)}/narrativa?${params.toString()}`,
+      { method: "POST", ...options },
+    );
+  },
+
   financiero: async (
     zona_id: string,
     session_id: string,
     overrides: Record<string, number> = {},
     business_context?: BusinessContext,
+    options?: RequestInit,
   ): Promise<FinancieroResponse> => {
     if (USE_MOCK) {
       const { MOCK_FINANCIERO } = await import("./mock");
@@ -187,6 +261,7 @@ export const api = {
         overrides,
         ...(business_context ? { business_context } : {}),
       }),
+      ...options,
     });
   },
 

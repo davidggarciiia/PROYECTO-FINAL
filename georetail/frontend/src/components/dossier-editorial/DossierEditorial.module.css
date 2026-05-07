@@ -1,0 +1,174 @@
+/* DossierEditorial — informe a página completa transparente sobre el mapa.
+   Layout 2 cols: TOC sticky + main scrollable. Glass alpha bajo para que se
+   vea el mapa detrás. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  /* Glass overlay limpio: alpha ALTO sobre el mapa para que el dossier sea
+     legible sin distracciones de fondo. El blur se mantiene moderado para
+     no enturbiar el texto. */
+  background: rgba(9, 6, 15, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  animation: overlayIn 0.24s ease;
+}
+
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  /* Padding visual: damos algo de aire abajo del colofón */
+  padding-bottom: 0;
+  /* En móviles muy estrechos no queremos scrolljacking */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Layout 2 cols ─────────────────────────────────────────────── */
+
+.layout {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 28px 40px 48px;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 36px;
+  /* IMPORTANTE: stretch (no start) para que .tocCol se estire a la altura
+     completa del grid row. Sin esto, .tocCol toma la altura mínima del TOC
+     y position: sticky no tiene rango para stickear → el TOC se queda
+     pegado arriba del documento y desaparece al hacer scroll. */
+  align-items: stretch;
+}
+
+.tocCol {
+  position: relative;
+  /* No definimos altura aquí — la hereda del grid stretch. El elemento
+     hijo .toc usa position: sticky y se queda pegado al top mientras
+     hacemos scroll dentro de .scroll. */
+}
+
+.main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  /* Sin background ni borde — cada sección lleva su propio card opaco. */
+  padding: 28px 0 24px;
+  animation: panelIn 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Loading + empty ──────────────────────────────────────────── */
+
+.loadingFull {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 80px 24px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.loadingDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-light);
+  animation: dotPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.3; transform: scale(0.7); }
+}
+
+.emptyDetail {
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+  padding: 32px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-hover);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-subtle);
+}
+
+/* ── Stop button (esquina inferior derecha cuando algo carga) ──── */
+
+.stopBtn {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 920;
+  min-width: 120px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid var(--red-border);
+  color: var(--red);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--shadow);
+  transition: background 0.15s, color 0.15s;
+}
+
+.stopBtn:hover {
+  background: rgba(239, 68, 68, 0.28);
+  color: #fecaca;
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+
+@media (max-width: 1024px) {
+  .layout {
+    grid-template-columns: 1fr;
+    padding: 22px 24px 36px;
+    gap: 18px;
+  }
+  .tocCol {
+    /* TOC se oculta a sí mismo a < 1024px (ver TOC.module.css) */
+    display: none;
+  }
+  .main {
+    padding: 22px 20px 18px;
+  }
+}
+
+@media (max-width: 720px) {
+  .layout {
+    padding: 16px 12px 28px;
+  }
+  .main {
+    padding: 18px 14px 14px;
+    gap: 12px;
+  }
+  .stopBtn {
+    right: 16px;
+    bottom: 16px;
+  }
+}

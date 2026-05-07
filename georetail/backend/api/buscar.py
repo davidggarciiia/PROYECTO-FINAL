@@ -32,10 +32,12 @@ from schemas.models import (
 )
 from api._utils import score_to_color
 from agente.validador import validar_negocio
-from scoring.taxonomia import subsector_valido
+from scoring.concepto.taxonomy import compilar_concepto_negocio, lookup_canonical_tag
+from scoring.nuances import nuances_resueltas
 from agente.refinador import generar_pregunta_senal, refinar
 from agente.traductor import traducir
 from scoring.motor import calcular_scores_batch
+from api._rareza import detectar_combinaciones_raras
 from db.sesiones import crear_sesion, get_sesion, guardar_busqueda, actualizar_sesion
 from db.zonas import filtrar_zonas_candidatas
 from db.redis_client import get_redis
@@ -105,29 +107,220 @@ class BuscarResponse(BaseModel):
         None,
         description="Mensaje para estados 'error_tipo_negocio' e 'inviable_legal'.",
     )
+    warnings: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Avisos sobre combinaciones inusuales en el cuestionario "
+            "(p. ej. ticket alto con presupuesto bajo). El frontend los muestra "
+            "como nota antes del listado de zonas."
+        ),
+    )
+    nuances_aplicadas: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Claves del catálogo `scoring/nuances.py` que el motor reconoció en "
+            "`PerfilRefinado.nuances_detected` y aplicó al ranking. Un chip de la "
+            "UI puede marcar «✓ aplicado» cuando el matiz aparezca aquí."
+        ),
+    )
 
 
-# ─── Helper ───────────────────────────────────────────────────────────────────
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+# ─── Capa de derivación: subsector → sector real interno ─────────────────────
+# El cuestionario presenta `tatuajes` bajo `estetica` y `shisha_lounge` bajo
+# `restauracion` (ver `api/opciones._SECTORES_OCULTOS`). Aquí restauramos el
+# sector real para que la taxonomía conceptual aplique los pesos y perfiles
+# específicos correctos. Sin esto, un tattoo studio caería en los pesos de
+# estetica genérica y perdería su perfil propio (citas_previas=0.92,
+# experiencial=0.72, etc.).
+
+_SUBSECTORES_TATUAJES = frozenset({
+    "tattoo_studio", "piercing_studio", "tattoo_gallery", "cosmetic_tattoo",
+    "fine_line_studio", "street_tattoo", "body_art_collective",
+})
+_SUBSECTORES_SHISHA = frozenset({
+    "classic_lounge", "premium_lounge", "terrace_lounge", "student_lounge",
+    "tourist_lounge", "music_lounge", "food_lounge",
+})
+
+
+def _derivar_sector_interno(subsector: str | None, sector_form: str) -> str:
+    """Devuelve el sector real interno desde el subsector.
+
+    Si el subsector pertenece a un sector "oculto" (que el cuestionario
+    presenta agrupado bajo otro), restauramos el sector original. Si no,
+    devolvemos el sector tal cual lo envió el form.
+    """
+    if subsector in _SUBSECTORES_TATUAJES:
+        return "tatuajes"
+    if subsector in _SUBSECTORES_SHISHA:
+        return "shisha_lounge"
+    return sector_form
+
+
+# Subsectores que típicamente operan con cita previa (alta `citas_previas`).
+# Se usa solo dentro de _perfil_hint_desde_form para inyectar la dim numérica
+# cuando el form indica uno de estos slugs canónicos.
+_SUBSECTORES_CITAS_PREVIAS = frozenset({
+    "tattoo_studio", "piercing_studio", "fine_line_studio", "cosmetic_tattoo",
+    "hair_salon", "barber_shop", "nail_studio", "brow_lash_bar",
+    "beauty_clinic", "skin_clinic", "day_spa", "tanning_studio",
+    "physio_clinic", "dental_clinic", "psychology_center",
+    "dermatology_clinic", "aesthetic_medicine", "nutritionist", "osteopathy",
+    "veterinary_clinic", "pilates_reformer", "personal_training",
+    "language_academy", "tutoring_center", "exam_prep_center",
+    "massage_center", "interior_design",
+})
+
+# Subsectores con experiencia/destino fuerte (alta `experiencial`).
+_SUBSECTORES_EXPERIENCIAL = frozenset({
+    "fine_dining", "cocktail_bar", "premium_lounge", "music_lounge",
+    "tourist_lounge", "day_spa", "concept_store", "tattoo_gallery",
+    "art_gallery", "cultural_space", "vermut_bar", "tapas_bar",
+})
+
+
+def _perfil_hint_desde_form(pe: PerfilEstructurado) -> dict[str, float]:
+    """Traduce los campos del cuestionario a las 8 dimensiones numéricas
+    del perfil_negocio (PROFILE_KEYS) que consumen `zona_ideal_desde_perfil` y
+    `score_bias_desde_perfil`.
+
+    Devuelve un dict parcial con solo las claves que se pueden inferir; los huecos
+    los rellena `_blend_profile` mezclando con el perfil del sector y los
+    base_concepts/modifiers del subsector.
+    """
+    hint: dict[str, float] = {}
+    op = pe.operacion or Operacion()
+    pub = pe.publico_objetivo or PublicoObjetivo()
+    ubi = pe.ubicacion_ideal or UbicacionIdeal()
+
+    # nivel_precio: combinación ticket_tier + nivel_socioeconomico
+    socio_to_price = {"bajo": 0.20, "medio": 0.40, "medio-alto": 0.65, "alto": 0.85}
+    parts: list[float] = []
+    if op.ticket_tier_p1_p5:
+        parts.append((op.ticket_tier_p1_p5 - 1) / 4.0)  # 1→0.0, 5→1.0
+    if pub.nivel_socioeconomico in socio_to_price:
+        parts.append(socio_to_price[pub.nivel_socioeconomico])
+    if parts:
+        hint["nivel_precio"] = round(sum(parts) / len(parts), 3)
+
+    # clientela_turismo + clientela_vecindario por flujo_tipo (con fallback a estilo_vida)
+    flujo_to_turismo = {"turistas": 0.85, "residentes": 0.05,
+                        "oficinas": 0.10, "estudiantes": 0.15, "mixto": 0.40}
+    flujo_to_vecindario = {"turistas": 0.10, "residentes": 0.90,
+                           "oficinas": 0.30, "estudiantes": 0.55, "mixto": 0.55}
+    if ubi.flujo_tipo in flujo_to_turismo:
+        hint["clientela_turismo"] = flujo_to_turismo[ubi.flujo_tipo]
+        hint["clientela_vecindario"] = flujo_to_vecindario[ubi.flujo_tipo]
+    elif pub.estilo_vida:
+        if "turistas" in pub.estilo_vida:
+            hint["clientela_turismo"] = 0.80
+            hint["clientela_vecindario"] = 0.15
+        elif "residentes" in pub.estilo_vida:
+            hint["clientela_turismo"] = 0.10
+            hint["clientela_vecindario"] = 0.85
+
+    # dependencia_flujo: combina modelo_servicio + tipo_calle + densidad
+    flujo_score = 0.50
+    flujo_count = 0
+    if op.modelo_servicio == "delivery_only":
+        flujo_score += -0.40; flujo_count += 1
+    elif op.modelo_servicio == "take_away":
+        flujo_score += +0.20; flujo_count += 1
+    if ubi.tipo_calle == "comercial_principal":
+        flujo_score += +0.30; flujo_count += 1
+    elif ubi.tipo_calle == "comercial_secundaria":
+        flujo_score += +0.15; flujo_count += 1
+    elif ubi.tipo_calle == "residencial":
+        flujo_score += -0.25; flujo_count += 1
+    elif ubi.tipo_calle == "peatonal":
+        flujo_score += +0.25; flujo_count += 1
+    if ubi.densidad_preferida == "alta":
+        flujo_score += +0.20; flujo_count += 1
+    elif ubi.densidad_preferida == "baja":
+        flujo_score += -0.30; flujo_count += 1
+    if flujo_count > 0:
+        hint["dependencia_flujo"] = round(max(0.0, min(1.0, flujo_score)), 3)
+
+    # horario_nocturno
+    horarios = set((op.horarios_apertura or []) + (pub.horarios_pico or []))
+    if "noche" in horarios:
+        hint["horario_nocturno"] = 0.75
+    elif "tarde" in horarios and "mañana" not in horarios and "manana" not in horarios:
+        hint["horario_nocturno"] = 0.30
+
+    # citas_previas: por subsector específico
+    if pe.subsector in _SUBSECTORES_CITAS_PREVIAS:
+        hint["citas_previas"] = 0.85
+
+    # sensibilidad_alquiler: presupuesto + escala_operativa
+    if pe.presupuesto_max:
+        if pe.presupuesto_max < 1500:
+            hint["sensibilidad_alquiler"] = 0.85
+        elif pe.presupuesto_max < 2500:
+            hint["sensibilidad_alquiler"] = 0.60
+        elif pe.presupuesto_max < 4000:
+            hint["sensibilidad_alquiler"] = 0.40
+        else:
+            hint["sensibilidad_alquiler"] = 0.25
+    if op.escala_operativa == "solo":
+        hint["sensibilidad_alquiler"] = max(hint.get("sensibilidad_alquiler", 0.50), 0.75)
+
+    # experiencial: ticket alto o subsector específico
+    if op.ticket_tier_p1_p5 and op.ticket_tier_p1_p5 >= 4:
+        hint["experiencial"] = 0.65
+    if pe.subsector in _SUBSECTORES_EXPERIENCIAL:
+        hint["experiencial"] = max(hint.get("experiencial", 0.40), 0.75)
+
+    return hint
+
 
 def _validacion_desde_perfil_estructurado(pe: PerfilEstructurado) -> dict:
-    """
-    Construye el `dict validacion` que normalmente devuelve `validar_negocio` a
-    partir del cuestionario estructurado. No llama al LLM: todos los campos se
-    derivan del formulario.
+    """Construye el `dict validacion` desde el cuestionario estructurado.
 
-    El subsector se valida contra taxonomia.py antes de usarlo. Si no pertenece
-    al sector declarado se descarta silenciosamente para no contaminar el scoring.
+    NO llama al LLM. El subsector se valida contra la taxonomía conceptual
+    (`scoring/concepto/taxonomy.py`) que es la que el form usa como fuente
+    de slugs (`specialty_coffee`, `coworking_office`...). La taxonomía
+    `scoring/taxonomia.py` solo se usa en pipelines de scraping con slugs
+    distintos (`cafeteria`, `pizzeria`...) — NO aquí.
+
+    También compila un `concepto_negocio` rico inyectando un `perfil_hint`
+    derivado del form (`_perfil_hint_desde_form`). Eso garantiza que la
+    `zona_ideal` y los `pesos_scoring` sean específicos a la idea, no
+    genéricos del sector.
+
+    El cuestionario agrupa los subsectores de tatuajes bajo `estetica` y los
+    de shisha_lounge bajo `restauracion` para no saturar el dropdown. Aquí
+    `_derivar_sector_interno` restaura el sector real interno antes de
+    compilar el concepto, para que se apliquen los pesos y perfiles
+    específicos (citas_previas alto en tatuajes, horario_nocturno alto en
+    shisha, etc.).
     """
-    sector = pe.sector or "desconocido"
-    # Validar que el subsector pertenezca al sector declarado (taxonomia.py es la fuente de verdad)
-    subsector_validado = (
-        pe.subsector
-        if (pe.subsector and subsector_valido(sector, pe.subsector))
-        else None
-    )
+    sector_form = pe.sector or "desconocido"
+    sector = _derivar_sector_interno(pe.subsector, sector_form)
+
+    # Validación: ¿el slug del subsector existe en la taxonomía conceptual?
+    subsector_canonical = lookup_canonical_tag(pe.subsector) if pe.subsector else None
+    subsector_validado = pe.subsector if subsector_canonical else None
+
+    # idea_tags lleva el slug ORIGINAL del form — `compilar_concepto_negocio`
+    # lo resuelve internamente vía `lookup_canonical_tag`.
     idea_tags: list[str] = []
     if subsector_validado:
         idea_tags.append(subsector_validado)
+
+    # Compilar concepto_negocio con el perfil_hint derivado del form. Esto
+    # activa una zona_ideal específica + score_bias modulados por la idea,
+    # incluso cuando el form solo trae sector + subsector.
+    perfil_hint = _perfil_hint_desde_form(pe)
+    concepto_negocio = compilar_concepto_negocio(
+        sector=sector,
+        idea_tags=idea_tags,
+        perfil_hint=perfil_hint,
+    )
+    perfil_negocio = concepto_negocio.get("perfil_negocio") or {}
+
     return {
         "es_retail":              True,
         "inviable_legal":         False,
@@ -137,8 +330,8 @@ def _validacion_desde_perfil_estructurado(pe: PerfilEstructurado) -> dict:
         "sector_detectado":       sector,
         "subsector_detectado":    subsector_validado,
         "idea_tags":              idea_tags,
-        "perfil_negocio":         {},
-        "concepto_negocio":       {},
+        "perfil_negocio":         perfil_negocio,
+        "concepto_negocio":       concepto_negocio,
         "variables_conocidas":    {},
         "preguntas_necesarias":   [],
     }
@@ -218,13 +411,16 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
 
     # ── 1. Sesión ─────────────────────────────────────────────────────────────
     # Si viene el cuestionario estructurado, sus filtros prácticos tienen
-    # precedencia sobre los `presupuesto_max/m2/distritos` del cuerpo raíz.
+    # precedencia sobre los `presupuesto_max/m2/distritos` del cuerpo raíz —
+    # pero solo cuando el campo concreto del PE NO es None. Si el PE no setea
+    # el campo, hacemos fallback al body raíz para no descartar filtros que el
+    # frontend del cuestionario quick puede enviar a nivel raíz.
     pe = body.perfil_estructurado
     filtros_efectivos = {
-        "presupuesto_max": pe.presupuesto_max if pe else body.presupuesto_max,
-        "m2_min":          pe.m2_min          if pe else body.m2_min,
-        "m2_max":          pe.m2_max          if pe else body.m2_max,
-        "distritos":       pe.distritos       if pe else body.distritos,
+        "presupuesto_max": (pe.presupuesto_max if (pe and pe.presupuesto_max is not None) else body.presupuesto_max),
+        "m2_min":          (pe.m2_min          if (pe and pe.m2_min          is not None) else body.m2_min),
+        "m2_max":          (pe.m2_max          if (pe and pe.m2_max          is not None) else body.m2_max),
+        "distritos":       (pe.distritos       if (pe and pe.distritos)                    else body.distritos),
     }
 
     session_id = body.session_id or str(uuid4())
@@ -324,15 +520,45 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
         # ── (A) Fast path — sin LLM salvo `matices` ─────────────────────────
         perfil_refinado_dict = _perfil_refinado_desde_form(pe)
         if pe.matices and pe.matices.strip():
+            # Cache Redis del refinador. Sin esto, el LLM (`refinar`) genera
+            # `nuances_detected` ligeramente distintas en cada llamada (temp=0.2)
+            # y eso desestabiliza el `perfil_hash` que usa el clasificador
+            # de competencia LLM → cache miss en cada búsqueda → 25s repetidos.
+            _TTL_MATICES = 3600
+            matices_clave = (
+                pe.sector + "|" + (pe.subsector or "") + "|" + pe.matices.strip()
+            )
+            matices_hash = hashlib.md5(matices_clave.encode("utf-8")).hexdigest()
+            redis = get_redis()
+            redis_key = f"matices_refinados:{matices_hash}"
+            matices_dict: Optional[dict] = None
             try:
-                perfil_matices = await refinar(
-                    descripcion=pe.matices.strip(),
-                    sector_detectado=pe.sector,
-                    tags_previos=[validacion["subsector_detectado"]] if validacion.get("subsector_detectado") else [],
-                    session_id=session_id,
-                )
-                # Fusionar nuances_detected y rellenar campos vacíos del form.
-                matices_dict = perfil_matices.model_dump()
+                cached_raw = await redis.get(redis_key)
+                if cached_raw:
+                    import json as _json
+                    matices_dict = _json.loads(cached_raw)
+            except Exception:
+                matices_dict = None
+
+            if matices_dict is None:
+                try:
+                    perfil_matices = await refinar(
+                        descripcion=pe.matices.strip(),
+                        sector_detectado=pe.sector,
+                        tags_previos=[validacion["subsector_detectado"]] if validacion.get("subsector_detectado") else [],
+                        session_id=session_id,
+                    )
+                    matices_dict = perfil_matices.model_dump()
+                    try:
+                        import json as _json
+                        await redis.set(redis_key, _json.dumps(matices_dict), ex=_TTL_MATICES)
+                    except Exception:
+                        pass
+                except Exception as exc:
+                    logger.warning("refinar(matices) falló: %s — se ignora", exc)
+                    matices_dict = None
+
+            if matices_dict:
                 perfil_refinado_dict["nuances_detected"] = (
                     matices_dict.get("nuances_detected") or []
                 )
@@ -342,8 +568,6 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
                     valor = matices_dict.get(bloque)
                     if valor:
                         perfil_refinado_dict[bloque] = valor
-            except Exception as exc:
-                logger.warning("refinar(matices) falló: %s — se ignora", exc)
 
         perfil["perfil_refinado"] = perfil_refinado_dict
         # No hay loop de señal en fast path (signal_preservation_score=100).
@@ -533,11 +757,33 @@ async def buscar(body: BuscarRequest, request: Request) -> BuscarResponse:
     except Exception as exc:
         logger.warning("No se pudo guardar busqueda en analytics: %s", exc)
 
+    # Warnings de combinaciones raras del cuestionario (vacío en flujo libre).
+    warnings = detectar_combinaciones_raras(pe) if pe is not None else []
+
+    # Nuances que el motor reconoció — se pasan al front para mostrar
+    # «✓ aplicado al ranking» en cada chip del campo `matices`.
+    nuances_in = list(perfil_refinado_dict.get("nuances_detected") or [])
+    nuances_resueltas_set, nuances_no_resueltas = nuances_resueltas(nuances_in)
+    nuances_input_aplicadas = [n for n in nuances_in if n not in nuances_no_resueltas]
+
+    # Persistir en el perfil_refinado para que `/api/local` y el dossier puedan
+    # marcar los chips como aplicados sin recalcular el matching.
+    if perfil_refinado_dict and nuances_input_aplicadas:
+        perfil_refinado_dict["nuances_input_aplicadas"] = nuances_input_aplicadas
+        # Refrescar el perfil persistido en la sesión con esta info.
+        perfil["perfil_refinado"] = perfil_refinado_dict
+        try:
+            await actualizar_sesion(session_id, {"perfil": perfil})
+        except Exception as exc:
+            logger.debug("No se pudo persistir nuances_input_aplicadas: %s", exc)
+
     return BuscarResponse(
         session_id=session_id,
         estado=EstadoBusqueda.OK,
         zonas=zonas_response,
         total_zonas_analizadas=total_candidatas,
+        warnings=warnings,
+        nuances_aplicadas=sorted(nuances_resueltas_set),
     )
 
 

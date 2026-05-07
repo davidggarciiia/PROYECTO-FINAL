@@ -1,0 +1,278 @@
+/* VizFlujo — reloj 24h con datos derivados de las franjas vz_flujo. */
+
+.fig {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(280px, 0.85fr);
+  gap: 28px;
+  padding: 24px 28px;
+  background: var(--bg);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius);
+  align-items: center;
+}
+
+.fig .figHead { grid-column: 1 / -1; }
+
+@media (max-width: 720px) {
+  .fig {
+    grid-template-columns: 1fr;
+  }
+}
+
+.figHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.figTitle {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.figTitle strong {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  color: var(--text-subtle);
+  margin-right: 8px;
+}
+
+.figSub {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-subtle);
+  letter-spacing: 0.05em;
+}
+
+/* ── Reloj ────────────────────────────────────────────────────── */
+
+.clock {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.clock svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.clockCenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  text-align: center;
+  gap: 3px;
+}
+
+.clockBig {
+  font-family: var(--font-sans);
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.clockUnit {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+}
+
+.clockDelta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid;
+}
+
+.clockDelta_green  { color: var(--green);  background: var(--green-dim);  border-color: var(--green-border); }
+.clockDelta_yellow { color: var(--yellow); background: var(--yellow-dim); border-color: var(--yellow-border); }
+.clockDelta_red    { color: var(--red);    background: var(--red-dim);    border-color: var(--red-border); }
+
+/* ── Franjas ──────────────────────────────────────────────────── */
+
+.sidePanel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reading {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-light);
+  border-radius: var(--radius-sm);
+}
+
+.reading span {
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--accent-light);
+}
+
+.reading p {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.reading div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+}
+
+.reading strong {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.reading small {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.franjas {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.franja {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.franjaMax {
+  border-color: var(--accent-border);
+  background: var(--accent-weak);
+}
+
+.franjaIcon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.franjaLabel {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.franjaMax .franjaLabel {
+  color: var(--accent-light);
+}
+
+.franjaPct {
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1;
+}
+
+.franjaMax .franjaPct {
+  color: var(--accent-light);
+}
+
+/* ── Foot ─────────────────────────────────────────────────────── */
+
+.foot {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-subtle);
+  letter-spacing: 0.04em;
+}
+
+/* ── Empty ────────────────────────────────────────────────────── */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  padding: 32px;
+  background: var(--bg);
+  border: 1px dashed var(--border-hover);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.emptyEyebrow {
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.empty p {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}

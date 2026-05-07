@@ -1,0 +1,295 @@
+/* Ledger — libro mayor de 7 dimensiones.
+   Mismo lenguaje visual que ZoneIndex (numeración tabular grande, nombre +
+   subtitle, score grande con color semántico), pero con header de sección
+   editorial (§ I · LIBRO MAYOR). */
+
+.ledger {
+  background: var(--bg);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-hover);
+  background: var(--bg);
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.tick {
+  color: var(--accent);
+  margin-right: 6px;
+}
+
+.headHint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-subtle);
+}
+
+/* ── List ─────────────────────────────────────────────────────── */
+
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 90px 88px;
+  grid-template-rows: auto;
+  grid-template-areas:
+    "num body score weight"
+    "bar bar bar bar";
+  column-gap: 14px;
+  row-gap: 10px;
+  padding: 14px 18px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  font-family: inherit;
+  color: var(--text);
+  transition: background 0.12s;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.row:focus-visible {
+  background: var(--accent-weak);
+  outline: none;
+}
+
+.rowActive {
+  background: var(--accent-weak);
+}
+
+.rowActive::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent);
+}
+
+/* ── Num (igual estética que ZoneIndex: peso 500, tabular, -0.04em) ─ */
+
+.num {
+  grid-area: num;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 28px;
+  letter-spacing: 0;
+  color: var(--text);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Body ─────────────────────────────────────────────────────── */
+
+.body {
+  grid-area: body;
+  min-width: 0;
+}
+
+.nameTop {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 16px;
+  letter-spacing: 0;
+  color: var(--text);
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nameSub {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Score ────────────────────────────────────────────────────── */
+
+.scoreCol {
+  grid-area: score;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  gap: 4px;
+}
+
+.score {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 26px;
+  letter-spacing: 0;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.score_hi  { color: var(--green); }
+.score_mid { color: var(--yellow); }
+.score_lo  { color: var(--red); }
+.score_na  { color: var(--text-subtle); }
+
+.bandLabel {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+
+.bandLabel_hi  { color: var(--green); }
+.bandLabel_mid { color: var(--yellow); }
+.bandLabel_lo  { color: var(--red); }
+.bandLabel_na  { color: var(--text-subtle); }
+
+/* ── Weight pill ──────────────────────────────────────────────── */
+
+.weightCol {
+  grid-area: weight;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  text-align: right;
+}
+
+.weight {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-weak);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-light);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.weightUp {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--green);
+}
+
+.weightDown {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--red);
+}
+
+.weightHint {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-subtle);
+  text-transform: none;
+  text-align: right;
+}
+
+/* ── Bar ──────────────────────────────────────────────────────── */
+
+.barTrack {
+  grid-area: bar;
+  height: 3px;
+  background: var(--border-hover);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.barFill_hi  { background: var(--green); }
+.barFill_mid { background: var(--yellow); }
+.barFill_lo  { background: var(--red); }
+.barFill_na  { background: var(--text-subtle); }
+
+/* ── Banda izquierda 3px de color (sello del libro mayor) ─────── */
+
+.row_hi  { box-shadow: inset 3px 0 0 0 rgba(16, 185, 129, 0.35); }
+.row_mid { box-shadow: inset 3px 0 0 0 rgba(245, 158, 11, 0.35); }
+.row_lo  { box-shadow: inset 3px 0 0 0 rgba(239, 68, 68, 0.35); }
+.row_na  { box-shadow: inset 3px 0 0 0 rgba(255, 255, 255, 0.05); }
+
+/* La barra activa redibuja la marca lateral en color accent */
+.rowActive.row_hi,
+.rowActive.row_mid,
+.rowActive.row_lo,
+.rowActive.row_na {
+  box-shadow: inset 3px 0 0 0 var(--accent);
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+
+@media (max-width: 720px) {
+  .row {
+    grid-template-columns: 36px minmax(0, 1fr) 64px;
+    grid-template-areas:
+      "num body score"
+      "bar bar bar"
+      "weight weight weight";
+    padding: 12px 14px;
+  }
+  .num { font-size: 22px; }
+  .nameTop { font-size: 14px; }
+  .nameSub { font-size: 10.5px; }
+  .score { font-size: 22px; }
+  .weightCol {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .weightHint { text-align: left; }
+}

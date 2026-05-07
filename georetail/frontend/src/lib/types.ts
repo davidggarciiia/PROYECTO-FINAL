@@ -46,6 +46,9 @@ export interface CompetidorCercano {
   es_complementario?: boolean;
   es_vulnerable?: boolean;
   amenaza_score?: number;
+  relacion_competitiva?: "directa" | "sustitutiva" | "complementaria" | "irrelevante" | null;
+  confianza_relacion?: number | null;
+  motivo_relacion?: string | null;
   resenas_resumen?: ResenasResumen | null;
   resenas_destacadas?: ResenaDestacada[];
 }
@@ -96,6 +99,14 @@ export interface CompetenciaDetalle {
   amenaza_incumbentes: number;
   oportunidad_mercado: number;
   score_complementarios: number;
+  /**
+   * score_global recalculado con `score_competencia` LLM (manual_v2 weights).
+   * Cuando viene definido el gauge del Lede / Ledger lo usa en lugar del
+   * score_global heurístico que viene de /api/local. Si el backend no pudo
+   * recomputarlo (faltan dim scores en BD) llega `null` y el frontend cae al
+   * fallback original.
+   */
+  score_global_calibrated?: number | null;
   num_directos?: number;
   pct_vulnerables?: number;
   hhi_index: number;
@@ -166,6 +177,29 @@ export interface ScoresDimensiones {
   dinamismo?: number;
 }
 
+export interface IncidentSerieMes {
+  mes: string;          // 'YYYY-MM'
+  incendis: number;
+  convivencia: number;
+  transit: number;
+  seguretat: number;
+  serveis: number;
+  altres: number;
+  total: number;
+}
+
+export interface IncidentCategoriaTotal {
+  categoria:
+    | "incendis"
+    | "convivencia"
+    | "transit"
+    | "seguretat"
+    | "serveis"
+    | "altres";
+  n_total: number;
+  pct: number;          // 0..100
+}
+
 export interface SeguridadDetalle {
   incidencias_por_1000hab?: number;
   hurtos_por_1000hab?: number;
@@ -175,6 +209,9 @@ export interface SeguridadDetalle {
   comisarias_1km?: number;
   dist_comisaria_m?: number;
   seguridad_barri_score?: number;
+  // Nuevos (incidents-gestionats-gub)
+  serie_12m?: IncidentSerieMes[] | null;
+  top_categorias?: IncidentCategoriaTotal[] | null;
 }
 
 export interface EntornoComercialDetalle {
@@ -225,6 +262,12 @@ export interface PerfilRefinado {
   operacion: Operacion;
   ubicacion_ideal: UbicacionIdeal;
   nuances_detected: string[];
+  /**
+   * Subconjunto de `nuances_detected` que el motor de scoring ha reconocido
+   * en el catálogo `scoring/nuances.py` y aplicado al ranking. El dossier los
+   * marca con un tag «✓ aplicado al ranking». Vacío si ninguno encajó.
+   */
+  nuances_input_aplicadas?: string[];
   signal_preservation_score: number;
 }
 
@@ -256,9 +299,19 @@ export interface ZonaDetalle {
   perfil_refinado?: PerfilRefinado | null;
   pesos_modulados?: Record<string, number> | null;
   flujo_peatonal_dia?: { manana: number; tarde: number; noche: number };
+  poblacion?: number;
+  densidad_hab_km2?: number;
   renta_media_hogar?: number;
+  renta_media_uc?: number;
+  renta_mediana_uc?: number;
   edad_media?: number;
+  pct_poblacio_25_44?: number;
   pct_extranjeros?: number;
+  gini?: number;
+  p80_p20?: number;
+  tamano_hogar?: number;
+  hogares_con_menores?: number;
+  personas_solas?: number;
   score_turismo?: number;
   vcity_flujo_peatonal?: number;
   nivel_estudios_alto_pct?: number;
@@ -266,6 +319,7 @@ export interface ZonaDetalle {
   airbnb_density_500m?: number;
   airbnb_occupancy_est?: number;
   booking_hoteles_500m?: number;
+  dist_landmark_top3_m?: number;
   precio_alquiler_m2?: number;
   hhi_index?: number;
   num_directos?: number;
@@ -285,6 +339,8 @@ export interface ZonaDetalle {
   entorno_detalle?: EntornoComercialDetalle | null;
   competidores_cercanos: CompetidorCercano[];
   alertas: AlertaZona[];
+  /** Serie mensual aperturas/cierres últimos 24 m (para viz Dinamismo). */
+  serie_aperturas_cierres_24m?: { mes: string; aperturas: number; cierres: number }[];
   analisis_ia?: AnalisisIADetallado | null;
   explicaciones_dimensiones?: Record<string, ExplicacionDimension>;
   impacto_modelo_por_dimension?: Record<string, ImpactoModeloDimension>;
@@ -295,6 +351,8 @@ export interface ZonaDetalle {
 export interface DimensionTurismoDetalle {
   zona_id: string;
   zona_nombre: string;
+  zona_lat?: number | null;
+  zona_lng?: number | null;
   radio_m: number;
   score_turismo: number | null;
   resumen: string;
@@ -306,6 +364,7 @@ export interface DimensionTurismoDetalle {
     booking_hoteles_500m: number | null;
     dist_playa_m: number | null;
     dist_landmark_top3_m: number | null;
+    score_turismo_airbnb?: number | null;
     score_turismo_hut: number | null;
   };
   landmarks: Array<{
@@ -313,6 +372,8 @@ export interface DimensionTurismoDetalle {
     distancia_m: number;
     wikidata_id: string | null;
     peso: number | null;
+    lat?: number | null;
+    lng?: number | null;
   }>;
   hoteles: Array<{
     nombre: string;
@@ -320,12 +381,16 @@ export interface DimensionTurismoDetalle {
     estrellas: number | null;
     rating: number | null;
     distancia_m: number;
+    lat?: number | null;
+    lng?: number | null;
   }>;
   venues: Array<{
     nombre: string;
     tipo: string;
     fuente: string | null;
     distancia_m: number;
+    lat?: number | null;
+    lng?: number | null;
   }>;
 }
 
@@ -687,6 +752,10 @@ export interface ParadaCercana {
   nombre: string;
   distancia_m: number;
   tipo: TransporteTipo | string;
+  /** Coords + orden — para el mapa SVG del dossier editorial. */
+  lat?: number | null;
+  lng?: number | null;
+  orden?: number | null;
 }
 
 export interface LineaCercana {
@@ -704,5 +773,28 @@ export interface TransporteDetalleZona {
   total_lineas: number;
   total_paradas: number;
   lineas: LineaCercana[];
+  /** Centroide de la zona — para el "self" del mapa SVG. */
+  zona_lat?: number | null;
+  zona_lng?: number | null;
+}
+
+/**
+ * Respuesta de POST /api/dimension/{dim_key}/{zona_id}/narrativa.
+ * Lectura interpretativa LLM + 3 decisiones prácticas, generadas a partir
+ * de los datos reales de la zona y un catálogo de implicaciones operativas.
+ * Solo aplica a 6 dimensiones (competencia tiene su propio endpoint).
+ */
+export interface NarrativaDimension {
+  zona_id: string;
+  dim_key: string;
+  sector: string;
+  /** ~50-60 palabras interpretativas (no descriptivas). */
+  lectura: string;
+  /** Exactamente 3 decisiones reescritas con números reales. */
+  decisiones: string[];
+  /** ISO 8601 timestamp de generación. */
+  generado_at: string;
+  /** True si vino de cache PG (TTL 30 días). */
+  from_cache: boolean;
 }
 

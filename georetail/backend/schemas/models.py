@@ -125,6 +125,9 @@ class CompetidorCercano(BaseModel):
     es_vulnerable:          bool            = False
     es_competencia_directa_subsector: bool  = False  # mismo subsector exacto
     amenaza_score:          Optional[float] = None   # 0-100, gravity model individual
+    relacion_competitiva:   Optional[str]   = None   # directa|sustitutiva|complementaria|irrelevante
+    confianza_relacion:     Optional[float] = None
+    motivo_relacion:        Optional[str]   = None
     resenas_resumen:        Optional[ResenasResumen] = None
     resenas_destacadas:     list[ResenaDestacada] = Field(default_factory=list)
 
@@ -149,6 +152,12 @@ class CompetenciaDetalle(BaseModel):
     amenaza_incumbentes:    float           = 50.0
     oportunidad_mercado:    float           = 50.0
     score_complementarios:  float           = 50.0
+    # score_global recalculado con score_competencia LLM (manual_v2 weights).
+    # Permite al frontend mostrar un gauge calibrado consistente con el LLM una
+    # vez resuelto /api/competencia. Si por la razón que sea no se puede
+    # recomputar (faltan dim scores en BD), queda en None y el frontend cae al
+    # score_global heurístico de /api/local.
+    score_global_calibrated: Optional[float] = None
     # Métricas
     num_directos:           int             = 0
     pct_vulnerables:        float           = 0.0
@@ -164,6 +173,51 @@ class CompetenciaDetalle(BaseModel):
     # Metadatos
     fuente:                 str             = "google_places"
     datos_calculados:       bool            = True   # False si viene de BD precalculada
+
+
+class AnalisisProfundoResponse(BaseModel):
+    """Respuesta de POST /api/competencia/{zona_id}/analisis-profundo.
+
+    `markdown` contiene el informe completo (secciones: Posicionamiento general,
+    Top diferenciadores, Gaps y oportunidades, Recomendaciones).
+    """
+    zona_id:      str
+    sector:       str
+    markdown:     str
+    num_amenazas: int
+    generado_at:  str         # ISO 8601
+    from_cache:   bool
+
+
+class AnalisisNegocioResponse(BaseModel):
+    """Respuesta de POST /api/competencia/negocio/{negocio_id}/info.
+
+    Markdown con secciones: Concepto, Qué lo distingue, Público típico,
+    Lo que dicen las reseñas, Notas (opcional).
+    """
+    negocio_id:  str
+    nombre:      str
+    markdown:    str
+    generado_at: str          # ISO 8601
+    from_cache:  bool
+
+
+class NarrativaDimensionResponse(BaseModel):
+    """Respuesta de POST /api/dimension/{dim_key}/{zona_id}/narrativa.
+
+    Lectura interpretativa (50-60 palabras) + 3 decisiones prácticas
+    generadas por LLM a partir de los datos reales de la zona y un
+    catálogo de implicaciones operativas (templates por dim×sector).
+    Cubre 6 dimensiones: flujo_peatonal, demografia, transporte, seguridad,
+    turismo, dinamismo. Competencia tiene su propio endpoint.
+    """
+    zona_id:     str
+    dim_key:     str
+    sector:      str
+    lectura:     str
+    decisiones:  list[str]
+    generado_at: str          # ISO 8601
+    from_cache:  bool
 
 
 class AlertaZona(BaseModel):
@@ -224,8 +278,37 @@ class ScoreDetalle(BaseModel):
     turismo:           Optional[float] = None
 
 
+class IncidentSerieMes(BaseModel):
+    """Una entrada del 12-month trend de incidencias GU (incidents-gestionats-gub)."""
+    mes:         str             # YYYY-MM
+    incendis:    int   = 0
+    convivencia: int   = 0
+    transit:     int   = 0
+    seguretat:   int   = 0
+    serveis:     int   = 0
+    altres:      int   = 0
+    total:       int   = 0
+
+
+class IncidentCategoriaTotal(BaseModel):
+    """Total agregado por categoría — alimenta el bloque "Distribución por tipo"."""
+    categoria: str            # incendis|convivencia|transit|seguretat|serveis|altres
+    n_total:   int   = 0
+    pct:       float = 0.0    # % sobre el total de la zona en los últimos 12m
+
+
 class SeguridadDetalle(BaseModel):
-    """Desglose granular de la dimensión de seguridad (v7)."""
+    """Desglose granular de la dimensión de seguridad (v7).
+
+    Campos legacy (vz_entorno) — se mantienen por compatibilidad con el viz fallback:
+      incidencias_por_1000hab, hurtos_por_1000hab, robatoris_por_1000hab,
+      danys_por_1000hab, incidencias_noche_pct, comisarias_1km,
+      dist_comisaria_m, seguridad_barri_score.
+
+    Campos nuevos (incidents-gestionats-gub) — alimentan la viz real:
+      serie_12m         lista de 12 entradas (más reciente al final), una por mes.
+      top_categorias    top-5 categorías por nº de incidencias en los últimos 12m.
+    """
     incidencias_por_1000hab: Optional[float] = None
     hurtos_por_1000hab:      Optional[float] = None
     robatoris_por_1000hab:   Optional[float] = None
@@ -234,6 +317,10 @@ class SeguridadDetalle(BaseModel):
     comisarias_1km:          Optional[int]   = None
     dist_comisaria_m:        Optional[float] = None
     seguridad_barri_score:   Optional[float] = None
+
+    # Nuevos campos derivados de incidents_gub_zona (Phase 4-7)
+    serie_12m:      Optional[list[IncidentSerieMes]]      = None
+    top_categorias: Optional[list[IncidentCategoriaTotal]] = None
 
 
 class EntornoComercialDetalle(BaseModel):
@@ -349,6 +436,10 @@ class PerfilRefinado(BaseModel):
     operacion:                   Operacion        = Field(default_factory=Operacion)
     ubicacion_ideal:             UbicacionIdeal   = Field(default_factory=UbicacionIdeal)
     nuances_detected:            list[str]        = Field(default_factory=list)
+    # Subconjunto de `nuances_detected` (mismos strings, mismo orden) que el
+    # motor reconoció en `scoring/nuances.py` y aplicó al ranking. El frontend
+    # usa esta lista para marcar cada chip con «✓ aplicado al ranking».
+    nuances_input_aplicadas:     list[str]        = Field(default_factory=list)
     signal_preservation_score:   int              = 100
 
 
@@ -372,9 +463,19 @@ class ZonaDetalle(BaseModel):
     modelo_version:             Optional[str]              = None
 
     flujo_peatonal_dia:     Optional[dict] = None
+    poblacion:              Optional[float] = None
+    densidad_hab_km2:       Optional[float] = None
     renta_media_hogar:      Optional[float] = None
+    renta_media_uc:         Optional[float] = None
+    renta_mediana_uc:       Optional[float] = None
     edad_media:             Optional[float] = None
+    pct_poblacio_25_44:     Optional[float] = None
     pct_extranjeros:        Optional[float] = None
+    gini:                   Optional[float] = None
+    p80_p20:                Optional[float] = None
+    tamano_hogar:           Optional[float] = None
+    hogares_con_menores:    Optional[float] = None
+    personas_solas:         Optional[float] = None
     score_turismo:          Optional[float] = None
     num_negocios_activos:   Optional[int]   = None
     pct_locales_vacios:     Optional[float] = None
@@ -409,6 +510,7 @@ class ZonaDetalle(BaseModel):
     airbnb_density_500m:     Optional[float] = None
     airbnb_occupancy_est:    Optional[float] = None
     booking_hoteles_500m:    Optional[float] = None
+    dist_landmark_top3_m:    Optional[float] = None
     precio_alquiler_m2:      Optional[float] = None
     hhi_index:               Optional[float] = None
     num_directos:            Optional[int]   = None
@@ -420,6 +522,12 @@ class ZonaDetalle(BaseModel):
     negocios_historico_count: Optional[int]  = None
     renta_variacion_3a:      Optional[float] = None
     dist_playa_m:            Optional[float] = None
+
+    # Serie 24m de aperturas vs cierres usada por VizDinamismo del editorial.
+    # Cada item: {"mes": "YYYY-MM", "aperturas": int, "cierres": int}.
+    # Sin este campo Pydantic v2 descartaría la serie aunque api/local.py la
+    # adjuntara al dict — la viz quedaría siempre en su modo fallback.
+    serie_aperturas_cierres_24m: list[dict] = Field(default_factory=list)
 
 
 class LocalDetalle(BaseModel):
@@ -850,6 +958,11 @@ class ParadaCercana(BaseModel):
     nombre:      str
     distancia_m: float
     tipo:        TipoTransporte
+    # Campos extra para el mapa SVG del dossier editorial. Opcionales para
+    # compatibilidad con clientes anteriores.
+    lat:         Optional[float] = None
+    lng:         Optional[float] = None
+    orden:       Optional[int]   = None
 
 
 class LineaCercana(BaseModel):
@@ -867,6 +980,9 @@ class TransporteDetalleZona(BaseModel):
     total_lineas:  int
     total_paradas: int
     lineas:        list[LineaCercana]
+    # Centroide de la zona — para dibujar el "self" en el mapa SVG.
+    zona_lat:      Optional[float] = None
+    zona_lng:      Optional[float] = None
 
 
 # ── Cuestionario estructurado (test alternativo al texto libre) ───────────────

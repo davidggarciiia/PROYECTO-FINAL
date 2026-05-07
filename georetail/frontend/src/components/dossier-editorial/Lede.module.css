@@ -1,0 +1,186 @@
+/* Lede — bloque ancla del informe. Gauge cónico + headline + métricas.
+   Mismo lenguaje visual que el dimensionGauge del repo (Dossier.module.css). */
+
+.lede {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 32px;
+  padding: 28px 32px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  align-items: center;
+}
+
+/* ── Gauge ────────────────────────────────────────────────────── */
+
+.gaugeCol {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 140px;
+}
+
+.gauge {
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(
+    var(--gauge-color, var(--accent-light)) var(--score-pct, 0%),
+    var(--surface-3) 0
+  );
+  box-shadow: 0 0 0 1px var(--border), 0 18px 36px rgba(0, 0, 0, 0.32);
+}
+
+.gaugeInner {
+  width: 102px;
+  height: 102px;
+  border-radius: 50%;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+}
+
+.gaugeNum {
+  font-family: var(--font-sans);
+  font-size: 42px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.gaugeUnit {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  color: var(--text-subtle);
+  margin-top: 4px;
+}
+
+.veredictoChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ── Copy ─────────────────────────────────────────────────────── */
+
+.copyCol {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.kicker {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.headline {
+  font-family: var(--font-sans);
+  font-size: clamp(20px, 2.4vw, 28px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--text);
+  margin: 0;
+  max-width: 64ch;
+}
+
+/* ── Metrics ──────────────────────────────────────────────────── */
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.metricLabel {
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.metricValue {
+  font-family: var(--font-sans);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.metricUnit {
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0;
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+
+@media (max-width: 720px) {
+  .lede {
+    grid-template-columns: 1fr;
+    gap: 22px;
+    padding: 22px 18px;
+  }
+  .gaugeCol {
+    flex-direction: row;
+    justify-content: flex-start;
+    min-width: 0;
+  }
+  .gauge {
+    width: 108px;
+    height: 108px;
+  }
+  .gaugeInner {
+    width: 84px;
+    height: 84px;
+  }
+  .gaugeNum {
+    font-size: 34px;
+  }
+}

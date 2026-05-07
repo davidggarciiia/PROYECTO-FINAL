@@ -15,6 +15,7 @@ Radio por defecto: 500 m (coincide con las features *_500m de v_variables_zona).
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Optional
 
@@ -22,11 +23,13 @@ from fastapi import APIRouter, HTTPException, Query
 
 from db.conexion import get_db
 from db.sesiones import get_sesion
+from schemas.models import NarrativaDimensionResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["dimension"])
 
 _RADIO_M_DEFAULT = 500
+_NARRATIVA_TTL_DIAS = 30
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -40,7 +43,7 @@ _RADIO_M_DEFAULT = 500
 )
 async def detalle_turismo(
     zona_id: str,
-    session_id: str = Query(..., description="ID de sesión activa"),
+    session_id: Optional[str] = Query(None, description="ID de sesión activa"),
     radio_m: int = Query(_RADIO_M_DEFAULT, ge=100, le=1500),
 ) -> dict:
     """
@@ -48,13 +51,23 @@ async def detalle_turismo(
     culturales cercanos a la zona, con distancia y nombre real. Usado por
     el drawer del panel de detalle (click en la barra "Turismo").
     """
-    sesion = await get_sesion(session_id)
-    if sesion is None:
-        raise HTTPException(status_code=404, detail="Sesión no encontrada o expirada.")
+    if session_id:
+        sesion = await get_sesion(session_id)
+        if sesion is None:
+            logger.info(
+                "detalle_turismo zona=%s con session_id expirada; se devuelve detalle zonal",
+                zona_id,
+            )
 
     async with get_db() as conn:
         zona = await conn.fetchrow(
-            "SELECT id, nombre FROM zonas WHERE id = $1", zona_id,
+            """
+            SELECT id, nombre,
+                   ST_Y(ST_Centroid(geometria)) AS lat,
+                   ST_X(ST_Centroid(geometria)) AS lng
+            FROM zonas WHERE id = $1
+            """,
+            zona_id,
         )
         if zona is None:
             raise HTTPException(status_code=404, detail=f"Zona '{zona_id}' no encontrada.")
@@ -105,101 +118,97 @@ async def detalle_turismo(
         if score_calc is not None:
             feat["score_turismo"] = round(float(score_calc), 1)
 
-        # Top-8 landmarks turísticos por cercanía (nombre + distancia + wikidata).
-        landmarks = await conn.fetch(
-            """
-            SELECT l.nombre,
-                   l.wikidata_id,
-                   l.peso_turistico,
-                   ROUND(ST_Distance(
-                       ST_Centroid(z.geometria)::geography,
-                       l.geom::geography
-                   )::numeric, 0)::int AS distancia_m
-            FROM landmarks_turisticos l
-            JOIN zonas z ON z.id = $1
-            WHERE ST_DWithin(
-                ST_Centroid(z.geometria)::geography,
-                l.geom::geography,
-                $2
+        # Top-8 landmarks turísticos por cercanía. Si una tabla opcional no
+        # está disponible, el endpoint sigue devolviendo centro, métricas y mapa.
+        landmarks = []
+        try:
+            landmarks = await conn.fetch(
+                """
+                SELECT l.nombre,
+                       l.wikidata_id,
+                       l.peso_turistico,
+                       ST_Y(l.geom) AS lat,
+                       ST_X(l.geom) AS lng,
+                       ROUND(ST_Distance(
+                           ST_Centroid(z.geometria)::geography,
+                           l.geom::geography
+                       )::numeric, 0)::int AS distancia_m
+                FROM landmarks_turisticos l
+                JOIN zonas z ON z.id = $1
+                WHERE ST_DWithin(
+                    ST_Centroid(z.geometria)::geography,
+                    l.geom::geography,
+                    $2
+                )
+                ORDER BY distancia_m ASC
+                LIMIT 12
+                """,
+                zona_id, radio_m * 3,
             )
-            ORDER BY distancia_m ASC
-            LIMIT 8
-            """,
-            zona_id, radio_m * 2,  # landmarks ampliamos a 2×radio (son pocos)
-        )
+        except Exception as exc:
+            logger.warning("detalle_turismo landmarks no disponibles zona=%s: %s", zona_id, exc)
 
-        # Top-8 hoteles / alojamientos comerciales cercanos.
-        hoteles = await conn.fetch(
-            """
-            SELECT a.nombre,
-                   a.tipo,
-                   a.estrellas,
-                   a.rating,
-                   ROUND(ST_Distance(
-                       ST_Centroid(z.geometria)::geography,
-                       a.geometria::geography
-                   )::numeric, 0)::int AS distancia_m
-            FROM alojamientos_turisticos a
-            JOIN zonas z ON z.id = $1
-            WHERE a.es_activo = TRUE
-              AND ST_DWithin(
-                  ST_Centroid(z.geometria)::geography,
-                  a.geometria::geography,
-                  $2
-              )
-            ORDER BY distancia_m ASC
-            LIMIT 8
-            """,
-            zona_id, radio_m,
-        )
-
-        # Conteo agregado HUT: son 10k y no tiene sentido listarlos por nombre.
-        hut_count = await conn.fetchval(
-            """
-            SELECT COUNT(*)::int
-            FROM v_variables_zona vz
-            WHERE vz.zona_id = $1
-            """,
-            zona_id,
-        )
-        # El conteo real de apartamentos HUT en radio: lo sacamos del CSV-derived
-        # score_turismo_hut + total de HUT por barrio usando geom ad-hoc si haría
-        # falta. Aquí preferimos devolver la señal que ya hemos persistido.
-        hut_apartamentos_en_zona = None
-        hut_row = await conn.fetchrow(
-            """
-            SELECT num_competidores
-            FROM competencia_por_local
-            WHERE zona_id = $1 LIMIT 1
-            """,
-            zona_id,
-        )
-        _ = hut_row  # placeholder — mantenemos señal de cobertura vía score_turismo_hut
-
-        # Venues culturales + musicales cercanos con nombre.
-        venues = await conn.fetch(
-            """
-            SELECT v.nom AS nombre,
-                   v.tipo,
-                   v.font AS fuente,
-                   ROUND(ST_Distance(
-                       ST_Centroid(z.geometria)::geography,
-                       v.geometria::geography
-                   )::numeric, 0)::int AS distancia_m
-            FROM venues_ocio v
-            JOIN zonas z ON z.id = $1
-            WHERE ST_DWithin(
-                ST_Centroid(z.geometria)::geography,
-                v.geometria::geography,
-                $2
+        # Top-12 hoteles / alojamientos comerciales cercanos con coords.
+        hoteles = []
+        try:
+            hoteles = await conn.fetch(
+                """
+                SELECT a.nombre,
+                       a.tipo,
+                       a.estrellas,
+                       a.rating,
+                       ST_Y(a.geometria) AS lat,
+                       ST_X(a.geometria) AS lng,
+                       ROUND(ST_Distance(
+                           ST_Centroid(z.geometria)::geography,
+                           a.geometria::geography
+                       )::numeric, 0)::int AS distancia_m
+                FROM alojamientos_turisticos a
+                JOIN zonas z ON z.id = $1
+                WHERE a.es_activo = TRUE
+                  AND ST_DWithin(
+                      ST_Centroid(z.geometria)::geography,
+                      a.geometria::geography,
+                      $2
+                  )
+                ORDER BY distancia_m ASC
+                LIMIT 12
+                """,
+                zona_id, radio_m,
             )
-              AND v.nom IS NOT NULL
-              AND v.nom NOT LIKE 'Venue OSM %'     -- filtrar IDs sin nombre real
-            ORDER BY distancia_m ASC
-            LIMIT 8
-            """,
-            zona_id, radio_m,
-        )
+        except Exception as exc:
+            logger.warning("detalle_turismo alojamientos no disponibles zona=%s: %s", zona_id, exc)
+
+        # Venues culturales + musicales cercanos con nombre y coords.
+        venues = []
+        try:
+            venues = await conn.fetch(
+                """
+                SELECT v.nom AS nombre,
+                       v.tipo,
+                       v.font AS fuente,
+                       ST_Y(v.geometria) AS lat,
+                       ST_X(v.geometria) AS lng,
+                       ROUND(ST_Distance(
+                           ST_Centroid(z.geometria)::geography,
+                           v.geometria::geography
+                       )::numeric, 0)::int AS distancia_m
+                FROM venues_ocio v
+                JOIN zonas z ON z.id = $1
+                WHERE ST_DWithin(
+                    ST_Centroid(z.geometria)::geography,
+                    v.geometria::geography,
+                    $2
+                )
+                  AND v.nom IS NOT NULL
+                  AND v.nom NOT LIKE 'Venue OSM %'
+                ORDER BY distancia_m ASC
+                LIMIT 12
+                """,
+                zona_id, radio_m,
+            )
+        except Exception as exc:
+            logger.warning("detalle_turismo venues no disponibles zona=%s: %s", zona_id, exc)
 
     # Narrativa de resumen generada deterministamente a partir de los conteos.
     n_land = len(landmarks)
@@ -248,6 +257,8 @@ async def detalle_turismo(
     return {
         "zona_id": zona_id,
         "zona_nombre": zona["nombre"],
+        "zona_lat": float(zona["lat"]) if zona["lat"] is not None else None,
+        "zona_lng": float(zona["lng"]) if zona["lng"] is not None else None,
         "radio_m": radio_m,
         "score_turismo": feat.get("score_turismo"),
         "resumen": " ".join(resumen_frases),
@@ -259,6 +270,7 @@ async def detalle_turismo(
             "booking_hoteles_500m": feat.get("booking_hoteles_500m"),
             "dist_playa_m":         dist_playa,
             "dist_landmark_top3_m": feat.get("dist_landmark_top3_m"),
+            "score_turismo_airbnb": feat.get("score_turismo_airbnb"),
             "score_turismo_hut":    feat.get("score_turismo_hut"),
         },
         "landmarks": [
@@ -267,6 +279,8 @@ async def detalle_turismo(
                 "distancia_m": r["distancia_m"],
                 "wikidata_id": r["wikidata_id"],
                 "peso":        float(r["peso_turistico"]) if r["peso_turistico"] is not None else None,
+                "lat":         float(r["lat"]) if r["lat"] is not None else None,
+                "lng":         float(r["lng"]) if r["lng"] is not None else None,
             }
             for r in landmarks
         ],
@@ -277,6 +291,8 @@ async def detalle_turismo(
                 "estrellas":   r["estrellas"],
                 "rating":      float(r["rating"]) if r["rating"] is not None else None,
                 "distancia_m": r["distancia_m"],
+                "lat":         float(r["lat"]) if r["lat"] is not None else None,
+                "lng":         float(r["lng"]) if r["lng"] is not None else None,
             }
             for r in hoteles
         ],
@@ -286,7 +302,179 @@ async def detalle_turismo(
                 "tipo":        r["tipo"],
                 "fuente":      r["fuente"],
                 "distancia_m": r["distancia_m"],
+                "lat":         float(r["lat"]) if r["lat"] is not None else None,
+                "lng":         float(r["lng"]) if r["lng"] is not None else None,
             }
             for r in venues
         ],
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Narrativa LLM por dimensión — botón "Interpretar con IA" en el dossier editorial
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@router.post(
+    "/dimension/{dim_key}/{zona_id}/narrativa",
+    response_model=NarrativaDimensionResponse,
+    summary="Lectura interpretativa + 3 decisiones prácticas (LLM) por dimensión",
+)
+async def narrativa_dimension(
+    dim_key: str,
+    zona_id: str,
+    session_id: str = Query(..., description="ID de sesión activa"),
+) -> NarrativaDimensionResponse:
+    """Genera (o devuelve cacheado) la lectura LLM + 3 decisiones para una
+    dimensión concreta del dossier.
+
+    Llamado al pulsar "Interpretar con IA" en una sección del dossier editorial.
+    Cubre 6 dimensiones (flujo_peatonal, demografia, transporte, seguridad,
+    turismo, dinamismo). Competencia tiene su propio análisis vía
+    /api/competencia/{zona_id}/analisis-profundo y NO entra aquí.
+
+    Cache: 30 días por (zona_id, dim_key, sector, perfil_hash). Re-clicks
+    dentro de la misma sesión y mismo perfil devuelven from_cache=True.
+    """
+    from agente.analisis_dimension import (
+        DIMS_SOPORTADAS,
+        generar_narrativa_dimension,
+        hash_perfil,
+    )
+
+    if dim_key not in DIMS_SOPORTADAS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"dim_key '{dim_key}' no soportado. "
+                f"Válidos: {sorted(DIMS_SOPORTADAS)}"
+            ),
+        )
+
+    sesion = await get_sesion(session_id)
+    if sesion is None:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada o expirada.")
+
+    perfil = sesion.get("perfil") or {}
+    sector = perfil.get("sector")
+    if not sector:
+        raise HTTPException(
+            status_code=400,
+            detail="Sector no especificado en la sesión.",
+        )
+
+    perfil_hash_val = hash_perfil(perfil)
+
+    # 1. Cache check (TTL 30 días)
+    async with get_db() as conn:
+        cached = await conn.fetchrow(
+            f"""
+            SELECT lectura, decisiones, generado_at
+            FROM narrativa_dimension_cache
+            WHERE zona_id       = $1
+              AND dim_key       = $2
+              AND sector_codigo = $3
+              AND perfil_hash   = $4
+              AND generado_at >= NOW() - INTERVAL '{_NARRATIVA_TTL_DIAS} days'
+            """,
+            zona_id, dim_key, sector, perfil_hash_val,
+        )
+
+    if cached:
+        decisiones_cached = cached["decisiones"]
+        if isinstance(decisiones_cached, str):
+            decisiones_cached = json.loads(decisiones_cached)
+        return NarrativaDimensionResponse(
+            zona_id=zona_id,
+            dim_key=dim_key,
+            sector=sector,
+            lectura=cached["lectura"],
+            decisiones=list(decisiones_cached or []),
+            generado_at=cached["generado_at"].isoformat(),
+            from_cache=True,
+        )
+
+    # 2. Cargar datos de la zona (vista agregada con la fila más reciente)
+    async with get_db() as conn:
+        zona_row = await conn.fetchrow(
+            """
+            SELECT vz.*
+            FROM v_variables_zona vz
+            WHERE vz.zona_id = $1
+            ORDER BY vz.fecha DESC NULLS LAST
+            LIMIT 1
+            """,
+            zona_id,
+        )
+
+    if zona_row is None:
+        # Si no hay fila en v_variables_zona, comprobamos al menos que la zona
+        # exista para devolver 404 honesto.
+        async with get_db() as conn:
+            existe = await conn.fetchval(
+                "SELECT 1 FROM zonas WHERE id = $1",
+                zona_id,
+            )
+        if existe is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Zona '{zona_id}' no encontrada.",
+            )
+        zona_dict: dict = {}
+    else:
+        zona_dict = dict(zona_row)
+        # flujo_peatonal_dia puede venir como JSON string en algunos pipelines
+        fpd = zona_dict.get("flujo_peatonal_dia")
+        if isinstance(fpd, str):
+            try:
+                zona_dict["flujo_peatonal_dia"] = json.loads(fpd)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    # 3. LLM
+    try:
+        result = await generar_narrativa_dimension(
+            dim_key=dim_key,
+            zona=zona_dict,
+            sector=sector,
+            subsector=perfil.get("subsector"),
+            perfil=perfil,
+            session_id=session_id,
+        )
+    except Exception as exc:
+        logger.error(
+            "narrativa_dimension dim=%s zona=%s error: %s",
+            dim_key, zona_id, exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"El servicio de análisis no respondió: {exc}",
+        ) from exc
+
+    # 4. Persistir y devolver
+    async with get_db() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO narrativa_dimension_cache
+                (zona_id, dim_key, sector_codigo, perfil_hash,
+                 lectura, decisiones, generado_at)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW())
+            ON CONFLICT (zona_id, dim_key, sector_codigo, perfil_hash) DO UPDATE SET
+                lectura     = EXCLUDED.lectura,
+                decisiones  = EXCLUDED.decisiones,
+                generado_at = NOW()
+            RETURNING generado_at
+            """,
+            zona_id, dim_key, sector, perfil_hash_val,
+            result["lectura"], json.dumps(result["decisiones"]),
+        )
+
+    return NarrativaDimensionResponse(
+        zona_id=zona_id,
+        dim_key=dim_key,
+        sector=sector,
+        lectura=result["lectura"],
+        decisiones=result["decisiones"],
+        generado_at=row["generado_at"].isoformat(),
+        from_cache=False,
+    )

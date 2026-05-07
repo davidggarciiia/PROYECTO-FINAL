@@ -1,0 +1,343 @@
+/* VizDemografia: perfil residente con indicadores desglosados y KPIs legibles. */
+
+.fig {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px 28px;
+  background: var(--bg);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius);
+}
+
+.figHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.figTitle {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.figTitle strong {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  color: var(--text-subtle);
+  margin-right: 8px;
+}
+
+.figSub {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-subtle);
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Perfil */
+
+.profileGrid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.62fr) minmax(320px, 1fr);
+  gap: 14px;
+}
+
+.profileHero {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px;
+  min-height: 210px;
+  background:
+    linear-gradient(135deg, var(--accent-weak), transparent 52%),
+    var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-light);
+  border-radius: var(--radius-sm);
+}
+
+.profileHero span {
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.profileHero strong {
+  font-family: var(--font-sans);
+  font-size: 48px;
+  font-weight: 850;
+  line-height: 0.95;
+  letter-spacing: 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.profileHero p {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.profileBars {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.inlineEmpty {
+  display: grid;
+  place-items: center;
+  min-height: 210px;
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  background: var(--surface);
+}
+
+.profileBar {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.profileBarHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.profileBarHead span {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.profileBarHead strong {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.profileTrack {
+  height: 8px;
+  background: var(--surface-3);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.profileFill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-light));
+}
+
+.profileBar p {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+/* ── KPI row ──────────────────────────────────────────────────── */
+
+.kpiRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--accent-light);
+}
+
+.kpiLabel {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.kpiValue {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--text);
+}
+
+.kpiUp { color: var(--green); }
+.kpiDown { color: var(--red); }
+
+.kpiHint {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ── Hogar block ──────────────────────────────────────────────── */
+
+.hogarBlock {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hogarTitle {
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--accent-light);
+}
+
+.hogarBars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hogarBar {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 84px;
+  gap: 10px;
+  align-items: center;
+}
+
+.hogarLabel {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.hogarTrack {
+  height: 6px;
+  background: var(--surface-3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.hogarFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-light));
+  border-radius: 3px;
+}
+
+.hogarValue {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Foot ─────────────────────────────────────────────────────── */
+
+.foot {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-subtle);
+  letter-spacing: 0.04em;
+}
+
+/* ── Empty ────────────────────────────────────────────────────── */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  padding: 32px;
+  background: var(--bg);
+  border: 1px dashed var(--border-hover);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.emptyEyebrow {
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.empty p {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .profileGrid,
+  .profileBars {
+    grid-template-columns: 1fr;
+  }
+
+  .profileHero strong {
+    font-size: 36px;
+  }
+
+  .hogarBar {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .hogarValue {
+    text-align: left;
+  }
+}

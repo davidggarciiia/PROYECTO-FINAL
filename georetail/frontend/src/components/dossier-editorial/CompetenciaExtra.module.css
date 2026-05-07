@@ -1,0 +1,256 @@
+/* CompetenciaExtra — análisis LLM relacional dentro de la sección Competencia.
+   Coherencia con ZoneIndex: numeración tabular grande, eyebrow ●, semántica
+   verde/amarillo/rojo. */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 16px;
+}
+
+/* ── Loading ──────────────────────────────────────────────────── */
+
+.loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-hover);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.loadingDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-light);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ── KPI row ──────────────────────────────────────────────────── */
+
+.kpiRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  border-left-width: 3px;
+}
+
+.kpi_red    { border-left-color: var(--red); }
+.kpi_yellow { border-left-color: var(--yellow); }
+.kpi_green  { border-left-color: var(--green); }
+.kpi_accent { border-left-color: var(--accent-light); }
+
+.kpiLabel {
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.kpiValue {
+  font-family: var(--font-sans);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.kpi_red .kpiValue    { color: var(--red); }
+.kpi_yellow .kpiValue { color: var(--yellow); }
+.kpi_green .kpiValue  { color: var(--green); }
+
+.kpiHint {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+/* ── Lista (amenazas / oportunidades / sinérgicos) ────────────── */
+
+.lista {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.listaEyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.listaTick {
+  font-size: 9px;
+  line-height: 1;
+}
+
+.eye_red    { color: var(--red); }
+.eye_red    .listaTick { color: var(--red); }
+.eye_yellow { color: var(--yellow); }
+.eye_yellow .listaTick { color: var(--yellow); }
+.eye_green  { color: var(--green); }
+.eye_green  .listaTick { color: var(--green); }
+
+.listaCount {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.item {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-left: 3px solid transparent;
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.item_red    { border-left-color: rgba(239, 68, 68, 0.45); }
+.item_yellow { border-left-color: rgba(245, 158, 11, 0.45); }
+.item_green  { border-left-color: rgba(16, 185, 129, 0.45); }
+
+.itemHead {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.itemNum {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.itemBody {
+  min-width: 0;
+}
+
+.itemNombre {
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  color: var(--text-subtle);
+}
+
+.rating {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.dim {
+  color: var(--text-subtle);
+}
+
+.amenazaScore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid;
+}
+
+.amenaza_red    { color: var(--red);    background: var(--red-dim);    border-color: var(--red-border); }
+.amenaza_yellow { color: var(--yellow); background: var(--yellow-dim); border-color: var(--yellow-border); }
+.amenaza_green  { color: var(--green);  background: var(--green-dim);  border-color: var(--green-border); }
+
+.motivo {
+  margin: 8px 0 0 44px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+@media (max-width: 720px) {
+  .motivo {
+    margin-left: 0;
+    margin-top: 6px;
+  }
+  .itemHead {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+}
