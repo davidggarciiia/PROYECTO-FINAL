@@ -893,7 +893,12 @@ def _generar_riesgos(
                     "la inversión no se recupera en 3 años. Para una decisión 'sí' se requiere "
                     "que incluso el escenario malo sea positivo."))
 
-    if payback_b > 30:
+    if payback_b >= 999:
+        riesgos.append(Riesgo(tipo="bloqueo",
+            mensaje="El negocio no recupera la inversión en el horizonte de 36 meses — "
+                    "la operación genera pérdidas netas acumuladas. Revisa número de clientes, "
+                    "costes fijos o inversión inicial antes de decidir."))
+    elif payback_b > 30:
         riesgos.append(Riesgo(tipo="bloqueo",
             mensaje=f"Payback de {payback_b} meses supera el límite recomendado de 30 meses."))
 

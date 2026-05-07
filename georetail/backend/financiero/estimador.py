@@ -33,6 +33,18 @@ _APPOINTMENT_CAPABLE_SECTORS: frozenset[str] = frozenset({
     "fisioterapia", "dentista", "educacion",
 })
 
+# Suelo de m²/puesto realista para sectores appointment_based.
+# Evita que un benchmark de BD demasiado ajustado (ej: estetica=10.0) derive más empleados
+# de los que físicamente tienen sentido en un local típico.
+_EMP_M2_FLOOR: dict[str, float] = {
+    "estetica":     14.0,
+    "peluqueria":   14.0,
+    "tatuajes":     15.0,
+    "clinica":      20.0,
+    "fisioterapia": 20.0,
+    "salud":        20.0,
+}
+
 
 def _determinar_modelo_negocio(sector: str, bench: dict) -> str:
     """business_model_type desde el registro canónico; bench puede elevarlo a appointment
@@ -152,8 +164,13 @@ async def estimar_parametros(
     # Capacidad física, personal, demanda y clientes — fuente única: core.py
     _horas   = float(bench.get("horas_apertura_dia", 9.0))
     _modelo  = _core_get_modelo(sector)
-    p.num_empleados = _core_derive_staff(_modelo, m2_negocio, bench)
-    _cap     = _core_physical_capacity(_modelo, m2_negocio, bench, p.num_empleados, _horas)
+    if _modelo == "labor" and sector in _EMP_M2_FLOOR:
+        _emp_m2 = max(float(bench.get("empleados_por_m2") or 0), _EMP_M2_FLOOR[sector])
+        _bench_staff = {**bench, "empleados_por_m2": _emp_m2}
+    else:
+        _bench_staff = bench
+    p.num_empleados = _core_derive_staff(_modelo, m2_negocio, _bench_staff)
+    _cap     = _core_physical_capacity(_modelo, m2_negocio, _bench_staff, p.num_empleados, _horas)
     _demand  = _core_estimate_demand(_modelo, m2_negocio, bench, vz, comp)
     _clients = _core_final_clients(_demand, _cap)
 
